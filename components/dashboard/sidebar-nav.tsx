@@ -1,48 +1,34 @@
 "use client"
 
 import { useState } from "react"
-import {
-  LayoutDashboard,
-  FolderKanban,
-  LayoutTemplate,
-  Activity,
-  Settings,
-  Terminal,
-  FileText,
-  Package,
-  Puzzle,
-  MessageSquare,
-  BookOpen,
-  PenLine,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
-
-const mainNav = [
-  { label: "Dashboard", icon: LayoutDashboard, active: true },
-  { label: "Projects", icon: FolderKanban },
-  { label: "Templates", icon: LayoutTemplate },
-  { label: "Activity Log", icon: Activity },
-  { label: "Settings", icon: Settings },
-]
-
-const devTools = [
-  { label: "CLI Reference", icon: Terminal },
-  { label: "API Docs", icon: FileText },
-  { label: "SDK", icon: Package },
-  { label: "Integrations", icon: Puzzle },
-]
-
-const community = [
-  { label: "Discord", icon: MessageSquare },
-  { label: "Examples", icon: BookOpen },
-  { label: "Blog", icon: PenLine },
-]
+import { mainNav, devTools, community } from "@/lib/nav-config"
 
 export function SidebarNav() {
   const [workspaceOpen, setWorkspaceOpen] = useState(true)
+  const pathname = usePathname()
+
+  const NavLink = ({ item }: { item: (typeof mainNav)[0] }) => {
+    const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
+    return (
+      <Link
+        href={item.href}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
+          isActive
+            ? "bg-sidebar-accent text-foreground font-medium"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+        )}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        {item.label}
+      </Link>
+    )
+  }
 
   return (
     <aside className="hidden lg:flex flex-col w-64 border-r border-border bg-sidebar-background h-screen sticky top-0 overflow-y-auto">
@@ -77,18 +63,7 @@ export function SidebarNav() {
           <ul className="flex flex-col gap-0.5" role="list">
             {mainNav.map((item) => (
               <li key={item.label}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    item.active
-                      ? "bg-sidebar-accent text-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
-                </button>
+                <NavLink item={item} />
               </li>
             ))}
           </ul>
@@ -101,13 +76,18 @@ export function SidebarNav() {
           <ul className="flex flex-col gap-0.5" role="list">
             {devTools.map((item) => (
               <li key={item.label}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
+                    pathname === item.href
+                      ? "bg-sidebar-accent text-foreground font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                  )}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   {item.label}
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -120,13 +100,18 @@ export function SidebarNav() {
           <ul className="flex flex-col gap-0.5" role="list">
             {community.map((item) => (
               <li key={item.label}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground transition-colors"
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
+                    pathname === item.href
+                      ? "bg-sidebar-accent text-foreground font-medium"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
+                  )}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   {item.label}
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
