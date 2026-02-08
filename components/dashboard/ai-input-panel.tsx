@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Sparkles, MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +10,7 @@ import { useLocale } from "@/lib/i18n"
 export function AiInputPanel() {
   const [value, setValue] = useState("")
   const { t } = useLocale()
+  const router = useRouter()
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -28,6 +30,7 @@ export function AiInputPanel() {
         <Button
           size="sm"
           className="h-9 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0"
+          onClick={() => router.push("/apps/kanban-ai")}
         >
           <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
           {t("discussWithAI")}

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Rocket, Sparkles, Zap, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +13,7 @@ import { useLocale } from "@/lib/i18n"
 export function QuickActions() {
   const [promptValue, setPromptValue] = useState("")
   const { t } = useLocale()
+  const router = useRouter()
 
   return (
     <section>
@@ -59,6 +61,7 @@ export function QuickActions() {
             <Button
               size="sm"
               className="h-8 px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0"
+              onClick={() => router.push("/apps/kanban-ai")}
             >
               {t("generate")}
             </Button>

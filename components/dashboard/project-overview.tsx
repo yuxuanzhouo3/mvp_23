@@ -26,13 +26,13 @@ const recentEdits = [
   "Page Not Found",
 ]
 
-export function ProjectOverview() {
+export function ProjectOverview({ children }: { children?: React.ReactNode }) {
   const { t } = useLocale()
 
   return (
-    <section className="rounded-lg border border-border bg-card p-5 space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-2">
+    <section className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center gap-3">
             <h2 className="text-lg font-semibold text-card-foreground">
               {t("brand")}
@@ -64,27 +64,40 @@ export function ProjectOverview() {
         </div>
       </div>
 
-      <Separator />
+      {children ? (
+        <>
+          <Separator />
+          {children}
+        </>
+      ) : null}
+    </section>
+  )
+}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+export function ProjectOverviewDetails() {
+  const { t } = useLocale()
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <div className="grid gap-4 lg:grid-cols-2">
         <div>
-          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+          <h3 className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
             <FileCode className="h-4 w-4" />
             {t("recentEdits")}
           </h3>
-          <ul className="space-y-1.5 text-sm text-muted-foreground">
+          <ul className="space-y-1 text-sm text-muted-foreground">
             {recentEdits.map((file) => (
               <li key={file} className="font-mono text-xs hover:text-foreground transition-colors cursor-pointer">
                 {file}
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
             {t("recentEditsDesc")}
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-2">
             <Button variant="outline" size="sm" className="text-foreground border-border justify-start">
               <ExternalLink className="h-4 w-4 mr-1.5" />
@@ -98,11 +111,11 @@ export function ProjectOverview() {
           </div>
 
           <div>
-            <h3 className="text-sm font-medium text-foreground mb-1">{t("appVisibility")}</h3>
-            <p className="text-xs text-muted-foreground mb-3">
+            <h3 className="text-sm font-medium text-foreground mb-0.5">{t("appVisibility")}</h3>
+            <p className="text-xs text-muted-foreground mb-2">
               {t("appVisibilityDesc")}
             </p>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <Select defaultValue="public">
                 <SelectTrigger className="w-full max-w-[200px]">
                   <Globe className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -122,8 +135,8 @@ export function ProjectOverview() {
           </div>
 
           <div>
-            <h3 className="text-sm font-medium text-foreground mb-1">{t("inviteUsers")}</h3>
-            <p className="text-xs text-muted-foreground mb-3">
+            <h3 className="text-sm font-medium text-foreground mb-0.5">{t("inviteUsers")}</h3>
+            <p className="text-xs text-muted-foreground mb-2">
               {t("inviteUsersDesc")}
             </p>
             <div className="flex flex-wrap gap-2">
@@ -138,8 +151,8 @@ export function ProjectOverview() {
           </div>
 
           <div>
-            <h3 className="text-sm font-medium text-foreground mb-1">{t("platformBadge")}</h3>
-            <p className="text-xs text-muted-foreground mb-3">
+            <h3 className="text-sm font-medium text-foreground mb-0.5">{t("platformBadge")}</h3>
+            <p className="text-xs text-muted-foreground mb-2">
               {t("platformBadgeDesc")}
             </p>
             <Button variant="outline" size="sm">
