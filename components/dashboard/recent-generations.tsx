@@ -1,4 +1,8 @@
+"use client"
+
+import Link from "next/link"
 import { Eye, Rocket, Share2, MoreHorizontal } from "lucide-react"
+import { useLocale } from "@/lib/i18n"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -45,28 +49,38 @@ const generations = [
 
 const statusConfig = {
   ready: {
-    label: "Ready",
+    labelKey: "ready" as const,
     className: "bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30",
   },
   building: {
-    label: "Building",
+    labelKey: "building" as const,
     className: "bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30",
   },
   error: {
-    label: "Error",
+    labelKey: "error" as const,
     className: "bg-destructive/15 text-destructive border-destructive/30",
   },
 }
 
+const timeZh: Record<string, string> = {
+  "2h ago": "2 小时前",
+  "5h ago": "5 小时前",
+  "12h ago": "12 小时前",
+  "1d ago": "1 天前",
+  "2d ago": "2 天前",
+}
+
 export function RecentGenerations() {
+  const { t, locale } = useLocale()
+
   return (
     <section className="rounded-lg border border-border bg-card">
       <div className="flex items-center justify-between p-5 pb-4">
         <h3 className="text-sm font-semibold text-card-foreground">
-          Recent App Generations
+          {t("recentGenerations")}
         </h3>
         <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs">
-          View all
+          {t("viewAll")}
         </Button>
       </div>
 
@@ -74,11 +88,11 @@ export function RecentGenerations() {
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-muted-foreground text-xs font-medium">App Name</TableHead>
-              <TableHead className="text-muted-foreground text-xs font-medium hidden sm:table-cell">Prompt Used</TableHead>
-              <TableHead className="text-muted-foreground text-xs font-medium">Status</TableHead>
-              <TableHead className="text-muted-foreground text-xs font-medium hidden md:table-cell">Generated</TableHead>
-              <TableHead className="text-muted-foreground text-xs font-medium text-right">Actions</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium">{t("appName")}</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium hidden sm:table-cell">{t("promptUsed")}</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium">{t("status")}</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium hidden md:table-cell">{t("generated")}</TableHead>
+              <TableHead className="text-muted-foreground text-xs font-medium text-right">{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -99,11 +113,11 @@ export function RecentGenerations() {
                       {gen.status === "building" && (
                         <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))] inline-block animate-pulse-dot" />
                       )}
-                      {status.label}
+                      {t(status.labelKey)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground hidden md:table-cell">
-                    {gen.generatedAt}
+                    {locale === "zh" ? timeZh[gen.generatedAt] ?? gen.generatedAt : gen.generatedAt}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -112,8 +126,11 @@ export function RecentGenerations() {
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-foreground"
                         aria-label={`View ${gen.name}`}
+                        asChild
                       >
-                        <Eye className="h-3.5 w-3.5" />
+                        <Link href={`/apps/${gen.name}`}>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Link>
                       </Button>
                       <Button
                         variant="ghost"
@@ -128,16 +145,22 @@ export function RecentGenerations() {
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-foreground hidden sm:inline-flex"
                         aria-label={`Share ${gen.name}`}
+                        asChild
                       >
-                        <Share2 className="h-3.5 w-3.5" />
+                        <Link href={`/apps/${gen.name}`}>
+                          <Share2 className="h-3.5 w-3.5" />
+                        </Link>
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-foreground sm:hidden"
                         aria-label={`More actions for ${gen.name}`}
+                        asChild
                       >
-                        <MoreHorizontal className="h-3.5 w-3.5" />
+                        <Link href={`/apps/${gen.name}`}>
+                          <MoreHorizontal className="h-3.5 w-3.5" />
+                        </Link>
                       </Button>
                     </div>
                   </TableCell>

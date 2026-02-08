@@ -1,14 +1,14 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
-import {
-  X,
-} from "lucide-react"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { mainNav, devTools, community } from "@/lib/nav-config"
+import { useLocale } from "@/lib/i18n"
 
 interface MobileSidebarProps {
   open: boolean
@@ -17,6 +17,7 @@ interface MobileSidebarProps {
 
 export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
   const pathname = usePathname()
+  const { t } = useLocale()
 
   const linkClass = (href: string) =>
     cn(
@@ -47,11 +48,9 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
       >
         <div className="flex items-center justify-between px-5 py-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-bold text-sm">
-              MF
-            </div>
+            <Image src="/logo.svg" alt="mornFullStack" width={32} height={32} priority className="rounded-lg" />
             <span className="font-semibold text-sm text-foreground tracking-tight">
-              mornFullStack
+              {t("brand")}
             </span>
           </div>
           <Button
@@ -69,14 +68,14 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
 
         <nav className="flex-1 px-3 py-3 overflow-y-auto">
           <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Personal Workspace
+            {t("personalWorkspace")}
           </p>
           <ul className="flex flex-col gap-0.5" role="list">
             {mainNav.map((item) => (
-              <li key={item.label}>
+              <li key={item.labelKey}>
                 <Link href={item.href} onClick={onClose} className={linkClass(item.href)}>
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               </li>
             ))}
@@ -85,14 +84,14 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
           <Separator className="my-4" />
 
           <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Developer Tools
+            {t("developerTools")}
           </p>
           <ul className="flex flex-col gap-0.5" role="list">
             {devTools.map((item) => (
-              <li key={item.label}>
+              <li key={item.labelKey}>
                 <Link href={item.href} onClick={onClose} className={linkClass(item.href)}>
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               </li>
             ))}
@@ -101,14 +100,14 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
           <Separator className="my-4" />
 
           <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Community
+            {t("community")}
           </p>
           <ul className="flex flex-col gap-0.5" role="list">
             {community.map((item) => (
-              <li key={item.label}>
+              <li key={item.labelKey}>
                 <Link href={item.href} onClick={onClose} className={linkClass(item.href)}>
                   <item.icon className="h-4 w-4 shrink-0" />
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               </li>
             ))}

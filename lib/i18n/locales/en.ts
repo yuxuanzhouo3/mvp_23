@@ -1,0 +1,269 @@
+export const en = {
+  // Brand
+  brand: "mornFullStack",
+  brandSlogan: "One word to a full-stack app",
+
+  // Sidebar
+  personalWorkspace: "Personal Workspace",
+  dashboard: "Dashboard",
+  projects: "Projects",
+  templates: "Templates",
+  activityLog: "Activity Log",
+  settings: "Settings",
+  developerTools: "Developer Tools",
+  cliReference: "CLI Reference",
+  apiDocs: "API Docs",
+  sdk: "SDK",
+  integrations: "Integrations",
+  community: "Community",
+  discord: "Discord",
+  examples: "Examples",
+  blog: "Blog",
+
+  // Dashboard
+  projectOverview: "Project Overview",
+  projectDesc: "Your personal full-stack app generator. One word to a deployed MVP.",
+  recentGenerations: "Recent App Generations",
+  recentEdits: "Recent Edits",
+  recentEditsDesc: "Enhanced mobile compatibility with overscroll-behavior, user-select protection, page transitions, sticky headers with safe area support, optimistic UI updates, dark-themed error pages, and account deletion functionality.",
+  live: "Live",
+  quickActions: "Quick Actions",
+  viewAll: "View all",
+  actions: "Actions",
+  appName: "App Name",
+  promptUsed: "Prompt Used",
+  status: "Status",
+  generated: "Generated",
+  ready: "Ready",
+  building: "Building",
+  error: "Error",
+  generateNewApp: "Generate New App",
+  analytics: "Analytics",
+  edit: "Edit",
+  openApp: "Open App",
+  shareApp: "Share App",
+  shareIncentive: "win free credits!",
+  lastUpdated: "Last updated",
+  lastUpdated2h: "2h ago",
+
+  // App visibility
+  appVisibility: "App Visibility",
+  appVisibilityDesc: "Control who can access your application",
+  public: "Public",
+  private: "Private",
+  unlisted: "Unlisted",
+  requireLogin: "Require login to access",
+
+  // Invite
+  inviteUsers: "Invite Users",
+  inviteUsersDesc: "Grow your user base by inviting others",
+  copyLink: "Copy Link",
+  sendInvites: "Send Invites",
+
+  // Platform badge
+  platformBadge: "Platform Badge",
+  platformBadgeDesc: 'The "Edit with mornFullStack" badge is currently visible on your app.',
+  hideBadge: "Hide Badge",
+
+  // Right panel
+  gettingStarted: "Getting Started",
+  step1: "Generate your first app",
+  step2: "Customize the code",
+  step3: "Deploy to production",
+  step4: "Share with your team",
+  takeTour: "Take Tour",
+  needHelp: "Need Help?",
+  documentation: "Documentation",
+  discordCommunity: "Discord Community",
+  scheduleDemo: "Schedule a demo",
+  readyTemplate: "Ready to create a template?",
+  readyTemplateDesc:
+    "Before you can turn this application into a template, it needs to be live. Click Publish in the top right corner to deploy, then return here to set it up.",
+
+  // App detail nav
+  overview: "Overview",
+  users: "Users",
+  data: "Data",
+  domains: "Domains",
+  security: "Security",
+  code: "Code",
+  agents: "Agents",
+  automations: "Automations",
+  logs: "Logs",
+  api: "API",
+  beta: "Beta",
+
+  // Chinese integrations
+  wechat: "WeChat",
+  weibo: "Weibo",
+  wechatShare: "WeChat Share",
+  weiboShare: "Weibo Share",
+  alipay: "Alipay",
+  wechatPay: "WeChat Pay",
+
+  // Top bar
+  searchPlaceholder: "Search projects, templates, docs...",
+  help: "Help",
+  notifications: "Notifications",
+  profile: "Profile",
+  billing: "Billing",
+  team: "Team",
+  signOut: "Sign out",
+  markAllRead: "Mark all read",
+  noNotifications: "No notifications yet",
+
+  // Footer
+  copyright: "© 2025 mornFullStack MVP",
+  fromIdeaToApp: "From idea to deployed app",
+
+  // Notifications
+  notifBuildSuccess: "kanban-ai build completed successfully",
+  notifBuilding: "invoice-tracker is building...",
+  notifNewFeature: "New feature: One-click deploy",
+  helpResources: "Help & Resources",
+
+  // Integrations page
+  integrationsTitle: "Integrations",
+  integrationsDesc: "Connect mornFullStack with your favorite tools.",
+  connectRepos: "Connect repos, auto-deploy on push",
+  deployApps: "Deploy generated apps",
+  buildNotifications: "Build notifications",
+  connected: "Connected",
+  notConnected: "Not connected",
+  configure: "Configure",
+  connect: "Connect",
+  wechatLogin: "WeChat Login",
+  wechatLoginDesc: "Sign in with WeChat",
+  weiboShare: "Weibo Share",
+  weiboShareDesc: "Share apps to Weibo",
+  alipayDesc: "Alipay payment integration",
+  wechatPayDesc: "WeChat Pay integration",
+
+  // Projects page
+  projectsDesc: "Manage all your mornFullStack projects and generated apps.",
+  searchProjects: "Search projects...",
+  newProject: "New Project",
+  open: "Open",
+  appsCount: "app(s)",
+  draft: "Draft",
+
+  // Templates page
+  templatesDesc: "Reusable app templates to jumpstart your next project.",
+  createFromApp: "Create from App",
+  useTemplate: "Use Template",
+  usedInApps: "Used in {n} apps",
+  kanbanBoard: "Kanban Board",
+  kanbanDesc: "Task manager with drag-and-drop",
+  socialFeed: "Social Feed",
+  socialFeedDesc: "Instagram-style feed with likes",
+  crudDashboard: "CRUD Dashboard",
+  crudDesc: "Admin panel with tables",
+
+  // Activity page
+  activityLogDesc: "Recent activity across your workspace.",
+  activityGenerated: "Generated {name}",
+  activityDeployed: "Deployed {name} to production",
+  activityBuilding: "Building {name}",
+  activityBuildFailed: "{name} build failed",
+
+  // Settings page
+  settingsDesc: "Manage your account and workspace preferences.",
+  displayName: "Display Name",
+  saveChanges: "Save Changes",
+  notificationsTitle: "Notifications",
+  buildNotifications: "Build notifications",
+  buildNotificationsDesc: "Email when builds complete or fail",
+  weeklyDigest: "Weekly digest",
+  weeklyDigestDesc: "Summary of your app activity",
+  changePassword: "Change Password",
+  hobbyPlan: "Hobby plan — 3 projects, unlimited apps",
+  upgradePlan: "Upgrade Plan",
+
+  // Quick Actions
+  generateFromTemplate: "Generate from Template",
+  generateFromTemplateDesc: "Start with a pre-built template",
+  browseTemplates: "Browse Templates",
+  customGeneration: "Custom Generation",
+  customGenerationDesc: "Describe your app idea",
+  generatePlaceholder: "e.g., 'social network for book clubs'",
+  generate: "Generate",
+  deployments: "Deployments",
+  deploymentsDesc: "3 active deployments",
+  usageMetrics: "Usage Metrics",
+  usageMetricsDesc: "42 apps generated this month",
+  monthlyLimit: "Monthly limit",
+
+  // Terminal demo
+  liveDemo: "Live Demo - Try Now",
+  terminalGenerating: "Generating your full-stack app...",
+  terminalFrontend: "Frontend: React/Next.js ready",
+  terminalBackend: "Backend: Node.js API ready",
+  terminalDatabase: "Database: PostgreSQL schema created",
+
+  // AI input panel
+  aiThinking: "Thinking... What would you like to change?",
+  aiPlaceholder: "Describe what you want to modify...",
+  discussWithAI: "Discuss with AI",
+  viewSuggestions: "View Suggestions",
+
+  // CLI page
+  cliDesc: "Command-line interface for mornFullStack.",
+  installation: "Installation",
+  commands: "Commands",
+  cliInit: "Initialize mornFullStack in your project",
+  cliGenerate: "Generate an app from a prompt",
+  cliDeploy: "Deploy the current project",
+  cliLogin: "Authenticate with your account",
+  cliLogout: "Sign out of your account",
+  cliWhoami: "Show the current logged-in account",
+  cliLink: "Link current directory to a project",
+  cliAppsList: "List all apps in your workspace",
+  cliAppsOpen: "Open an app in the browser",
+
+  // API Docs
+  apiDocsDesc: "REST API for integrating mornFullStack into your workflow.",
+  baseUrl: "Base URL",
+  endpoints: "Endpoints",
+  apiGenerate: "Generate a new app from a prompt",
+  apiListApps: "List all apps in your workspace",
+  apiGetApp: "Get app details",
+  apiDeploy: "Trigger deployment",
+
+  // Discord
+  discordDesc: "Join our community for support, updates, and discussions.",
+  joinDiscord: "Join mornFullStack on Discord",
+  discordCardDesc: "Connect with developers, get help, share your apps, and stay updated.",
+  openDiscord: "Open Discord",
+
+  // Examples
+  examplesDesc: "Example projects and prompts to get you started.",
+  tryExample: "Try Example",
+  apiDashboard: "API Dashboard",
+  feedbackWidget: "Feedback Widget",
+  exKanbanPrompt: "Task manager with kanban",
+  exSocialPrompt: "Instagram for pet owners",
+  exApiPrompt: "API analytics platform",
+  exFeedbackPrompt: "Customer feedback widget",
+
+  // Blog
+  blogDesc: "Updates, tutorials, and insights from the mornFullStack team.",
+  visitBlog: "Visit Blog",
+  blogPost1: "From One Word to Full-Stack",
+  blogPost1Excerpt: "How mornFullStack turns prompts into production apps.",
+  blogPost2: "Building MVPs in 30 Seconds",
+  blogPost2Excerpt: "A guide to rapid prototyping with AI.",
+
+  // Time
+  time2h: "2h ago",
+  time3h: "3h ago",
+  time30m: "30m ago",
+  time1d: "1d ago",
+  updatedAt: "Updated",
+
+  // SDK & App detail
+  sdkDesc: "Software Development Kit for mornFullStack integrations.",
+  viewOnNpm: "View on npm",
+  preview: "Preview",
+  appCreatedFromPrompt: "Your personal app. Created from a prompt.",
+  createdHoursAgo: "Created 3 hours ago",
+} as const

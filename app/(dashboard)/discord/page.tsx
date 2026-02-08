@@ -1,15 +1,18 @@
+"use client"
+
 import { MessageSquare, ExternalLink } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { useLocale } from "@/lib/i18n"
 
 export default function DiscordPage() {
+  const { t } = useLocale()
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Discord Community</h1>
-        <p className="text-muted-foreground mt-1">
-          Join our community for support, updates, and discussions.
-        </p>
+        <h1 className="text-2xl font-semibold text-foreground">{t("discordCommunity")}</h1>
+        <p className="text-muted-foreground mt-1">{t("discordDesc")}</p>
       </div>
 
       <Card>
@@ -19,15 +22,15 @@ export default function DiscordPage() {
               <MessageSquare className="h-8 w-8 text-[#5865F2]" />
             </div>
             <div>
-              <h2 className="font-medium text-lg">Join mornFullStack on Discord</h2>
+              <h2 className="font-medium text-lg">{t("joinDiscord")}</h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-md">
-                Connect with developers, get help, share your apps, and stay updated.
+                {t("discordCardDesc")}
               </p>
             </div>
             <Button asChild>
               <a href="https://discord.gg/mornfullstack" target="_blank" rel="noopener noreferrer">
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open Discord
+                {t("openDiscord")}
               </a>
             </Button>
           </div>

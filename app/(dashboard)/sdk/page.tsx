@@ -1,15 +1,18 @@
+"use client"
+
 import { Package, Code2 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { useLocale } from "@/lib/i18n"
 
 export default function SdkPage() {
+  const { t } = useLocale()
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">SDK</h1>
-        <p className="text-muted-foreground mt-1">
-          Software Development Kit for mornFullStack integrations.
-        </p>
+        <h1 className="text-2xl font-semibold text-foreground">{t("sdk")}</h1>
+        <p className="text-muted-foreground mt-1">{t("sdkDesc")}</p>
       </div>
 
       <Card>
@@ -46,7 +49,7 @@ const app = await client.generate({ prompt: "Task manager" });`}
         </CardContent>
       </Card>
 
-      <Button variant="outline">View on npm</Button>
+      <Button variant="outline">{t("viewOnNpm")}</Button>
     </div>
   )
 }

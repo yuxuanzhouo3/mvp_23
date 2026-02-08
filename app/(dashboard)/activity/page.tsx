@@ -1,22 +1,25 @@
+"use client"
+
 import { Activity, Zap, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { useLocale } from "@/lib/i18n"
 
 const activities = [
-  { id: "1", type: "generate", msg: "Generated kanban-ai", time: "2h ago", icon: Zap },
-  { id: "2", type: "deploy", msg: "Deployed social-bookclub to production", time: "3h ago", icon: CheckCircle },
-  { id: "3", type: "build", msg: "Building invoice-tracker", time: "30m ago", icon: Loader2 },
-  { id: "4", type: "error", msg: "recipe-finder build failed", time: "1d ago", icon: AlertCircle },
-  { id: "5", type: "generate", msg: "Generated fitness-log", time: "1d ago", icon: Zap },
+  { id: "1", msgKey: "activityGenerated" as const, name: "kanban-ai", timeKey: "time2h", icon: Zap },
+  { id: "2", msgKey: "activityDeployed" as const, name: "social-bookclub", timeKey: "time3h", icon: CheckCircle },
+  { id: "3", msgKey: "activityBuilding" as const, name: "invoice-tracker", timeKey: "time30m", icon: Loader2 },
+  { id: "4", msgKey: "activityBuildFailed" as const, name: "recipe-finder", timeKey: "time1d", icon: AlertCircle },
+  { id: "5", msgKey: "activityGenerated" as const, name: "fitness-log", timeKey: "time1d", icon: Zap },
 ]
 
 export default function ActivityLogPage() {
+  const { t } = useLocale()
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">Activity Log</h1>
-        <p className="text-muted-foreground mt-1">
-          Recent activity across your workspace.
-        </p>
+        <h1 className="text-2xl font-semibold text-foreground">{t("activityLog")}</h1>
+        <p className="text-muted-foreground mt-1">{t("activityLogDesc")}</p>
       </div>
 
       <Card>
@@ -31,8 +34,10 @@ export default function ActivityLogPage() {
                   <item.icon className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground">{item.msg}</p>
-                  <p className="text-xs text-muted-foreground">{item.time}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {t(item.msgKey).replace("{name}", item.name)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{t(item.timeKey)}</p>
                 </div>
               </li>
             ))}

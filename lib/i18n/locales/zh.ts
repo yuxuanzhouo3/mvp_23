@@ -1,0 +1,268 @@
+export const zh = {
+  // Brand
+  brand: "摩尔全栈",
+  brandSlogan: "一句话，生成全栈应用",
+
+  // Sidebar
+  personalWorkspace: "个人工作区",
+  dashboard: "控制台",
+  projects: "项目",
+  templates: "模板",
+  activityLog: "活动日志",
+  settings: "设置",
+  developerTools: "开发者工具",
+  cliReference: "CLI 参考",
+  apiDocs: "API 文档",
+  sdk: "SDK",
+  integrations: "集成",
+  community: "社区",
+  discord: "Discord",
+  examples: "示例",
+  blog: "博客",
+
+  // Dashboard
+  projectOverview: "项目概览",
+  projectDesc: "你的全栈应用生成器。一句话，部署一个 MVP。",
+  recentGenerations: "最近生成",
+  recentEdits: "近期编辑",
+  recentEditsDesc: "增强移动端兼容性：overscroll-behavior、user-select 保护、页面过渡、安全区域粘性头部、乐观 UI 更新、深色主题错误页、账号删除功能。",
+  live: "运行中",
+  quickActions: "快捷操作",
+  viewAll: "查看全部",
+  actions: "操作",
+  appName: "应用名称",
+  promptUsed: "使用的提示词",
+  status: "状态",
+  generated: "生成时间",
+  ready: "就绪",
+  building: "构建中",
+  error: "错误",
+  generateNewApp: "生成新应用",
+  analytics: "数据分析",
+  edit: "编辑",
+  openApp: "打开应用",
+  shareApp: "分享应用",
+  shareIncentive: "分享赢免费额度",
+  lastUpdated: "最后更新",
+  lastUpdated2h: "2 小时前",
+
+  // App visibility
+  appVisibility: "应用可见性",
+  appVisibilityDesc: "控制谁可以访问你的应用",
+  public: "公开",
+  private: "私有",
+  unlisted: "未列出",
+  requireLogin: "需要登录才能访问",
+
+  // Invite
+  inviteUsers: "邀请用户",
+  inviteUsersDesc: "邀请他人以扩大用户群",
+  copyLink: "复制链接",
+  sendInvites: "发送邀请",
+
+  // Platform badge
+  platformBadge: "平台徽章",
+  platformBadgeDesc: '"使用 mornFullStack 编辑" 徽章当前显示在你的应用中',
+  hideBadge: "隐藏徽章",
+
+  // Right panel
+  gettingStarted: "快速开始",
+  step1: "生成你的第一个应用",
+  step2: "自定义代码",
+  step3: "部署到生产环境",
+  step4: "与团队分享",
+  takeTour: "开始导览",
+  needHelp: "需要帮助？",
+  documentation: "文档",
+  discordCommunity: "Discord 社区",
+  scheduleDemo: "预约演示",
+  readyTemplate: "准备创建模板？",
+  readyTemplateDesc: "在将此应用转为模板之前，需要先发布。点击右上角发布进行部署，然后返回此处设置。",
+
+  // App detail nav
+  overview: "概览",
+  users: "用户",
+  data: "数据",
+  domains: "域名",
+  security: "安全",
+  code: "代码",
+  agents: "智能体",
+  automations: "自动化",
+  logs: "日志",
+  api: "API",
+  beta: "测试版",
+
+  // Chinese integrations
+  wechat: "微信",
+  weibo: "微博",
+  wechatShare: "微信分享",
+  weiboShare: "微博分享",
+  alipay: "支付宝",
+  wechatPay: "微信支付",
+
+  // Top bar
+  searchPlaceholder: "搜索项目、模板、文档...",
+  help: "帮助",
+  notifications: "通知",
+  profile: "个人资料",
+  billing: "账单",
+  team: "团队",
+  signOut: "退出登录",
+  markAllRead: "全部标为已读",
+  noNotifications: "暂无通知",
+
+  // Footer
+  copyright: "© 2025 mornFullStack MVP",
+  fromIdeaToApp: "从想法到部署应用",
+
+  // Notifications (for dynamic content)
+  notifBuildSuccess: "kanban-ai 构建成功",
+  notifBuilding: "invoice-tracker 正在构建中...",
+  notifNewFeature: "新功能：一键部署",
+  helpResources: "帮助与资源",
+
+  // Integrations page
+  integrationsTitle: "集成",
+  integrationsDesc: "将 mornFullStack 与你喜欢的工具连接。",
+  connectRepos: "连接代码库，推送时自动部署",
+  deployApps: "部署生成的应用",
+  buildNotifications: "构建通知",
+  connected: "已连接",
+  notConnected: "未连接",
+  configure: "配置",
+  connect: "连接",
+  wechatLogin: "微信登录",
+  wechatLoginDesc: "使用微信快捷登录",
+  weiboShare: "微博分享",
+  weiboShareDesc: "分享应用到微博",
+  alipayDesc: "支付宝支付集成",
+  wechatPayDesc: "微信支付集成",
+
+  // Projects page
+  projectsDesc: "管理你所有的 mornFullStack 项目和生成的应用。",
+  searchProjects: "搜索项目...",
+  newProject: "新建项目",
+  open: "打开",
+  appsCount: "个应用",
+  draft: "草稿",
+
+  // Templates page
+  templatesDesc: "可复用应用模板，快速启动你的下一个项目。",
+  createFromApp: "从应用创建",
+  useTemplate: "使用模板",
+  usedInApps: "已在 {n} 个应用中使用",
+  kanbanBoard: "看板",
+  kanbanDesc: "支持拖拽的任务管理器",
+  socialFeed: "社交动态",
+  socialFeedDesc: "类似 Instagram 的点赞动态",
+  crudDashboard: "CRUD 后台",
+  crudDesc: "带表格的管理面板",
+
+  // Activity page
+  activityLogDesc: "工作区最近活动。",
+  activityGenerated: "已生成 {name}",
+  activityDeployed: "已将 {name} 部署到生产环境",
+  activityBuilding: "正在构建 {name}",
+  activityBuildFailed: "{name} 构建失败",
+
+  // Settings page
+  settingsDesc: "管理你的账户和工作区偏好设置。",
+  displayName: "显示名称",
+  saveChanges: "保存更改",
+  notificationsTitle: "通知",
+  buildNotifications: "构建通知",
+  buildNotificationsDesc: "构建完成或失败时发送邮件",
+  weeklyDigest: "每周摘要",
+  weeklyDigestDesc: "应用活动汇总",
+  changePassword: "修改密码",
+  hobbyPlan: "免费计划 — 3 个项目，无限应用",
+  upgradePlan: "升级计划",
+
+  // Quick Actions
+  generateFromTemplate: "从模板生成",
+  generateFromTemplateDesc: "使用预设模板快速开始",
+  browseTemplates: "浏览模板",
+  customGeneration: "自定义生成",
+  customGenerationDesc: "描述你的应用创意",
+  generatePlaceholder: "例如：「读书俱乐部社交网络」",
+  generate: "生成",
+  deployments: "部署",
+  deploymentsDesc: "3 个活跃部署",
+  usageMetrics: "使用统计",
+  usageMetricsDesc: "本月已生成 42 个应用",
+  monthlyLimit: "月度限额",
+
+  // Terminal demo
+  liveDemo: "实时演示 - 立即体验",
+  terminalGenerating: "正在生成你的全栈应用...",
+  terminalFrontend: "前端：React/Next.js 已就绪",
+  terminalBackend: "后端：Node.js API 已就绪",
+  terminalDatabase: "数据库：PostgreSQL 架构已创建",
+
+  // AI input panel
+  aiThinking: "思考中... 你想修改什么？",
+  aiPlaceholder: "描述你想修改的内容...",
+  discussWithAI: "与 AI 讨论",
+  viewSuggestions: "查看建议",
+
+  // CLI page
+  cliDesc: "mornFullStack 命令行工具。",
+  installation: "安装",
+  commands: "命令",
+  cliInit: "在项目中初始化 mornFullStack",
+  cliGenerate: "从提示词生成应用",
+  cliDeploy: "部署当前项目",
+  cliLogin: "登录你的账户",
+  cliLogout: "退出登录",
+  cliWhoami: "显示当前登录账户",
+  cliLink: "将当前目录关联到项目",
+  cliAppsList: "列出工作区所有应用",
+  cliAppsOpen: "在浏览器中打开应用",
+
+  // API Docs
+  apiDocsDesc: "REST API，将 mornFullStack 集成到你的工作流。",
+  baseUrl: "基础 URL",
+  endpoints: "端点",
+  apiGenerate: "从提示词生成新应用",
+  apiListApps: "列出工作区所有应用",
+  apiGetApp: "获取应用详情",
+  apiDeploy: "触发部署",
+
+  // Discord
+  discordDesc: "加入我们的社区，获取支持、更新和讨论。",
+  joinDiscord: "加入 mornFullStack Discord",
+  discordCardDesc: "与开发者交流、获取帮助、分享应用、了解最新动态。",
+  openDiscord: "打开 Discord",
+
+  // Examples
+  examplesDesc: "示例项目和提示词，助你快速上手。",
+  tryExample: "尝试示例",
+  apiDashboard: "API 仪表盘",
+  feedbackWidget: "反馈组件",
+  exKanbanPrompt: "带看板的任务管理器",
+  exSocialPrompt: "宠物主人的 Instagram",
+  exApiPrompt: "API 分析平台",
+  exFeedbackPrompt: "客户反馈组件",
+
+  // Blog
+  blogDesc: "mornFullStack 团队的更新、教程与洞察。",
+  visitBlog: "访问博客",
+  blogPost1: "从一句话到全栈应用",
+  blogPost1Excerpt: "mornFullStack 如何将提示词变成生产级应用。",
+  blogPost2: "30 秒构建 MVP",
+  blogPost2Excerpt: "AI 驱动的快速原型开发指南。",
+
+  // Time
+  time2h: "2 小时前",
+  time3h: "3 小时前",
+  time30m: "30 分钟前",
+  time1d: "1 天前",
+  updatedAt: "更新于",
+
+  // SDK & App detail
+  sdkDesc: "mornFullStack 集成的软件开发工具包。",
+  viewOnNpm: "在 npm 上查看",
+  preview: "预览",
+  appCreatedFromPrompt: "你的个人应用。由提示词创建。",
+  createdHoursAgo: "创建于 3 小时前",
+} as const

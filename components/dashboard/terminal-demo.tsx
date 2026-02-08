@@ -2,16 +2,17 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Circle } from "lucide-react"
+import { useLocale } from "@/lib/i18n"
 
 const terminalLines = [
   { text: '$ curl -X POST https://api.mornhub.app/generate \\', type: "command" as const, delay: 0 },
   { text: '  -H "Content-Type: application/json" \\', type: "command" as const, delay: 200 },
   { text: '  -d \'{"prompt": "kanban board with AI suggestions"}\'', type: "command" as const, delay: 400 },
   { text: "", type: "blank" as const, delay: 600 },
-  { text: "Generating your full-stack app...", type: "info" as const, delay: 1000 },
-  { text: "Frontend: React/Next.js ready", type: "success" as const, delay: 2000 },
-  { text: "Backend: Node.js API ready", type: "success" as const, delay: 2600 },
-  { text: "Database: PostgreSQL schema created", type: "success" as const, delay: 3200 },
+  { textKey: "terminalGenerating" as const, type: "info" as const, delay: 1000 },
+  { textKey: "terminalFrontend" as const, type: "success" as const, delay: 2000 },
+  { textKey: "terminalBackend" as const, type: "success" as const, delay: 2600 },
+  { textKey: "terminalDatabase" as const, type: "success" as const, delay: 3200 },
   { text: "Your app: https://kanban-ai.mornhub.app", type: "link" as const, delay: 3800 },
   { text: "GitHub repo: github.com/mornfullstack/kanban-ai", type: "link" as const, delay: 4200 },
 ]
@@ -20,6 +21,7 @@ export function TerminalDemo() {
   const [visibleLines, setVisibleLines] = useState(0)
   const [hasStarted, setHasStarted] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const { t } = useLocale()
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -58,6 +60,12 @@ export function TerminalDemo() {
     }
   }
 
+  const getLineText = (line: (typeof terminalLines)[number]) => {
+    if ("text" in line && line.text !== undefined) return line.text
+    if ("textKey" in line) return t(line.textKey)
+    return ""
+  }
+
   return (
     <section ref={ref} className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-secondary/50">
@@ -67,7 +75,7 @@ export function TerminalDemo() {
             <Circle className="h-2.5 w-2.5 fill-[hsl(var(--warning))] text-[hsl(var(--warning))]" />
             <Circle className="h-2.5 w-2.5 fill-[hsl(var(--success))] text-[hsl(var(--success))]" />
           </div>
-          <span className="text-xs text-muted-foreground font-medium">Live Demo - Try Now</span>
+          <span className="text-xs text-muted-foreground font-medium">{t("liveDemo")}</span>
         </div>
         <span className="text-[10px] text-muted-foreground font-mono">bash</span>
       </div>
@@ -91,7 +99,7 @@ export function TerminalDemo() {
                         : "text-foreground"
                   }
                 >
-                  {line.text}
+                  {getLineText(line)}
                 </span>
               </>
             )}

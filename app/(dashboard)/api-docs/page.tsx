@@ -1,28 +1,31 @@
+"use client"
+
 import { FileText, Code } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { useLocale } from "@/lib/i18n"
 
 const endpoints = [
-  { method: "POST", path: "/api/generate", desc: "Generate a new app from a prompt" },
-  { method: "GET", path: "/api/apps", desc: "List all apps in your workspace" },
-  { method: "GET", path: "/api/apps/:id", desc: "Get app details" },
-  { method: "POST", path: "/api/apps/:id/deploy", desc: "Trigger deployment" },
+  { method: "POST", path: "/api/generate", descKey: "apiGenerate" as const },
+  { method: "GET", path: "/api/apps", descKey: "apiListApps" as const },
+  { method: "GET", path: "/api/apps/:id", descKey: "apiGetApp" as const },
+  { method: "POST", path: "/api/apps/:id/deploy", descKey: "apiDeploy" as const },
 ]
 
 export default function ApiDocsPage() {
+  const { t } = useLocale()
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground">API Docs</h1>
-        <p className="text-muted-foreground mt-1">
-          REST API for integrating mornFullStack into your workflow.
-        </p>
+        <h1 className="text-2xl font-semibold text-foreground">{t("apiDocs")}</h1>
+        <p className="text-muted-foreground mt-1">{t("apiDocsDesc")}</p>
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            <h2 className="font-medium">Base URL</h2>
+            <h2 className="font-medium">{t("baseUrl")}</h2>
           </div>
         </CardHeader>
         <CardContent>
@@ -36,7 +39,7 @@ export default function ApiDocsPage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Code className="h-5 w-5" />
-            <h2 className="font-medium">Endpoints</h2>
+            <h2 className="font-medium">{t("endpoints")}</h2>
           </div>
         </CardHeader>
         <CardContent>
@@ -51,7 +54,7 @@ export default function ApiDocsPage() {
                   {ep.method}
                 </span>
                 <code className="text-sm font-mono">{ep.path}</code>
-                <span className="text-sm text-muted-foreground">{ep.desc}</span>
+                <span className="text-sm text-muted-foreground">{t(ep.descKey)}</span>
               </div>
             ))}
           </div>

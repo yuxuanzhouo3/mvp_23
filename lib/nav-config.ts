@@ -13,31 +13,32 @@ import {
   PenLine,
   type LucideIcon,
 } from "lucide-react"
+import type { TranslationKey } from "./i18n"
 
 export type NavItem = {
-  label: string
+  labelKey: TranslationKey
   icon: LucideIcon
   href: string
   external?: boolean
 }
 
 export const mainNav: NavItem[] = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { label: "Projects", icon: FolderKanban, href: "/projects" },
-  { label: "Templates", icon: LayoutTemplate, href: "/templates" },
-  { label: "Activity Log", icon: Activity, href: "/activity" },
-  { label: "Settings", icon: Settings, href: "/settings" },
+  { labelKey: "dashboard", icon: LayoutDashboard, href: "/" },
+  { labelKey: "projects", icon: FolderKanban, href: "/projects" },
+  { labelKey: "templates", icon: LayoutTemplate, href: "/templates" },
+  { labelKey: "activityLog", icon: Activity, href: "/activity" },
+  { labelKey: "settings", icon: Settings, href: "/settings" },
 ]
 
 export const devTools: NavItem[] = [
-  { label: "CLI Reference", icon: Terminal, href: "/cli" },
-  { label: "API Docs", icon: FileText, href: "/api-docs" },
-  { label: "SDK", icon: Package, href: "/sdk" },
-  { label: "Integrations", icon: Puzzle, href: "/integrations" },
+  { labelKey: "cliReference", icon: Terminal, href: "/cli" },
+  { labelKey: "apiDocs", icon: FileText, href: "/api-docs" },
+  { labelKey: "sdk", icon: Package, href: "/sdk" },
+  { labelKey: "integrations", icon: Puzzle, href: "/integrations" },
 ]
 
 export const community: NavItem[] = [
-  { label: "Discord", icon: MessageSquare, href: "/discord" },
-  { label: "Examples", icon: BookOpen, href: "/examples" },
-  { label: "Blog", icon: PenLine, href: "/blog" },
+  { labelKey: "discord", icon: MessageSquare, href: "/discord" },
+  { labelKey: "examples", icon: BookOpen, href: "/examples" },
+  { labelKey: "blog", icon: PenLine, href: "/blog" },
 ]
