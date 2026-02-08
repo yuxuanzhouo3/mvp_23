@@ -39,7 +39,8 @@ interface TopBarProps {
 
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t, locale, setLocale } = useLocale()
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/80 backdrop-blur-sm px-4 lg:px-6">
@@ -83,11 +84,11 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           variant="ghost"
           size="icon"
           className="text-muted-foreground hover:text-foreground h-8 w-8"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onClick={() => setTheme(isDark ? "light" : "dark")}
           aria-label={locale === "zh" ? "切换主题" : "Toggle theme"}
           title={locale === "zh" ? "亮/黑 切换主题" : "Light/Dark"}
         >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
 
         <DropdownMenu>
