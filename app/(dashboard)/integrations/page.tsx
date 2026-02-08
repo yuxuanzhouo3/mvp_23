@@ -1,12 +1,12 @@
-import { Puzzle, Github, Vercel, Slack } from "lucide-react"
+import { Puzzle, Github, Cloud, Bell } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
 const integrations = [
   { name: "GitHub", icon: Github, desc: "Connect repos, auto-deploy on push", connected: true },
-  { name: "Vercel", icon: Vercel, desc: "Deploy generated apps", connected: true },
-  { name: "Slack", icon: Slack, desc: "Build notifications", connected: false },
+  { name: "Vercel", icon: Cloud, desc: "Deploy generated apps", connected: true },
+  { name: "Slack", icon: Bell, desc: "Build notifications", connected: false },
 ]
 
 export default function IntegrationsPage() {

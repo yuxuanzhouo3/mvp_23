@@ -1,4 +1,4 @@
-import { Package, Npm } from "lucide-react"
+import { Package, Code2 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
@@ -35,7 +35,7 @@ const app = await client.generate({ prompt: "Task manager" });`}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Npm className="h-5 w-5" />
+            <Code2 className="h-5 w-5" />
             <h2 className="font-medium">Python</h2>
           </div>
         </CardHeader>
