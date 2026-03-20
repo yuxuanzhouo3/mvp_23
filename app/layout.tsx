@@ -7,10 +7,12 @@ import { Providers } from "@/components/providers"
 
 const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://mornstack.vercel.app"
 
 export const metadata: Metadata = {
-  title: 'mornFullStack | 一句话生成全栈应用',
-  description: '从提示词生成完整全栈应用。无代码平台，面向开发者。',
+  metadataBase: new URL(siteUrl),
+  title: 'mornstack | 一句话生成全栈应用',
+  description: '从提示词到官网、后台、文档与移动端交付的一站式 AI 全栈生成平台。',
   icons: {
     icon: '/logo.svg',
   },

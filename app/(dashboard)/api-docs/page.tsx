@@ -3,6 +3,7 @@
 import { FileText, Code } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { useLocale } from "@/lib/i18n"
+import { siteLinks } from "@/lib/site-links"
 
 const endpoints = [
   { method: "POST", path: "/api/generate", descKey: "apiGenerate" as const },
@@ -30,7 +31,7 @@ export default function ApiDocsPage() {
         </CardHeader>
         <CardContent>
           <code className="text-sm font-mono text-muted-foreground">
-            https://api.mornhub.app/v1
+            {siteLinks.apiBase}
           </code>
         </CardContent>
       </Card>
