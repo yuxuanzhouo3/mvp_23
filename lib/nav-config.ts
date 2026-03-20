@@ -4,8 +4,6 @@ import {
   LayoutTemplate,
   Activity,
   Settings,
-  ShieldCheck,
-  Megaphone,
   Terminal,
   FileText,
   Package,
@@ -28,8 +26,6 @@ export const mainNav: NavItem[] = [
   { labelKey: "dashboard", icon: LayoutDashboard, href: "/" },
   { labelKey: "projects", icon: FolderKanban, href: "/projects" },
   { labelKey: "templates", icon: LayoutTemplate, href: "/templates" },
-  { labelKey: "adminConsole", icon: ShieldCheck, href: "/admin" },
-  { labelKey: "marketCenter", icon: Megaphone, href: "/market" },
   { labelKey: "activityLog", icon: Activity, href: "/activity" },
   { labelKey: "settings", icon: Settings, href: "/settings" },
 ]

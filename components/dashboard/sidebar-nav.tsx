@@ -30,11 +30,11 @@ export function SidebarNav() {
         href={item.href}
         title={collapsed ? t(item.labelKey) : undefined}
         className={cn(
-          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-sm transition-all duration-200",
+          "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
           collapsed && "justify-center px-2",
           isActive
-            ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,240,232,0.96))] text-foreground font-medium shadow-[0_8px_20px_rgba(89,74,50,0.06)]"
-            : "text-sidebar-foreground hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,240,232,0.8))] hover:text-foreground"
+            ? "bg-sidebar-accent text-foreground font-medium"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
@@ -45,17 +45,17 @@ export function SidebarNav() {
 
   const linkClass = (isActive: boolean) =>
     cn(
-      "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-sm transition-all duration-200",
+      "flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-sm transition-colors",
       collapsed && "justify-center px-2",
       isActive
-        ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,240,232,0.96))] text-foreground font-medium shadow-[0_8px_20px_rgba(89,74,50,0.06)]"
-        : "text-sidebar-foreground hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,240,232,0.8))] hover:text-foreground"
+        ? "bg-sidebar-accent text-foreground font-medium"
+        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
     )
 
   return (
     <aside
       className={cn(
-        "hidden lg:flex flex-col border-r border-border bg-[linear-gradient(180deg,rgba(255,253,250,0.98),rgba(246,242,235,0.96))] h-screen sticky top-0 overflow-y-auto transition-[width] duration-200 ease-in-out shadow-[inset_-1px_0_0_rgba(255,255,255,0.55)]",
+        "hidden lg:flex flex-col border-r border-border bg-sidebar-background h-screen sticky top-0 overflow-y-auto transition-[width] duration-200 ease-in-out",
         collapsed ? "w-[4.5rem]" : "w-64"
       )}
     >
@@ -72,7 +72,7 @@ export function SidebarNav() {
         <Button
           variant="ghost"
           size="icon"
-          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-8 w-8" : "w-full justify-start gap-2 rounded-xl")}
+          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-8 w-8" : "w-full justify-start gap-2")}
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
           title={collapsed ? t("expandSidebar") : t("collapseSidebar")}

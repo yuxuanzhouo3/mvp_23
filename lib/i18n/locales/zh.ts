@@ -8,8 +8,6 @@ export const zh = {
   dashboard: "控制台",
   projects: "项目",
   templates: "模板",
-  adminConsole: "管理后台",
-  marketCenter: "销售后台",
   activityLog: "活动日志",
   settings: "设置",
   developerTools: "开发者工具",
@@ -244,15 +242,11 @@ export const zh = {
   // Examples
   examplesDesc: "示例项目和提示词，助你快速上手。",
   tryExample: "尝试示例",
-  morncursorEditor: "Morncursor AI 代码编辑器",
   apiDashboard: "API 仪表盘",
   feedbackWidget: "反馈组件",
-  exMorncursorPrompt: "生成一个中国版 Cursor 的 AI 代码编辑器，包含文件树、标签编辑器、AI 助手、终端、运行预览和项目模板入口",
-  exKanbanPrompt: "生成一个销售线索与成交后台，包含线索池、负责人看板、成交阶段、支付升级和 admin/market 协同入口",
+  exKanbanPrompt: "带看板的任务管理器",
   exSocialPrompt: "宠物主人的 Instagram",
-  exWebsitePrompt: "生成一个 AI 产品官网，包含国际版、中国版、下载页、API 文档、注册登录和演示转化入口",
   exApiPrompt: "API 分析平台",
-  exCommunityPrompt: "生成一个社区内容与反馈中心，包含内容流、互动区、反馈组件、公告和活动页面",
   exFeedbackPrompt: "客户反馈组件",
 
   // Blog
