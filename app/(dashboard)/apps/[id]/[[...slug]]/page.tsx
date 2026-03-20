@@ -1,15 +1,18 @@
-import { AppOverviewPage } from "@/components/dashboard/app-overview-page"
 import { AppSectionPlaceholder } from "@/components/dashboard/app-section-placeholder"
+import { AppWorkspacePage } from "@/components/dashboard/app-workspace-page"
 
 export default async function AppSectionPage({
   params,
 }: {
   params: Promise<{ id: string; slug?: string[] }>
 }) {
-  const { slug } = await params
+  const { id, slug } = await params
+
   if (!slug || slug.length === 0) {
-    return <AppOverviewPage />
+    return <AppWorkspacePage projectId={id} />
   }
+
   const section = slug[0]
   return <AppSectionPlaceholder section={section} />
 }
+

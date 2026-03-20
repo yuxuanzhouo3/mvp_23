@@ -13,12 +13,13 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { collapsed } = useRightPanel()
   const isAppDetail = pathname?.startsWith("/apps/") ?? false
-  const showAiPanel = collapsed && isAppDetail
+  const isWorkspaceRoot = /^\/apps\/[^/]+$/.test(pathname ?? "")
+  const showAiPanel = collapsed && isAppDetail && !isWorkspaceRoot
 
   return (
     <div className="flex flex-1">
-      <main className="flex-1 min-w-0 p-4 lg:p-6 flex">
-        <div className="flex flex-col gap-5 max-w-4xl flex-1 min-w-0">{children}</div>
+      <main className="flex-1 min-w-0 p-4 lg:p-6 flex overflow-x-hidden">
+        <div className="flex flex-col gap-5 w-full flex-1 min-w-0">{children}</div>
         {showAiPanel && <AiCodePanel />}
       </main>
       <RightPanel />
