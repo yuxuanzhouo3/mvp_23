@@ -17,9 +17,3 @@
 
 # vercel
 .vercel
-
-# local runtime artifacts
-/workspaces/
-/generated/
-tsconfig.tsbuildinfo
-package-lock.json

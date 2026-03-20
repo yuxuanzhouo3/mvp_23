@@ -8,8 +8,6 @@ export const en = {
   dashboard: "Dashboard",
   projects: "Projects",
   templates: "Templates",
-  adminConsole: "Admin",
-  marketCenter: "Market",
   activityLog: "Activity Log",
   settings: "Settings",
   developerTools: "Developer Tools",
@@ -245,15 +243,11 @@ export const en = {
   // Examples
   examplesDesc: "Example projects and prompts to get you started.",
   tryExample: "Try Example",
-  morncursorEditor: "Morncursor AI Code Editor",
   apiDashboard: "API Dashboard",
   feedbackWidget: "Feedback Widget",
-  exMorncursorPrompt: "Generate a China-ready Cursor-style AI code editor with a file tree, tabbed editor, AI copilot, terminal, live preview, and project templates",
-  exKanbanPrompt: "Generate a sales pipeline workspace with a lead pool, owner board, deal stages, billing upgrade path, and admin/market coordination flow",
+  exKanbanPrompt: "Task manager with kanban",
   exSocialPrompt: "Instagram for pet owners",
-  exWebsitePrompt: "Generate an AI product website with international and China entries, download pages, API docs, sign-in, and demo conversion flows",
   exApiPrompt: "API analytics platform",
-  exCommunityPrompt: "Generate a community content and feedback hub with a feed, engagement area, feedback widget, announcements, and event pages",
   exFeedbackPrompt: "Customer feedback widget",
 
   // Blog

@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState } from "react"
 import Link from "next/link"
@@ -12,58 +12,14 @@ import { useLocale } from "@/lib/i18n"
 
 export function QuickActions() {
   const [promptValue, setPromptValue] = useState("")
-  const [region, setRegion] = useState<"cn" | "intl">("intl")
-  const [isLoading, setIsLoading] = useState(false)
-  const [statusText, setStatusText] = useState("")
   const { t } = useLocale()
   const router = useRouter()
 
-  async function handleGenerate() {
-    const prompt = promptValue.trim()
-    if (!prompt) {
-      setStatusText("请先输入需求")
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setStatusText("正在创建生成任务...")
-
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 120_000)
-      const postRes = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, region }),
-        signal: ctrl.signal,
-      })
-      clearTimeout(timer)
-
-      if (!postRes.ok) {
-        const txt = await postRes.text()
-        throw new Error(`POST /api/generate 失败: ${txt}`)
-      }
-
-      const postData = (await postRes.json()) as { projectId?: string; jobId?: string }
-      const projectId = String(postData.projectId || "").trim()
-      const jobId = String(postData.jobId || "").trim()
-      if (!projectId || !jobId) {
-        throw new Error("生成成功但未返回 projectId/jobId")
-      }
-
-      setStatusText("任务已创建，正在打开项目...")
-      router.push(`/apps/${projectId}?jobId=${encodeURIComponent(jobId)}`)
-    } catch (e: any) {
-      const msg = e?.name === "AbortError" ? "生成超时，请重试（模型响应较慢，已等待120秒）" : e?.message || "生成失败"
-      setStatusText(msg)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   return (
     <section>
-      <h3 className="text-sm font-semibold text-foreground mb-3">{t("quickActions")}</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-3">
+        {t("quickActions")}
+      </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="rounded-lg border border-border bg-card p-5 flex flex-col gap-3 hover:border-[hsl(var(--primary))]/40 transition-colors group">
           <div className="flex items-center gap-3">
@@ -75,7 +31,12 @@ export function QuickActions() {
               <p className="text-xs text-muted-foreground">{t("generateFromTemplateDesc")}</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="w-full mt-auto text-foreground border-border group-hover:border-[hsl(var(--primary))]/40 group-hover:text-[hsl(var(--primary))] bg-transparent" asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full mt-auto text-foreground border-border group-hover:border-[hsl(var(--primary))]/40 group-hover:text-[hsl(var(--primary))] bg-transparent"
+            asChild
+          >
             <Link href="/templates">{t("browseTemplates")}</Link>
           </Button>
         </div>
@@ -97,21 +58,14 @@ export function QuickActions() {
               onChange={(e) => setPromptValue(e.target.value)}
               className="h-8 text-xs bg-secondary border-border text-foreground placeholder:text-muted-foreground"
             />
-
-            <select
-              value={region}
-              onChange={(e) => setRegion(e.target.value as "cn" | "intl")}
-              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+            <Button
+              size="sm"
+              className="h-8 px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0"
+              onClick={() => router.push("/apps/kanban-ai")}
             >
-              <option value="intl">INTL</option>
-              <option value="cn">CN</option>
-            </select>
-
-            <Button size="sm" className="h-8 px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0" onClick={handleGenerate} disabled={isLoading}>
-              {isLoading ? "生成中..." : t("generate")}
+              {t("generate")}
             </Button>
           </div>
-          {statusText ? <div className="text-xs text-muted-foreground">{statusText}</div> : null}
         </div>
 
         <div className="rounded-lg border border-border bg-card p-5 flex flex-col gap-3 hover:border-[hsl(var(--primary))]/40 transition-colors">
@@ -125,8 +79,12 @@ export function QuickActions() {
             </div>
           </div>
           <div className="flex items-center gap-2 mt-auto">
-            <Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30 hover:bg-[hsl(var(--success))]/15 text-xs">2 {t("live")}</Badge>
-            <Badge className="bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30 hover:bg-[hsl(var(--warning))]/15 text-xs">1 {t("building")}</Badge>
+            <Badge className="bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30 hover:bg-[hsl(var(--success))]/15 text-xs">
+              2 {t("live")}
+            </Badge>
+            <Badge className="bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30 hover:bg-[hsl(var(--warning))]/15 text-xs">
+              1 {t("building")}
+            </Badge>
           </div>
         </div>
 

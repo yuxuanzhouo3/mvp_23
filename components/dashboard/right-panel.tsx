@@ -28,15 +28,15 @@ function scrollToSection(id: string) {
 
 export function RightPanel() {
   const pathname = usePathname()
-  const { collapsed, setCollapsed, isAutoCollapsed } = useRightPanel()
+  const { collapsed, setCollapsed } = useRightPanel()
   const isDashboard = pathname === "/"
   const { t } = useLocale()
 
   return (
     <aside
       className={cn(
-        "hidden xl:flex flex-col border-l border-border bg-card/50 h-screen sticky top-0 overflow-y-auto transition-[width] duration-200 ease-in-out shrink-0",
-        collapsed ? "w-12" : "w-64 2xl:w-72"
+        "hidden xl:flex flex-col border-l border-border bg-card/50 h-screen sticky top-0 overflow-y-auto transition-[width] duration-200 ease-in-out",
+        collapsed ? "w-12" : "w-72"
       )}
     >
       {collapsed ? (
@@ -51,11 +51,6 @@ export function RightPanel() {
           >
             <PanelRight className="h-4 w-4" />
           </Button>
-          {isAutoCollapsed ? (
-            <span className="mt-3 rotate-180 text-[10px] tracking-[0.18em] text-muted-foreground [writing-mode:vertical-rl]">
-              AUTO
-            </span>
-          ) : null}
         </div>
       ) : (
         <>

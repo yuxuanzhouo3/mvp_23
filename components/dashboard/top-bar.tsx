@@ -1,9 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
-import { Search, Bell, CreditCard, HelpCircle, Menu, Settings, LogOut, FileText, Terminal, MessageSquare, Sun, Moon } from "lucide-react"
+import { Search, Bell, HelpCircle, Menu, Settings, LogOut, FileText, Terminal, MessageSquare, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -42,23 +41,9 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t, locale, setLocale } = useLocale()
   const { resolvedTheme, setTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
-  const [user, setUser] = useState<{ name: string; email: string; region: "cn" | "intl" } | null>(null)
-
-  useEffect(() => {
-    fetch("/api/auth/session")
-      .then((res) => res.json())
-      .then((json) => setUser(json?.authenticated ? json.user : null))
-      .catch(() => setUser(null))
-  }, [])
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
-    setUser(null)
-    window.location.href = "/login"
-  }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/86 backdrop-blur-md px-4 lg:px-6 shadow-[0_1px_0_rgba(255,255,255,0.65)]">
+    <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-background/80 backdrop-blur-sm px-4 lg:px-6">
       <Button
         variant="ghost"
         size="icon"
@@ -77,10 +62,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
 
       <div className="flex-1 flex justify-center px-4 max-w-xl mx-auto">
         <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/90" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("searchPlaceholder")}
-            className="pl-10 h-10 rounded-xl border-border/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(247,243,236,0.92))] text-sm text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_24px_rgba(84,70,47,0.04)] placeholder:text-muted-foreground"
+            className="pl-10 h-9 bg-secondary border-border text-sm text-foreground placeholder:text-muted-foreground"
           />
         </div>
       </div>
@@ -93,13 +78,6 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
         >
           {locale === "zh" ? "EN" : "中"}
-        </Button>
-
-        <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
-          <Link href="/checkout" className="inline-flex items-center gap-1.5">
-            <CreditCard className="h-3.5 w-3.5" />
-            Checkout
-          </Link>
         </Button>
 
         <Button
@@ -172,25 +150,12 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
             <Button variant="ghost" size="icon" className="ml-1" aria-label="User menu">
               <Avatar className="h-7 w-7">
                 <AvatarFallback className="bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-xs font-semibold">
-                  {user?.name?.slice(0, 1) || "G"}
+                  MQ
                 </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 bg-card text-card-foreground border-border">
-            {user ? (
-              <div className="px-2 py-2 text-xs text-muted-foreground">
-                <div className="font-medium text-foreground">{user.name}</div>
-                <div>{user.email}</div>
-              </div>
-            ) : (
-              <DropdownMenuItem asChild>
-                <Link href="/login" className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Settings className="h-4 w-4" />
-                  {locale === "zh" ? "登录" : "Sign in"}
-                </Link>
-              </DropdownMenuItem>
-            )}
             <DropdownMenuItem asChild>
               <Link href="/settings" className="flex items-center gap-2 text-sm cursor-pointer">
                 <Settings className="h-4 w-4" />
@@ -198,12 +163,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-border" />
-            {user ? (
-              <DropdownMenuItem className="text-sm flex items-center gap-2 cursor-pointer" onClick={handleLogout}>
-                <LogOut className="h-4 w-4" />
-                {t("signOut")}
-              </DropdownMenuItem>
-            ) : null}
+            <DropdownMenuItem className="text-sm flex items-center gap-2 cursor-pointer">
+              <LogOut className="h-4 w-4" />
+              {t("signOut")}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
