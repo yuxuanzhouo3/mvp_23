@@ -375,7 +375,9 @@ export default function IntegrationsPage() {
                     </CardContent>
                   </Card>
                 ))}
-          </div>
+              </div>
+            </div>
+          ) : null}
 
           <Card className="hover:border-primary/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -413,8 +415,6 @@ export default function IntegrationsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
-      ) : null}
 
           {readiness.site ? (
             <div className="space-y-4">

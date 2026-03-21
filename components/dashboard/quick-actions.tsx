@@ -1,6 +1,6 @@
-﻿"use client"
+"use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Rocket, Sparkles, Zap, BarChart3 } from "lucide-react"
@@ -12,21 +12,32 @@ import { useLocale } from "@/lib/i18n"
 import {
   DATABASE_OPTIONS,
   DEPLOYMENT_OPTIONS,
-  getDefaultDatabaseTarget,
-  getDefaultDeploymentTarget,
-  type DatabaseTarget,
-  type DeploymentTarget,
 } from "@/lib/fullstack-targets"
+import {
+  getDefaultGenerationPreferences,
+  loadGenerationPreferences,
+  saveGenerationPreferences,
+  subscribeGenerationPreferences,
+  type GenerationPreferences,
+} from "@/lib/generation-preferences"
 
 export function QuickActions() {
   const [promptValue, setPromptValue] = useState("")
-  const [region, setRegion] = useState<"cn" | "intl">("intl")
-  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>(getDefaultDeploymentTarget("intl"))
-  const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>(getDefaultDatabaseTarget("intl"))
+  const [generationPreferences, setGenerationPreferences] = useState<GenerationPreferences>({
+    region: "intl",
+    deploymentTarget: "vercel",
+    databaseTarget: "supabase_postgres",
+  })
   const [isLoading, setIsLoading] = useState(false)
   const [statusText, setStatusText] = useState("")
-  const { t } = useLocale()
+  const { t, locale } = useLocale()
   const router = useRouter()
+
+  useEffect(() => {
+    const fallbackRegion = locale === "zh" ? "cn" : "intl"
+    setGenerationPreferences(loadGenerationPreferences(fallbackRegion))
+    return subscribeGenerationPreferences((next) => setGenerationPreferences(next))
+  }, [locale])
 
   async function handleGenerate() {
     const prompt = promptValue.trim()
@@ -44,7 +55,12 @@ export function QuickActions() {
       const postRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, region, deploymentTarget, databaseTarget }),
+        body: JSON.stringify({
+          prompt,
+          region: generationPreferences.region,
+          deploymentTarget: generationPreferences.deploymentTarget,
+          databaseTarget: generationPreferences.databaseTarget,
+        }),
         signal: ctrl.signal,
       })
       clearTimeout(timer)
@@ -100,51 +116,64 @@ export function QuickActions() {
               <p className="text-xs text-muted-foreground">{t("customGenerationDesc")}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.35fr)_96px_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
               placeholder={t("generatePlaceholder")}
               value={promptValue}
               onChange={(e) => setPromptValue(e.target.value)}
-              className="h-8 text-xs bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+              className="h-8 min-w-0 text-xs bg-secondary border-border text-foreground placeholder:text-muted-foreground md:col-span-2 2xl:col-span-1"
             />
 
             <select
-              value={region}
+              value={generationPreferences.region}
               onChange={(e) => {
                 const nextRegion = e.target.value as "cn" | "intl"
-                setRegion(nextRegion)
-                setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
-                setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+                saveGenerationPreferences(getDefaultGenerationPreferences(nextRegion))
               }}
-              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+              className="h-8 min-w-0 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
             >
-              <option value="intl">INTL</option>
-              <option value="cn">CN</option>
+              <option value="intl">{locale === "zh" ? "国际版" : "INTL"}</option>
+              <option value="cn">{locale === "zh" ? "国内版" : "CN"}</option>
             </select>
             <select
-              value={deploymentTarget}
-              onChange={(e) => setDeploymentTarget(e.target.value as DeploymentTarget)}
-              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+              value={generationPreferences.deploymentTarget}
+              onChange={(e) =>
+                saveGenerationPreferences({
+                  ...generationPreferences,
+                  deploymentTarget: e.target.value as GenerationPreferences["deploymentTarget"],
+                })
+              }
+              className="h-8 min-w-0 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
             >
-              {DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region)).map((item) => (
+              {DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region)).map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.nameEn}
+                  {locale === "zh" ? item.nameCn : item.nameEn}
                 </option>
               ))}
             </select>
             <select
-              value={databaseTarget}
-              onChange={(e) => setDatabaseTarget(e.target.value as DatabaseTarget)}
-              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+              value={generationPreferences.databaseTarget}
+              onChange={(e) =>
+                saveGenerationPreferences({
+                  ...generationPreferences,
+                  databaseTarget: e.target.value as GenerationPreferences["databaseTarget"],
+                })
+              }
+              className="h-8 min-w-0 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
             >
-              {DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region)).map((item) => (
+              {DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region)).map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.nameEn}
+                  {locale === "zh" ? item.nameCn : item.nameEn}
                 </option>
               ))}
             </select>
 
-            <Button size="sm" className="h-8 px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0" onClick={handleGenerate} disabled={isLoading}>
+            <Button
+              size="sm"
+              className="h-8 w-full px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 md:col-span-2 2xl:col-span-1 2xl:w-auto"
+              onClick={handleGenerate}
+              disabled={isLoading}
+            >
               {isLoading ? "生成中..." : t("generate")}
             </Button>
           </div>

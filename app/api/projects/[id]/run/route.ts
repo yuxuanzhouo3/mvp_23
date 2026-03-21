@@ -1,4 +1,4 @@
-import { spawn } from "child_process"
+import { spawn, type ChildProcess } from "child_process"
 import net from "net"
 import { promises as fs } from "fs"
 import path from "path"
@@ -40,7 +40,7 @@ async function runCommand(
 ) {
   return new Promise<{ ok: boolean; output: string }>((resolve) => {
     const chunks: string[] = []
-    let child
+    let child: ChildProcess
     if (process.platform === "win32" && (cmd === "npm" || cmd === "npm.cmd")) {
       const npmExecPath = process.env.npm_execpath
       const npmCli =
@@ -56,7 +56,7 @@ async function runCommand(
           ...process.env,
           ...envOverrides,
         },
-      })
+      } as any)
     } else {
       child = spawn(cmd, args, {
         cwd,
@@ -67,7 +67,7 @@ async function runCommand(
           ...process.env,
           ...envOverrides,
         },
-      })
+      } as any)
     }
     const timer = setTimeout(() => {
       try {
@@ -78,13 +78,13 @@ async function runCommand(
       resolve({ ok: false, output: `${chunks.join("")}\nCommand timeout.` })
     }, timeoutMs)
 
-    child.stdout.on("data", (d) => chunks.push(String(d)))
-    child.stderr.on("data", (d) => chunks.push(String(d)))
-    child.on("error", (err) => {
+    child.stdout?.on("data", (d: Buffer | string) => chunks.push(String(d)))
+    child.stderr?.on("data", (d: Buffer | string) => chunks.push(String(d)))
+    child.on("error", (err: Error) => {
       clearTimeout(timer)
       resolve({ ok: false, output: `${chunks.join("")}\n${err.message}` })
     })
-    child.on("close", (code) => {
+    child.on("close", (code: number | null) => {
       clearTimeout(timer)
       resolve({ ok: code === 0, output: chunks.join("") })
     })
@@ -491,7 +491,7 @@ async function startProject(projectId: string) {
     const nextBin = path.join(workspacePath, "node_modules", "next", "dist", "bin", "next")
     const mode: "dev" = "dev"
     const startupLogHandle = await fs.open(startupLogPath, "a")
-    const child = spawn(process.execPath, [nextBin, "dev", "--webpack", "-p", String(port)], {
+    const child: ChildProcess = spawn(process.execPath, [nextBin, "dev", "--webpack", "-p", String(port)], {
       cwd: workspacePath,
       detached: true,
       stdio: ["ignore", startupLogHandle.fd, startupLogHandle.fd],
@@ -501,7 +501,7 @@ async function startProject(projectId: string) {
         ...process.env,
         NODE_ENV: "development",
       },
-    })
+    } as any)
     child.unref()
     await startupLogHandle.close()
 

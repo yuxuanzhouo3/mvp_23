@@ -4,7 +4,15 @@ import { Activity, Zap, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale } from "@/lib/i18n"
 
-const activities = [
+type ActivityItem = {
+  id: string
+  msgKey: "activityGenerated" | "activityDeployed" | "activityBuilding" | "activityBuildFailed"
+  name: string
+  timeKey: "time2h" | "time3h" | "time30m" | "time1d"
+  icon: typeof Activity
+}
+
+const activities: ActivityItem[] = [
   { id: "1", msgKey: "activityGenerated" as const, name: "kanban-ai", timeKey: "time2h", icon: Zap },
   { id: "2", msgKey: "activityDeployed" as const, name: "social-bookclub", timeKey: "time3h", icon: CheckCircle },
   { id: "3", msgKey: "activityBuilding" as const, name: "invoice-tracker", timeKey: "time30m", icon: Loader2 },

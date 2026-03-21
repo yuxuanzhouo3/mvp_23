@@ -326,7 +326,7 @@ async function runBuild(projectDir: string) {
               windowsHide: true,
               shell: false,
               creationFlags: 0x08000000,
-            })
+            } as any)
           })()
         : spawn("npm", ["run", "build"], { cwd: projectDir, windowsHide: true, shell: false })
 

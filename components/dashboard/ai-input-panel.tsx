@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Sparkles, MessageSquare, LayoutTemplate } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,11 +12,14 @@ import { getTemplateById } from "@/lib/template-catalog"
 import {
   DATABASE_OPTIONS,
   DEPLOYMENT_OPTIONS,
-  getDefaultDatabaseTarget,
-  getDefaultDeploymentTarget,
-  type DatabaseTarget,
-  type DeploymentTarget,
 } from "@/lib/fullstack-targets"
+import {
+  getDefaultGenerationPreferences,
+  loadGenerationPreferences,
+  saveGenerationPreferences,
+  subscribeGenerationPreferences,
+  type GenerationPreferences,
+} from "@/lib/generation-preferences"
 
 type GeneratePostResp = {
   projectId?: string
@@ -35,9 +37,11 @@ export function AiInputPanel() {
   const [planTier, setPlanTier] = useState<PlanTier>("free")
   const [selectedPlanTier, setSelectedPlanTier] = useState<PlanTier>("free")
   const [loadedTemplateId, setLoadedTemplateId] = useState("")
-  const [region, setRegion] = useState<"cn" | "intl">("intl")
-  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>(getDefaultDeploymentTarget("intl"))
-  const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>(getDefaultDatabaseTarget("intl"))
+  const [generationPreferences, setGenerationPreferences] = useState<GenerationPreferences>({
+    region: "intl",
+    deploymentTarget: "vercel",
+    databaseTarget: "supabase_postgres",
+  })
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -80,10 +84,9 @@ export function AiInputPanel() {
   }, [loadedTemplateId, locale, searchParams])
 
   useEffect(() => {
-    const nextRegion = locale === "zh" ? "cn" : "intl"
-    setRegion(nextRegion)
-    setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
-    setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+    const fallbackRegion = locale === "zh" ? "cn" : "intl"
+    setGenerationPreferences(loadGenerationPreferences(fallbackRegion))
+    return subscribeGenerationPreferences((next) => setGenerationPreferences(next))
   }, [locale])
 
   useEffect(() => {
@@ -115,11 +118,11 @@ export function AiInputPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt,
-          region,
+          region: generationPreferences.region,
           generationPlanTier: selectedPlanTier,
           templateId: loadedTemplateId || undefined,
-          deploymentTarget,
-          databaseTarget,
+          deploymentTarget: generationPreferences.deploymentTarget,
+          databaseTarget: generationPreferences.databaseTarget,
           templatePrompt:
             activeTemplate ? (locale === "zh" ? activeTemplate.promptZh : activeTemplate.promptEn) : undefined,
         }),
@@ -152,8 +155,8 @@ export function AiInputPanel() {
     locale === "zh" ? PLAN_CATALOG[selectedPlanTier].generationQualityCn : PLAN_CATALOG[selectedPlanTier].generationQualityEn
   const activeTemplate = getTemplateById(loadedTemplateId)
   const accessiblePlans = getAccessiblePlanTiers(planTier)
-  const deploymentOptions = DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region))
-  const databaseOptions = DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region))
+  const deploymentOptions = DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region))
+  const databaseOptions = DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region))
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -216,12 +219,10 @@ export function AiInputPanel() {
         </div>
         <div className="grid gap-2 md:grid-cols-3">
           <select
-            value={region}
+            value={generationPreferences.region}
             onChange={(e) => {
               const nextRegion = e.target.value as "cn" | "intl"
-              setRegion(nextRegion)
-              setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
-              setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+              saveGenerationPreferences(getDefaultGenerationPreferences(nextRegion))
             }}
             className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
           >
@@ -229,8 +230,13 @@ export function AiInputPanel() {
             <option value="cn">{locale === "zh" ? "国内版" : "China"}</option>
           </select>
           <select
-            value={deploymentTarget}
-            onChange={(e) => setDeploymentTarget(e.target.value as DeploymentTarget)}
+            value={generationPreferences.deploymentTarget}
+            onChange={(e) =>
+              saveGenerationPreferences({
+                ...generationPreferences,
+                deploymentTarget: e.target.value as GenerationPreferences["deploymentTarget"],
+              })
+            }
             className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
           >
             {deploymentOptions.map((item) => (
@@ -240,8 +246,13 @@ export function AiInputPanel() {
             ))}
           </select>
           <select
-            value={databaseTarget}
-            onChange={(e) => setDatabaseTarget(e.target.value as DatabaseTarget)}
+            value={generationPreferences.databaseTarget}
+            onChange={(e) =>
+              saveGenerationPreferences({
+                ...generationPreferences,
+                databaseTarget: e.target.value as GenerationPreferences["databaseTarget"],
+              })
+            }
             className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
           >
             {databaseOptions.map((item) => (
@@ -287,8 +298,8 @@ export function AiInputPanel() {
       </div>
       <div className="mt-2 text-xs text-muted-foreground">
         {locale === "zh"
-          ? `默认按 ${region === "cn" ? "国内" : "国际"} 全栈标准生成，部署环境与数据库可单独切换。`
-          : `The generated full-stack app follows the ${region === "cn" ? "China" : "international"} baseline by default, while deployment and database targets remain selectable.`}
+          ? `默认按 ${generationPreferences.region === "cn" ? "国内" : "国际"} 全栈标准生成，部署环境与数据库可单独切换。`
+          : `The generated full-stack app follows the ${generationPreferences.region === "cn" ? "China" : "international"} baseline by default, while deployment and database targets remain selectable.`}
       </div>
       {statusText ? <div className="mt-2 text-xs text-muted-foreground">{statusText}</div> : null}
     </section>

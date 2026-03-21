@@ -33,7 +33,7 @@ export function PlanCapabilityPanel() {
 
   const isCn = locale === "zh"
   const currentPlan = PLAN_CATALOG[currentTier]
-  const comparison = useMemo(() => ["free", ...PAID_PLAN_IDS].map((id) => PLAN_CATALOG[id]), [])
+  const comparison = useMemo(() => (["free", ...PAID_PLAN_IDS] as PlanTier[]).map((id) => PLAN_CATALOG[id]), [])
 
   return (
     <Card className="border-border/80">
@@ -65,7 +65,7 @@ export function PlanCapabilityPanel() {
             {isCn ? currentPlan.generationQualityCn : currentPlan.generationQualityEn}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {(isCn ? currentPlan.deliverablesCn : currentPlan.deliverablesEn).map((item) => (
+            {(isCn ? currentPlan.deliverablesCn : currentPlan.deliverablesEn).map((item: string) => (
               <span key={item} className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground">
                 {item}
               </span>
@@ -116,7 +116,7 @@ export function PlanCapabilityPanel() {
                 </p>
 
                 <div className="mt-4 space-y-2">
-                  {(isCn ? plan.deliverablesCn : plan.deliverablesEn).map((item) => (
+                  {(isCn ? plan.deliverablesCn : plan.deliverablesEn).map((item: string) => (
                     <div key={item} className="flex items-center gap-2 text-sm text-foreground">
                       <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                       <span>{item}</span>

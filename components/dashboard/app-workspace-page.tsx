@@ -514,7 +514,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }, [generateTask?.status, previewBooting, project?.runtime?.status, projectId])
 
   const runtime = project?.runtime
-  const isCn = project.region === "cn"
+  const isCn = project?.region === "cn"
   const copy = {
     preview: isCn ? "预览" : "Preview",
     dashboard: isCn ? "交付台" : "Dashboard",
@@ -559,6 +559,38 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     revert: isCn ? "回退上一次修改" : "Revert Last Change",
     previewStarting: isCn ? "预览正在启动..." : "Preview is starting...",
     previewNotRunning: isCn ? "预览尚未运行，生成完成后会自动启动，你也可以手动点击 Start。" : "Preview is not running yet. It will auto-start after generation, or you can click Start.",
+    workspaceSearch: isCn ? "工作区搜索" : "Workspace Search",
+    dashboardSearchTitle: isCn ? "交付台搜索" : "Dashboard Search",
+    dashboardSearchPlaceholder: isCn ? "搜索可见性、邀请、集成、交付..." : "Search visibility, invites, integrations, delivery...",
+    appVisibility: isCn ? "应用可见性" : "App Visibility",
+    appVisibilityDesc: isCn ? "控制谁可以访问当前生成应用。" : "Control who can access the generated application.",
+    public: isCn ? "公开" : "Public",
+    private: isCn ? "私有" : "Private",
+    requireLogin: isCn ? "访问前需要登录" : "Require login to access",
+    inviteUsers: isCn ? "邀请成员" : "Invite Users",
+    inviteUsersDesc: isCn ? "把当前应用分享给团队成员和汇报对象。" : "Share the current application with teammates and stakeholders.",
+    copyLink: isCn ? "复制链接" : "Copy Link",
+    sendInvites: isCn ? "发送邀请" : "Send Invites",
+    moveToWorkspace: isCn ? "移动到工作区" : "Move To Workspace",
+    moveToWorkspaceDesc: isCn ? "交付后可把当前应用转移到其他工作区。" : "Move this app into another workspace after handoff.",
+    moveApp: isCn ? "移动应用" : "Move App",
+    publishStatusTitle: isCn ? "发布状态" : "Publish Status",
+    publishStatusDesc: isCn ? "跟踪预览、代码和分享链路是否已达到交付标准。" : "Track whether preview, code, and sharing are ready for delivery.",
+    integrationsTitle: isCn ? "集成状态" : "Integrations",
+    integrationsDesc: isCn ? "配置登录、支付、文档和交付入口。" : "Configure auth, payment, docs, and delivery entry points.",
+    securityTitle: isCn ? "安全设置" : "Security",
+    securityDesc: isCn ? "在老板或客户查看前，控制访问、密钥和发布安全。" : "Control access, credentials, and publish safety before stakeholder review.",
+    recentActivityTitle: isCn ? "最近活动" : "Recent Activity",
+    distributionTitle: isCn ? "分发入口" : "Distribution",
+    distributionDesc: isCn ? "汇总老板演示、内部测试和客户验证所需链接。" : "Collect delivery links for boss demos, internal QA, and customer validation.",
+    openAndDelivery: isCn ? "打开与交付" : "Open And Delivery",
+    workspaceProfile: isCn ? "工作区档案" : "Workspace Profile",
+    workspaceProfileDesc: isCn
+      ? "这里承接应用可见性、分享入口、交付状态和分发操作，不再映射成应用内的业务页面。"
+      : "This panel owns visibility, sharing, delivery status, and distribution operations instead of turning them into in-app business pages.",
+    loginProviders: isCn ? "Google / Facebook / 微信 / 支付宝" : "Google / Facebook / WeChat / Alipay",
+    paymentProviders: isCn ? "Stripe / PayPal / 微信支付 / 支付宝" : "Stripe / PayPal / WeChat Pay / Alipay",
+    standaloneSurfaces: isCn ? "演示资产与成交链路已拆分为独立站点入口" : "Demo assets and conversion flows now live as standalone surfaces",
   } as const
   const previewUrl = runtime?.url
   const previewTabUrl = previewUrl || ""
@@ -955,8 +987,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 </Card>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-md border border-border bg-secondary/20 p-4">
-                  <div className="text-sm font-medium">Open And Delivery</div>
+                  <div className="rounded-md border border-border bg-secondary/20 p-4">
+                    <div className="text-sm font-medium">{copy.openAndDelivery}</div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <a href={previewUrl || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                       Open App Preview
@@ -969,12 +1001,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     </a>
                   </div>
                 </div>
-                <div className="rounded-md border border-border bg-secondary/20 p-4">
-                  <div className="text-sm font-medium">Workspace Profile</div>
-                  <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    <p className="text-base font-semibold text-foreground">morncursor</p>
-                    <p>面向中国研发团队的 AI 代码编辑平台，深度集成业务交付、销售资产管理和团队协作。</p>
-                    <p>这里承接应用可见性、分享入口、交付状态和分发操作，不再映射成应用内的业务页面。</p>
+                  <div className="rounded-md border border-border bg-secondary/20 p-4">
+                    <div className="text-sm font-medium">{copy.workspaceProfile}</div>
+                    <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                      <p className="text-base font-semibold text-foreground">morncursor</p>
+                    <p>{isCn ? "面向中国研发团队的 AI 代码编辑平台，深度集成业务交付、销售资产管理和团队协作。" : "An AI coding workspace for delivery-focused teams, combining execution visibility, collaboration, and launch readiness."}</p>
+                    <p>{copy.workspaceProfileDesc}</p>
                     <div className="flex flex-wrap gap-2 pt-2">
                       {dashboardActions.map((action) => (
                         <Button key={action.label} size="sm" variant={action.label === "Publish" ? "default" : "outline"} onClick={action.onClick}>
@@ -989,9 +1021,9 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 <div className="rounded-md border border-border bg-background p-4">
                   <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                     <Search className="h-4 w-4" />
-                    Workspace Search
+                    {copy.workspaceSearch}
                   </div>
-                  <Input value={commandQuery} onChange={(e) => setCommandQuery(e.target.value)} placeholder="Search commands, files, panels..." />
+                  <Input value={commandQuery} onChange={(e) => setCommandQuery(e.target.value)} placeholder={copy.commandSearchPlaceholder} />
                   <div className="mt-3 max-h-[52vh] space-y-2 overflow-auto">
                     {workspaceCommands.map((command) => (
                       <button
@@ -1010,12 +1042,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   <div className="rounded-md border border-border bg-background p-4">
                     <div className="mb-3 flex items-center gap-2 text-sm font-medium">
                       <Search className="h-4 w-4" />
-                      Dashboard Search
+                      {copy.dashboardSearchTitle}
                     </div>
                     <Input
                       value={dashboardSearch}
                       onChange={(e) => setDashboardSearch(e.target.value)}
-                      placeholder="Search visibility, invites, integrations, delivery..."
+                      placeholder={copy.dashboardSearchPlaceholder}
                     />
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[
@@ -1036,8 +1068,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">App Visibility</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Control who can access the generated application.</div>
+                      <div className="text-lg font-semibold">{copy.appVisibility}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.appVisibilityDesc}</div>
                       <div className="mt-4 space-y-3">
                         <div className="flex gap-2">
                           <button
@@ -1045,43 +1077,43 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                             onClick={() => setAppVisibility("public")}
                             className={`rounded-md border px-3 py-2 text-sm ${appVisibility === "public" ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"}`}
                           >
-                            Public
+                            {copy.public}
                           </button>
                           <button
                             type="button"
                             onClick={() => setAppVisibility("private")}
                             className={`rounded-md border px-3 py-2 text-sm ${appVisibility === "private" ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"}`}
                           >
-                            Private
+                            {copy.private}
                           </button>
                         </div>
                         <label className="flex items-center gap-2 text-sm">
                           <input type="checkbox" checked={requireLogin} onChange={(e) => setRequireLogin(e.target.checked)} />
-                          Require login to access
+                          {copy.requireLogin}
                         </label>
                       </div>
                     </div>
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Invite Users</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Share the current application with teammates and stakeholders.</div>
+                      <div className="text-lg font-semibold">{copy.inviteUsers}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.inviteUsersDesc}</div>
                       <div className="mt-4 flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setInviteStatus("Link copied to clipboard")}>Copy Link</Button>
-                        <Button size="sm" onClick={() => setInviteStatus("Invite flow queued")}>Send Invites</Button>
+                        <Button variant="outline" size="sm" onClick={() => setInviteStatus(isCn ? "链接已复制" : "Link copied to clipboard")}>{copy.copyLink}</Button>
+                        <Button size="sm" onClick={() => setInviteStatus(isCn ? "邀请流程已排队" : "Invite flow queued")}>{copy.sendInvites}</Button>
                       </div>
                       <div className="mt-3 text-xs text-muted-foreground">{inviteStatus}</div>
                     </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Move To Workspace</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Move this app into another workspace after handoff.</div>
+                      <div className="text-lg font-semibold">{copy.moveToWorkspace}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.moveToWorkspaceDesc}</div>
                       <div className="mt-4 flex justify-end">
-                        <Button variant="outline" size="sm">Move App</Button>
+                        <Button variant="outline" size="sm">{copy.moveApp}</Button>
                       </div>
                     </div>
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Publish Status</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Track whether preview, code, and sharing are ready for delivery.</div>
+                      <div className="text-lg font-semibold">{copy.publishStatusTitle}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.publishStatusDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="flex gap-2">
                           {(["draft", "ready", "published"] as const).map((status) => (
@@ -1121,17 +1153,19 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Integrations</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Configure auth, payment, docs, and workspace delivery entry points.</div>
+                      <div className="text-lg font-semibold">{copy.integrationsTitle}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.integrationsDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Google / Facebook / 微信 / 支付宝</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Stripe / PayPal / WeChat Pay / Alipay</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Admin promo assets / Market sales loop</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{copy.loginProviders}</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{copy.paymentProviders}</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
+                          {copy.standaloneSurfaces}
+                        </div>
                       </div>
                     </div>
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Security</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Control access, credentials, and publish safety before stakeholder review.</div>
+                      <div className="text-lg font-semibold">{copy.securityTitle}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.securityDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Require login before checkout</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview token protection</div>
@@ -1141,7 +1175,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Recent Activity</div>
+                      <div className="text-lg font-semibold">{copy.recentActivityTitle}</div>
                       <div className="mt-3 space-y-2">
                         {recentDashboardEvents.map((event) => (
                           <div key={event.title + event.meta} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
@@ -1152,8 +1186,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       </div>
                     </div>
                     <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">Distribution</div>
-                      <div className="mt-2 text-sm text-muted-foreground">Collect delivery links for boss demos, internal QA, and customer validation.</div>
+                      <div className="text-lg font-semibold">{copy.distributionTitle}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{copy.distributionDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Web preview: {previewUrl || "pending"}</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "文档与演示资产：/api-docs /generated/promo-assets/latest" : "Docs and demo assets: /api-docs /generated/promo-assets/latest"}</div>
