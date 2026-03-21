@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { resolveAuthRuntimeConfig } from "@/lib/auth-runtime"
 import { resolvePaymentAdapterConfig } from "@/lib/payment-adapter"
 import { getPublicSiteMap, type PublicProviderDescriptor } from "@/lib/public-site"
+import {
+  DATABASE_OPTIONS,
+  DEPLOYMENT_OPTIONS,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 export const runtime = "nodejs"
 
@@ -111,20 +117,21 @@ export async function GET() {
     providers,
     deployment: {
       intl: {
-        hosting: "vercel",
+        hosting: getDefaultDeploymentTarget("intl"),
         runtime: "node",
         dockerRequired: false,
-        database: "supabase",
+        database: getDefaultDatabaseTarget("intl"),
         databaseConfigured:
           hasEnv("NEXT_PUBLIC_SUPABASE_URL") &&
           hasEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY") &&
-          hasEnv("SUPABASE_SERVICE_ROLE_KEY"),
+          hasEnv("SUPABASE_SERVICE_ROLE_KEY") &&
+          hasEnv("SUPABASE_DB_URL"),
       },
       cn: {
-        hosting: "cloudbase",
+        hosting: getDefaultDeploymentTarget("cn"),
         runtime: "docker",
         dockerRequired: true,
-        database: "document-db",
+        database: getDefaultDatabaseTarget("cn"),
         databaseConfigured:
           hasEnv("CLOUDBASE_ENV_ID") ||
           hasEnv("CN_DATABASE_URL") ||
@@ -166,6 +173,21 @@ export async function GET() {
         "CLOUDBASE_MONGODB_URL",
         "CN_DATABASE_URL",
       ],
+      deploymentTargets: DEPLOYMENT_OPTIONS.map((item) => item.id),
+      databaseTargets: DATABASE_OPTIONS.map((item) => item.id),
+    },
+    mcp: {
+      supabaseDb: {
+        key: "supabase-db",
+        configured: hasEnv("SUPABASE_DB_URL"),
+        requiredEnv: ["SUPABASE_DB_URL"],
+      },
+      cloudbase: {
+        key: "cloudbase",
+        configured: hasEnv("CLOUDBASE_MONGODB_URL"),
+        requiredEnv: ["CLOUDBASE_MONGODB_URL"],
+      },
+      exampleConfigPath: ".cursor/mcp.json.example",
     },
   })
 }

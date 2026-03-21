@@ -32,6 +32,18 @@ import { getCurrentSession } from "@/lib/auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
 import { getPlanRank, type PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById, type TemplatePreviewStyle } from "@/lib/template-catalog"
+import {
+  getDatabaseEnvGuide,
+  getDatabaseOption,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+  getDeploymentEnvGuide,
+  getDeploymentOption,
+  normalizeDatabaseTarget,
+  normalizeDeploymentTarget,
+  type DatabaseTarget,
+  type DeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
@@ -207,10 +219,14 @@ async function callGeneratorModel(
   prompt: string,
   region: Region,
   projectId: string,
-  planTier: PlanTier
+  planTier: PlanTier,
+  deploymentTarget?: DeploymentTarget,
+  databaseTarget?: DatabaseTarget
 ): Promise<GeneratorModelOutput> {
   const config = resolveAiConfig()
   const brief = buildGenerationBrief(prompt, region, planTier)
+  const deployment = getDeploymentOption(deploymentTarget ?? getDefaultDeploymentTarget(region))
+  const database = getDatabaseOption(databaseTarget ?? getDefaultDatabaseTarget(region))
 
   const system = [
     "You are a fullstack Next.js app generator.",
@@ -236,6 +252,7 @@ async function callGeneratorModel(
     "- When generating dashboards, editors, admin panels, CRM, or platforms, include the operational flows those products need in order to feel usable.",
     "- Include settings, share/distribution, permissions, or publish surfaces when they are naturally expected for the product type.",
     "- Treat auth, billing, data mutation, visibility, and delivery controls as product capabilities, not optional polish.",
+    "- Keep admin and market as separate standalone surfaces rather than embedding them into the end-user workspace navigation.",
     "- Prefer modifying these files: app/page.tsx, app/layout.tsx, app/api/items/route.ts, prisma/schema.prisma, README.md.",
     "- Never return markdown, only JSON.",
   ].join("\n")
@@ -244,6 +261,8 @@ async function callGeneratorModel(
     `Project ID: ${projectId}`,
     `Region: ${region}`,
     `Plan tier: ${planTier}`,
+    `Deployment target: ${deployment.id} (${deployment.runtime}, dockerRequired=${deployment.dockerRequired})`,
+    `Database target: ${database.id} (${database.engine})`,
     `User prompt: ${prompt}`,
     `Generation brief: ${JSON.stringify(brief)}`,
     getPlanGenerationDirective(planTier, region),
@@ -253,6 +272,7 @@ async function callGeneratorModel(
     "Do not expose internal notes, prompt text, generation explanation panels, or 'AI result understanding' copy in the final UI unless explicitly requested.",
     "Make different prompt categories produce visibly different products rather than one reused layout.",
     "Generate a production-like MVP app with meaningful structure and interactions.",
+    "Respect the selected deployment and database targets when deciding auth, data flow, runtime assumptions, and infrastructure copy.",
     region === "cn"
       ? "默认按“完整应用”理解，不要只生成几个页面。要优先补齐数据流、操作按钮、状态切换、分享/交付/设置等真实能力。"
       : "Default to a complete application, not a few isolated pages. Prioritize data flow, actions, state transitions, sharing, delivery, and settings.",
@@ -303,17 +323,30 @@ async function writeGeneratedProjectFiles(
   projectId: string,
   region: Region,
   prompt: string,
-  options?: { templateId?: string; templateStyle?: TemplatePreviewStyle; planTier?: PlanTier }
+  options?: {
+    templateId?: string
+    templateStyle?: TemplatePreviewStyle
+    planTier?: PlanTier
+    deploymentTarget?: DeploymentTarget
+    databaseTarget?: DatabaseTarget
+  }
 ) {
   const dbFile = region === "cn" ? "cn.db" : "intl.db"
   const defaults = getRegionDefaults(region)
+  const deploymentTarget = options?.deploymentTarget ?? getDefaultDeploymentTarget(region)
+  const databaseTarget = options?.databaseTarget ?? getDefaultDatabaseTarget(region)
+  const deployment = getDeploymentOption(deploymentTarget)
+  const database = getDatabaseOption(databaseTarget)
 
   await writeTextFile(
     path.join(outDir, "README.md"),
     `# Generated Fullstack App (${projectId})
 
 Region: ${region}
-DB: ${dbFile}
+Preview DB: ${dbFile}
+Deploy target: ${deployment.nameEn}
+Deploy runtime: ${deployment.runtime}
+Production database: ${database.nameEn}
 
 Prompt:
 ${prompt}
@@ -332,6 +365,13 @@ npx prisma migrate dev --name init
 \`\`\`bash
 npx next dev --webpack -p 3001
 \`\`\`
+
+## Deployment target
+- ${deployment.nameEn}: ${deployment.descriptionEn}
+- ${database.nameEn}: ${database.descriptionEn}
+
+## Deployment env
+${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTarget)].map((item) => `- ${item}`).join("\n")}
 `
   )
 
@@ -423,7 +463,12 @@ export default nextConfig;
 
   await writeTextFile(
     path.join(outDir, ".env"),
-    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${options?.planTier ?? "free"}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\n`
+    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${options?.planTier ?? "free"}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n`
+  )
+
+  await writeTextFile(
+    path.join(outDir, ".env.example"),
+    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${options?.planTier ?? "free"}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTarget)].map((key) => `${key}=`).join("\n")}\n`
   )
 
   await writeTextFile(
@@ -435,6 +480,10 @@ export default nextConfig;
         timezone: defaults.timezone,
         dateFormat: defaults.dateFormat,
         currency: defaults.currency,
+        deploymentTarget,
+        deploymentRuntime: deployment.runtime,
+        databaseTarget,
+        databaseEngine: database.engine,
         seedTasks: defaults.seedTasks,
       },
       null,
@@ -455,6 +504,8 @@ export default nextConfig;
         planTier: options?.planTier ?? ((latestCompletedPayment?.planId as PlanTier | undefined) ?? "free"),
         templateId: options?.templateId,
         templateStyle: options?.templateStyle,
+        deploymentTarget,
+        databaseTarget,
       } as Parameters<typeof createAppSpec>[2]
     )
   )
@@ -1111,6 +1162,14 @@ async function runGenerateTaskWorker(jobId: string) {
   if (!current) return
 
   const outDir = getWorkspacePath(current.projectId)
+  const projectRecord = (await getProject(current.projectId)) as
+    | ({
+        deploymentTarget?: DeploymentTarget
+        databaseTarget?: DatabaseTarget
+      } & Awaited<ReturnType<typeof getProject>>)
+    | null
+  const deploymentTarget = projectRecord?.deploymentTarget ?? getDefaultDeploymentTarget(current.region)
+  const databaseTarget = projectRecord?.databaseTarget ?? getDefaultDatabaseTarget(current.region)
   const currentTemplate = current.templateId ? getTemplateById(current.templateId) : null
   const logs: string[] = []
   let summary = "Initial project generated"
@@ -1128,6 +1187,8 @@ async function runGenerateTaskWorker(jobId: string) {
       templateId: current.templateId,
       templateStyle: currentTemplate?.previewStyle,
       planTier: current.planTier,
+      deploymentTarget,
+      databaseTarget,
     })
     logs.push("[OK] Base scaffold generated")
     await appendGenerateTaskLog(jobId, "[2/6] 基础脚手架已生成")
@@ -1138,7 +1199,9 @@ async function runGenerateTaskWorker(jobId: string) {
         current.prompt,
         current.region,
         current.projectId,
-        current.planTier ?? "free"
+        current.planTier ?? "free",
+        deploymentTarget,
+        databaseTarget
       )
       const aiChanged = await applyGeneratedFiles(outDir, modelOutput.files)
       changedFiles = aiChanged
@@ -1248,12 +1311,16 @@ export async function POST(req: Request) {
     }
 
     const region = (body?.region === "cn" ? "cn" : "intl") as Region
+    const deploymentTarget = normalizeDeploymentTarget(String(body?.deploymentTarget ?? ""), region)
+    const databaseTarget = normalizeDatabaseTarget(String(body?.databaseTarget ?? ""), region)
     const projectId = createProjectId()
     const createdAt = new Date().toISOString()
 
     await upsertProject({
       projectId,
       region,
+      deploymentTarget,
+      databaseTarget,
       createdAt,
       updatedAt: createdAt,
       workspacePath: getWorkspacePath(projectId),
@@ -1263,7 +1330,7 @@ export async function POST(req: Request) {
         url: "http://localhost:3001",
       },
       history: [],
-    })
+    } as Parameters<typeof upsertProject>[0])
 
     const task = await createGenerateTask({
       projectId,
@@ -1285,6 +1352,8 @@ export async function POST(req: Request) {
       templateId: template?.id,
       planTier: planTierForGeneration,
       region,
+      deploymentTarget,
+      databaseTarget,
     })
   } catch (e: any) {
     return NextResponse.json({ status: "error", error: e?.message || String(e) }, { status: 500 })

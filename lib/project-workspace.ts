@@ -1,5 +1,6 @@
 import path from "path"
 import { promises as fs } from "fs"
+import type { DatabaseTarget, DeploymentTarget } from "@/lib/fullstack-targets"
 
 export type Region = "cn" | "intl"
 
@@ -24,6 +25,8 @@ export type ProjectHistoryItem = {
 export type ProjectRecord = {
   projectId: string
   region: Region
+  deploymentTarget?: DeploymentTarget
+  databaseTarget?: DatabaseTarget
   createdAt: string
   updatedAt: string
   workspacePath: string

@@ -34,6 +34,8 @@ type ProjectDetail = {
   createdAt: string
   updatedAt: string
   region: "cn" | "intl"
+  deploymentTarget?: string
+  databaseTarget?: string
   workspacePath: string
   runtime?: RuntimeState
   history: HistoryItem[]
@@ -939,6 +941,20 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 </Card>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
+                <Card className="border-border/70">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">{isCn ? "部署目标" : "Deployment target"}</div>
+                    <div className="mt-2 text-sm font-medium">{project.deploymentTarget || (isCn ? "未指定" : "Not set")}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/70">
+                  <CardContent className="p-4">
+                    <div className="text-xs text-muted-foreground">{isCn ? "数据库目标" : "Database target"}</div>
+                    <div className="mt-2 text-sm font-medium">{project.databaseTarget || (isCn ? "未指定" : "Not set")}</div>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-md border border-border bg-secondary/20 p-4">
                   <div className="text-sm font-medium">Open And Delivery</div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1140,7 +1156,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       <div className="mt-2 text-sm text-muted-foreground">Collect delivery links for boss demos, internal QA, and customer validation.</div>
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Web preview: {previewUrl || "pending"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Docs / assets: /admin /market /generated/promo-assets/latest</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "文档与演示资产：/api-docs /generated/promo-assets/latest" : "Docs and demo assets: /api-docs /generated/promo-assets/latest"}</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Checkout chain: /login {"->"} /checkout {"->"} /payment</div>
                       </div>
                     </div>

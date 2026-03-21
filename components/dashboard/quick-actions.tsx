@@ -9,10 +9,20 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { useLocale } from "@/lib/i18n"
+import {
+  DATABASE_OPTIONS,
+  DEPLOYMENT_OPTIONS,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+  type DatabaseTarget,
+  type DeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 export function QuickActions() {
   const [promptValue, setPromptValue] = useState("")
   const [region, setRegion] = useState<"cn" | "intl">("intl")
+  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>(getDefaultDeploymentTarget("intl"))
+  const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>(getDefaultDatabaseTarget("intl"))
   const [isLoading, setIsLoading] = useState(false)
   const [statusText, setStatusText] = useState("")
   const { t } = useLocale()
@@ -34,7 +44,7 @@ export function QuickActions() {
       const postRes = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, region }),
+        body: JSON.stringify({ prompt, region, deploymentTarget, databaseTarget }),
         signal: ctrl.signal,
       })
       clearTimeout(timer)
@@ -100,11 +110,38 @@ export function QuickActions() {
 
             <select
               value={region}
-              onChange={(e) => setRegion(e.target.value as "cn" | "intl")}
+              onChange={(e) => {
+                const nextRegion = e.target.value as "cn" | "intl"
+                setRegion(nextRegion)
+                setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
+                setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+              }}
               className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
             >
               <option value="intl">INTL</option>
               <option value="cn">CN</option>
+            </select>
+            <select
+              value={deploymentTarget}
+              onChange={(e) => setDeploymentTarget(e.target.value as DeploymentTarget)}
+              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+            >
+              {DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region)).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nameEn}
+                </option>
+              ))}
+            </select>
+            <select
+              value={databaseTarget}
+              onChange={(e) => setDatabaseTarget(e.target.value as DatabaseTarget)}
+              className="h-8 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
+            >
+              {DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region)).map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nameEn}
+                </option>
+              ))}
             </select>
 
             <Button size="sm" className="h-8 px-3 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--primary))]/90 shrink-0" onClick={handleGenerate} disabled={isLoading}>

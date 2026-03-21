@@ -57,6 +57,13 @@ type ReadinessResp = {
     cnAuth: string[]
     cnPayment: string[]
     cnInfra: string[]
+    deploymentTargets?: string[]
+    databaseTargets?: string[]
+  }
+  mcp?: {
+    supabaseDb?: { key: string; configured: boolean; requiredEnv: string[] }
+    cloudbase?: { key: string; configured: boolean; requiredEnv: string[] }
+    exampleConfigPath?: string
   }
   site?: {
     origin: string
@@ -368,9 +375,46 @@ export default function IntegrationsPage() {
                     </CardContent>
                   </Card>
                 ))}
+          </div>
+
+          <Card className="hover:border-primary/50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
+                  <Database className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="font-medium">{isZh ? "数据库 MCP 就绪" : "Database MCP readiness"}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {isZh ? "让 AI 能直接读取 Supabase 与 CloudBase 数据结构，减少盲猜。" : "Let the AI inspect Supabase and CloudBase structures instead of guessing."}
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : null}
+              <Badge variant={readiness.mcp?.supabaseDb?.configured && readiness.mcp?.cloudbase?.configured ? "secondary" : "outline"}>
+                {readiness.mcp?.supabaseDb?.configured && readiness.mcp?.cloudbase?.configured ? (isZh ? "已就绪" : "Ready") : (isZh ? "待补齐" : "Incomplete")}
+              </Badge>
+            </CardHeader>
+            <CardContent className="grid gap-3 text-sm md:grid-cols-2">
+              <div className="rounded-xl border border-border p-3">
+                <div className="font-medium">supabase-db</div>
+                <div className="mt-1 text-muted-foreground">
+                  {readiness.mcp?.supabaseDb?.configured ? (isZh ? "已检测到数据库连接变量" : "Database connection env detected") : (isZh ? "缺少 SUPABASE_DB_URL" : "Missing SUPABASE_DB_URL")}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border p-3">
+                <div className="font-medium">cloudbase</div>
+                <div className="mt-1 text-muted-foreground">
+                  {readiness.mcp?.cloudbase?.configured ? (isZh ? "已检测到 CloudBase Mongo 连接" : "CloudBase Mongo connection env detected") : (isZh ? "缺少 CLOUDBASE_MONGODB_URL" : "Missing CLOUDBASE_MONGODB_URL")}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border p-3 md:col-span-2">
+                <div className="font-medium">{isZh ? "示例配置文件" : "Example config file"}</div>
+                <div className="mt-1 text-muted-foreground">{readiness.mcp?.exampleConfigPath ?? ".cursor/mcp.json.example"}</div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
           {readiness.site ? (
             <div className="space-y-4">

@@ -76,6 +76,8 @@ export async function GET(req: Request) {
   const normalized: Array<{
     projectId: string
     region: "cn" | "intl"
+    deploymentTarget?: string
+    databaseTarget?: string
     createdAt: string
     updatedAt: string
     workspacePath: string
@@ -95,6 +97,8 @@ export async function GET(req: Request) {
     normalized.push({
       projectId: p.projectId,
       region: p.region,
+      deploymentTarget: p.deploymentTarget,
+      databaseTarget: p.databaseTarget,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
       workspacePath: p.workspacePath,

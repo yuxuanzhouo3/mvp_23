@@ -10,6 +10,14 @@ import { Badge } from "@/components/ui/badge"
 import { useLocale } from "@/lib/i18n"
 import { getAccessiblePlanTiers, PLAN_CATALOG, type PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById } from "@/lib/template-catalog"
+import {
+  DATABASE_OPTIONS,
+  DEPLOYMENT_OPTIONS,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+  type DatabaseTarget,
+  type DeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 type GeneratePostResp = {
   projectId?: string
@@ -20,13 +28,16 @@ type GeneratePostResp = {
 }
 
 export function AiInputPanel() {
+  const { t, locale } = useLocale()
   const [value, setValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [statusText, setStatusText] = useState<string>("")
   const [planTier, setPlanTier] = useState<PlanTier>("free")
   const [selectedPlanTier, setSelectedPlanTier] = useState<PlanTier>("free")
   const [loadedTemplateId, setLoadedTemplateId] = useState("")
-  const { t, locale } = useLocale()
+  const [region, setRegion] = useState<"cn" | "intl">("intl")
+  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>(getDefaultDeploymentTarget("intl"))
+  const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>(getDefaultDatabaseTarget("intl"))
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -69,6 +80,13 @@ export function AiInputPanel() {
   }, [loadedTemplateId, locale, searchParams])
 
   useEffect(() => {
+    const nextRegion = locale === "zh" ? "cn" : "intl"
+    setRegion(nextRegion)
+    setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
+    setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+  }, [locale])
+
+  useEffect(() => {
     const promptFromUrl = String(searchParams.get("prompt") ?? "").trim()
     if (!promptFromUrl) return
     setValue(promptFromUrl)
@@ -97,8 +115,11 @@ export function AiInputPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt,
+          region,
           generationPlanTier: selectedPlanTier,
           templateId: loadedTemplateId || undefined,
+          deploymentTarget,
+          databaseTarget,
           templatePrompt:
             activeTemplate ? (locale === "zh" ? activeTemplate.promptZh : activeTemplate.promptEn) : undefined,
         }),
@@ -131,6 +152,8 @@ export function AiInputPanel() {
     locale === "zh" ? PLAN_CATALOG[selectedPlanTier].generationQualityCn : PLAN_CATALOG[selectedPlanTier].generationQualityEn
   const activeTemplate = getTemplateById(loadedTemplateId)
   const accessiblePlans = getAccessiblePlanTiers(planTier)
+  const deploymentOptions = DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region))
+  const databaseOptions = DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(region))
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -168,8 +191,8 @@ export function AiInputPanel() {
         </div>
       ) : null}
 
-      <div className="mb-3 flex flex-col gap-2 xl:flex-row xl:items-center">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="mb-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{locale === "zh" ? "生成档位" : "Generation tier"}</span>
           <select
             value={selectedPlanTier}
@@ -190,6 +213,43 @@ export function AiInputPanel() {
               ? `你当前最高可用：${PLAN_CATALOG[planTier].nameCn}`
               : `Highest available: ${PLAN_CATALOG[planTier].nameEn}`}
           </span>
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <select
+            value={region}
+            onChange={(e) => {
+              const nextRegion = e.target.value as "cn" | "intl"
+              setRegion(nextRegion)
+              setDeploymentTarget(getDefaultDeploymentTarget(nextRegion))
+              setDatabaseTarget(getDefaultDatabaseTarget(nextRegion))
+            }}
+            className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
+          >
+            <option value="intl">{locale === "zh" ? "国际版" : "International"}</option>
+            <option value="cn">{locale === "zh" ? "国内版" : "China"}</option>
+          </select>
+          <select
+            value={deploymentTarget}
+            onChange={(e) => setDeploymentTarget(e.target.value as DeploymentTarget)}
+            className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
+          >
+            {deploymentOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {locale === "zh" ? item.nameCn : item.nameEn}
+              </option>
+            ))}
+          </select>
+          <select
+            value={databaseTarget}
+            onChange={(e) => setDatabaseTarget(e.target.value as DatabaseTarget)}
+            className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
+          >
+            {databaseOptions.map((item) => (
+              <option key={item.id} value={item.id}>
+                {locale === "zh" ? item.nameCn : item.nameEn}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -224,6 +284,11 @@ export function AiInputPanel() {
 
       <div className="mt-3 text-xs text-muted-foreground">
         {locale === "zh" ? `当前生成档位：${planDesc}` : `Current generation tier: ${planDesc}`}
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">
+        {locale === "zh"
+          ? `默认按 ${region === "cn" ? "国内" : "国际"} 全栈标准生成，部署环境与数据库可单独切换。`
+          : `The generated full-stack app follows the ${region === "cn" ? "China" : "international"} baseline by default, while deployment and database targets remain selectable.`}
       </div>
       {statusText ? <div className="mt-2 text-xs text-muted-foreground">{statusText}</div> : null}
     </section>

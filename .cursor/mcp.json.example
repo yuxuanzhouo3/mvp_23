@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "supabase-db": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "${SUPABASE_DB_URL}"]
+    },
+    "cloudbase": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-mongodb", "${CLOUDBASE_MONGODB_URL}"]
+    }
+  }
+}

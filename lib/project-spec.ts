@@ -3,6 +3,14 @@ import { promises as fs } from "fs"
 import { type Region, writeTextFile } from "@/lib/project-workspace"
 import type { PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById, type TemplatePreviewStyle } from "@/lib/template-catalog"
+import {
+  getDatabaseOption,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+  getDeploymentOption,
+  type DatabaseTarget,
+  type DeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 export type AppKind = "task" | "crm" | "blog" | "community" | "code_platform"
 
@@ -63,6 +71,8 @@ export type AppSpec = {
   timezone: string
   dateFormat: string
   currency: "CNY" | "USD"
+  deploymentTarget: DeploymentTarget
+  databaseTarget: DatabaseTarget
   generatedAt: string
   updatedAt: string
   features: SpecFeature[]
@@ -523,6 +533,8 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
     timezone: defaults.timezone,
     dateFormat: defaults.dateFormat,
     currency: defaults.currency,
+    deploymentTarget: existing?.deploymentTarget ?? getDefaultDeploymentTarget(region),
+    databaseTarget: existing?.databaseTarget ?? getDefaultDatabaseTarget(region),
     generatedAt: existing?.generatedAt ?? now,
     updatedAt: now,
     features,
@@ -626,6 +638,8 @@ export function applyPromptToSpec(spec: AppSpec, prompt: string) {
 function mergeEnv(existing: string | null, spec: AppSpec) {
   const dbMatch = existing?.match(/^DATABASE_URL=.*$/m)
   const dbLine = dbMatch?.[0] ?? `DATABASE_URL="file:./${spec.region === "cn" ? "cn" : "intl"}.db"`
+  const deployment = getDeploymentOption(spec.deploymentTarget)
+  const database = getDatabaseOption(spec.databaseTarget)
   return [
     dbLine,
     `APP_REGION="${spec.region}"`,
@@ -633,6 +647,11 @@ function mergeEnv(existing: string | null, spec: AppSpec) {
     `APP_LOCALE="${spec.language}"`,
     `APP_TIMEZONE="${spec.timezone}"`,
     `APP_CURRENCY="${spec.currency}"`,
+    `APP_DEPLOY_TARGET="${spec.deploymentTarget}"`,
+    `APP_DEPLOY_RUNTIME="${deployment.runtime}"`,
+    `APP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"`,
+    `APP_DATABASE_TARGET="${spec.databaseTarget}"`,
+    `APP_DATABASE_ENGINE="${database.engine}"`,
     "",
   ].join("\n")
 }
@@ -5661,6 +5680,8 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
           timezone: spec.timezone,
           dateFormat: spec.dateFormat,
           currency: spec.currency,
+          deploymentTarget: spec.deploymentTarget,
+          databaseTarget: spec.databaseTarget,
           seedTasks: spec.seedItems,
         },
         null,
