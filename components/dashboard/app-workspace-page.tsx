@@ -862,6 +862,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={copy.iteratePlaceholder}
+            className="min-w-0"
           />
           <Button onClick={iterate} disabled={iterating} className="w-full">
             <SquareTerminal className="h-4 w-4 mr-2" />
@@ -921,8 +922,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           {runStatus ? (
             <pre className="text-xs text-red-600 mb-3 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 overflow-auto max-h-56">{runStatus}</pre>
           ) : null}
-          <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/30 p-1">
+          <div className="mb-3 flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/30 p-1">
               {[
                 { key: "preview", label: copy.preview },
                 { key: "dashboard", label: copy.dashboard },
@@ -943,8 +944,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               ))}
             </div>
             {previewTab === "preview" ? (
-              <div className="flex items-center gap-3">
-                <span className="hidden md:inline">{previewTabUrl}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <span className="hidden min-w-0 truncate md:inline">{previewTabUrl}</span>
                 <a href={previewTabUrl} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
                   Open
                   <ExternalLink className="h-3 w-3" />
@@ -1273,7 +1274,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 text-xs text-white/70">
+                <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 text-xs text-white/70 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <div className="truncate font-medium text-white">
                       {selectedCodeFile || copy.noFileSelected}
@@ -1283,7 +1284,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       {selectedFileSummary || (isCn ? "左侧目录与右侧编辑器已经联动，选中文件后这里会展示真实代码内容。" : "The left explorer and right editor are linked. Selecting a file renders its real code here.")}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                     <span>{focusedLine ? (isCn ? `第 ${focusedLine} 行` : `Line ${focusedLine}`) : copy.noLineSelected}</span>
                     <button
                       type="button"
@@ -1342,7 +1343,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     onChange={(e) => setDraftCodeContent(e.target.value)}
                     disabled={codeLoading || !selectedCodeFile}
                     spellCheck={false}
-                    className="min-h-[72vh] w-full resize-none bg-black p-4 text-xs leading-6 text-white outline-none"
+                    className="min-h-[56vh] w-full min-w-0 resize-none bg-black p-4 text-xs leading-6 text-white outline-none xl:min-h-[72vh]"
                   />
                   <div className="border-l border-white/10 bg-white/5 p-3">
                     <div className="mb-3 text-xs font-medium text-white/70">{copy.diagnostics}</div>
@@ -1390,7 +1391,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               <iframe
                 title="app-preview"
                 src={previewTabUrl}
-                className="w-full min-h-[78vh] rounded-md border border-border bg-white"
+                className="w-full min-h-[65vh] rounded-md border border-border bg-white md:min-h-[78vh]"
               />
             </div>
           ) : previewStarting ? (

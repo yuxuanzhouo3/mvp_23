@@ -85,13 +85,14 @@ export default function ProjectsPage() {
           <div className="font-medium">Create New Project</div>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               placeholder="Describe your MVP idea..."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
+              className="min-w-0"
             />
-            <Button onClick={createProject} disabled={creating}>
+            <Button onClick={createProject} disabled={creating} className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-1.5" />
               {creating ? "Generating..." : "Generate"}
             </Button>

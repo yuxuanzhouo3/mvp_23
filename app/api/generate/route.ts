@@ -48,6 +48,10 @@ import {
 export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
 
+function buildProjectPreviewPath(projectId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/preview`
+}
+
 type GeneratedFile = {
   path: string
   content: string
@@ -1343,7 +1347,7 @@ export async function POST(req: Request) {
       runtime: {
         status: "stopped",
         port: 3001,
-        url: "http://localhost:3001",
+        url: buildProjectPreviewPath(projectId),
       },
       history: [],
     } as Parameters<typeof upsertProject>[0])
@@ -1424,7 +1428,7 @@ export async function GET(req: Request) {
       changedFiles: currentTask.changedFiles ?? [],
       templateTitle: currentTask.templateTitle,
       error: currentTask.error,
-      appUrl: "http://localhost:3001",
+      appUrl: buildProjectPreviewPath(currentTask.projectId),
       repoUrl: `local://workspaces/${currentTask.projectId}`,
       localPath: outDir ?? getWorkspacePath(currentTask.projectId),
       runCommands: [
@@ -1479,7 +1483,7 @@ export async function GET(req: Request) {
     summary: latestGenerate?.summary,
     changedFiles: latestGenerate?.changedFiles ?? [],
     templateTitle: undefined,
-    appUrl: "http://localhost:3001",
+    appUrl: buildProjectPreviewPath(projectId),
     repoUrl: `local://workspaces/${projectId}`,
     localPath: outDir,
     runCommands: [

@@ -14,6 +14,11 @@ import {
 
 export const runtime = "nodejs"
 
+function buildPreviewPath(projectId: string, suffix = "") {
+  const base = `/api/projects/${encodeURIComponent(projectId)}/preview`
+  return suffix ? `${base}/${suffix.replace(/^\/+/, "")}` : base
+}
+
 async function pathExists(filePath: string) {
   try {
     await fs.access(filePath)
@@ -433,6 +438,7 @@ async function startProject(projectId: string) {
   }
 
   let port = await choosePort(projectId)
+  let previewPath = buildPreviewPath(projectId)
   const logs: string[] = []
   const startupLogPath = path.join(workspacePath, ".mornstack-preview.log")
   const packageManager = await resolvePackageManager(workspacePath)
@@ -441,10 +447,10 @@ async function startProject(projectId: string) {
   await updateProject(projectId, (p) => ({
     ...p,
     runtime: {
-      ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+      ...(p.runtime ?? { port, url: previewPath }),
       status: "starting",
       port,
-      url: `http://localhost:${port}`,
+      url: previewPath,
       lastStartedAt: new Date().toISOString(),
       lastError: undefined,
     },
@@ -463,10 +469,10 @@ async function startProject(projectId: string) {
         await updateProject(projectId, (p) => ({
           ...p,
           runtime: {
-            ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+            ...(p.runtime ?? { port, url: previewPath }),
             status: "error",
             port,
-            url: `http://localhost:${port}`,
+            url: previewPath,
             lastError: `npm install failed${details ? `\n${details}` : ""}`,
           },
         }))
@@ -500,13 +506,14 @@ async function startProject(projectId: string) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (attempt > 0) {
         port = await choosePort(projectId)
+        previewPath = buildPreviewPath(projectId)
         await updateProject(projectId, (p) => ({
           ...p,
           runtime: {
-            ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+            ...(p.runtime ?? { port, url: previewPath }),
             status: "starting",
             port,
-            url: `http://localhost:${port}`,
+            url: previewPath,
             lastStartedAt: new Date().toISOString(),
             lastError: undefined,
           },
@@ -559,10 +566,10 @@ async function startProject(projectId: string) {
       await updateProject(projectId, (p) => ({
         ...p,
         runtime: {
-          ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+          ...(p.runtime ?? { port, url: previewPath }),
           status: "error",
           port,
-          url: `http://localhost:${port}`,
+          url: previewPath,
           lastError: failureText,
         },
       }))
@@ -586,7 +593,7 @@ async function startProject(projectId: string) {
         mode,
         pid: runtimePid,
         port,
-        url: `http://localhost:${port}`,
+        url: previewPath,
         lastStartedAt: new Date().toISOString(),
         lastError: undefined,
       },
@@ -600,7 +607,7 @@ async function startProject(projectId: string) {
         mode,
         pid: runtimePid,
         port,
-        url: `http://localhost:${port}`,
+        url: previewPath,
         lastError: undefined,
       },
       logs,
@@ -609,10 +616,10 @@ async function startProject(projectId: string) {
     await updateProject(projectId, (p) => ({
       ...p,
       runtime: {
-        ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+        ...(p.runtime ?? { port, url: previewPath }),
         status: "error",
         port,
-        url: `http://localhost:${port}`,
+        url: previewPath,
         lastError: error?.message || String(error),
       },
     }))
@@ -643,7 +650,7 @@ async function stopProject(projectId: string) {
   }
 
   const port = project.runtime?.port ?? 3001
-  const url = `http://localhost:${port}`
+  const url = buildPreviewPath(projectId)
   await updateProject(projectId, (p) => ({
     ...p,
     updatedAt: new Date().toISOString(),
@@ -675,7 +682,7 @@ export async function GET(
   if (!project) {
     return NextResponse.json({ error: "Project not found", projectId }, { status: 404 })
   }
-  let runtime = project.runtime ?? { status: "stopped" as const, port: 3001, url: "http://localhost:3001" }
+  let runtime = project.runtime ?? { status: "stopped" as const, port: 3001, url: buildPreviewPath(projectId) }
   if (runtime.status === "running") {
     const pidDead = Boolean(runtime.pid) && !isPidAlive(runtime.pid)
     const portDead = runtime.port ? !(await isPortInUse(runtime.port)) : true
