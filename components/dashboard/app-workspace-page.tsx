@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
-import { ChevronDown, ChevronUp, CreditCard, ExternalLink, Play, RotateCcw, Search, Sparkles, Square, SquareTerminal, Undo2 } from "lucide-react"
+import { ChevronDown, ChevronUp, ExternalLink, Play, RotateCcw, Search, Sparkles, Square, SquareTerminal, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -491,6 +491,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     if (!shouldAutoStart) return
 
     setPreviewBooting(true)
+    setRunStatus("")
     fetch(`/api/projects/${encodeURIComponent(projectId)}/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -505,19 +506,19 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
         await loadProject()
       })
       .catch((error: any) => {
-        setRunStatus(error?.message || "Preview start failed")
+        setRunStatus(error?.message || (isCn ? "预览启动失败，请查看上方启动日志并尝试 Restart。" : "Preview failed to start. Check the startup diagnostics above and try Restart."))
         void loadProject()
       })
       .finally(() => {
         setPreviewBooting(false)
       })
-  }, [generateTask?.status, previewBooting, project?.runtime?.status, projectId])
+  }, [generateTask?.status, previewBooting, project?.runtime?.status, projectId, isCn])
 
   const runtime = project?.runtime
   const isCn = project?.region === "cn"
   const copy = {
     preview: isCn ? "预览" : "Preview",
-    dashboard: isCn ? "交付台" : "Dashboard",
+    dashboard: isCn ? "总览" : "Overview",
     code: isCn ? "代码" : "Code",
     previewUrl: isCn ? "预览地址" : "Preview URL",
     generatedFiles: isCn ? "生成文件数" : "Generated Files",
@@ -554,14 +555,13 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     iteratePlaceholder: isCn ? "描述你要继续调整的内容..." : "Describe the next change...",
     applying: isCn ? "应用中..." : "Applying...",
     applyChange: isCn ? "应用修改" : "Apply Change",
-    checkout: isCn ? "打开支付演示" : "Open Checkout",
     reverting: isCn ? "回退中..." : "Reverting...",
     revert: isCn ? "回退上一次修改" : "Revert Last Change",
     previewStarting: isCn ? "预览正在启动..." : "Preview is starting...",
     previewNotRunning: isCn ? "预览尚未运行，生成完成后会自动启动，你也可以手动点击 Start。" : "Preview is not running yet. It will auto-start after generation, or you can click Start.",
     workspaceSearch: isCn ? "工作区搜索" : "Workspace Search",
-    dashboardSearchTitle: isCn ? "交付台搜索" : "Dashboard Search",
-    dashboardSearchPlaceholder: isCn ? "搜索可见性、邀请、集成、交付..." : "Search visibility, invites, integrations, delivery...",
+    dashboardSearchTitle: isCn ? "总览搜索" : "Overview Search",
+    dashboardSearchPlaceholder: isCn ? "搜索可见性、邀请、发布、运行..." : "Search visibility, invites, publish, runtime...",
     appVisibility: isCn ? "应用可见性" : "App Visibility",
     appVisibilityDesc: isCn ? "控制谁可以访问当前生成应用。" : "Control who can access the generated application.",
     public: isCn ? "公开" : "Public",
@@ -577,20 +577,19 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     publishStatusTitle: isCn ? "发布状态" : "Publish Status",
     publishStatusDesc: isCn ? "跟踪预览、代码和分享链路是否已达到交付标准。" : "Track whether preview, code, and sharing are ready for delivery.",
     integrationsTitle: isCn ? "集成状态" : "Integrations",
-    integrationsDesc: isCn ? "配置登录、支付、文档和交付入口。" : "Configure auth, payment, docs, and delivery entry points.",
+    integrationsDesc: isCn ? "配置登录、文档、运行链路和独立后台入口。" : "Configure auth, docs, runtime flows, and standalone back-office entry points.",
     securityTitle: isCn ? "安全设置" : "Security",
     securityDesc: isCn ? "在老板或客户查看前，控制访问、密钥和发布安全。" : "Control access, credentials, and publish safety before stakeholder review.",
     recentActivityTitle: isCn ? "最近活动" : "Recent Activity",
     distributionTitle: isCn ? "分发入口" : "Distribution",
-    distributionDesc: isCn ? "汇总老板演示、内部测试和客户验证所需链接。" : "Collect delivery links for boss demos, internal QA, and customer validation.",
+    distributionDesc: isCn ? "汇总预览、代码清单、文档和演示资产入口。" : "Collect preview, code manifest, docs, and demo-asset entry points.",
     openAndDelivery: isCn ? "打开与交付" : "Open And Delivery",
     workspaceProfile: isCn ? "工作区档案" : "Workspace Profile",
     workspaceProfileDesc: isCn
       ? "这里承接应用可见性、分享入口、交付状态和分发操作，不再映射成应用内的业务页面。"
       : "This panel owns visibility, sharing, delivery status, and distribution operations instead of turning them into in-app business pages.",
-    loginProviders: isCn ? "Google / Facebook / 微信 / 支付宝" : "Google / Facebook / WeChat / Alipay",
-    paymentProviders: isCn ? "Stripe / PayPal / 微信支付 / 支付宝" : "Stripe / PayPal / WeChat Pay / Alipay",
-    standaloneSurfaces: isCn ? "演示资产与成交链路已拆分为独立站点入口" : "Demo assets and conversion flows now live as standalone surfaces",
+    loginProviders: isCn ? "邮箱 / 微信 / Google / Facebook" : "Email / Google / Facebook / WeChat",
+    standaloneSurfaces: isCn ? "admin、market、文档与演示资产均作为独立入口维护" : "admin, market, docs, and demo assets are maintained as standalone entry surfaces",
   } as const
   const previewUrl = runtime?.url
   const previewTabUrl = previewUrl || ""
@@ -866,12 +865,6 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             <SquareTerminal className="h-4 w-4 mr-2" />
             {iterating ? copy.applying : copy.applyChange}
           </Button>
-          <Button variant="outline" className="w-full" asChild>
-            <a href="/checkout">
-              <CreditCard className="h-4 w-4 mr-2" />
-              {copy.checkout}
-            </a>
-          </Button>
           <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
             <Undo2 className="h-4 w-4 mr-2" />
             {revertBusy ? copy.reverting : copy.revert}
@@ -915,6 +908,13 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
         <CardContent>
           {runtime?.lastError ? (
             <pre className="text-xs text-amber-700 mb-3 whitespace-pre-wrap rounded-md border border-amber-200 bg-amber-50 p-3 overflow-auto max-h-56">{runtime.lastError}</pre>
+          ) : null}
+          {previewStarting && !runtime?.lastError && !runStatus ? (
+            <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+              {isCn
+                ? "预览正在启动，通常是在安装依赖、修复生成文件或拉起本地 Next 预览。若超过 45 秒仍未就绪，再看下方诊断。"
+                : "Preview is starting. It may be installing dependencies, repairing generated files, or launching the local Next preview. If it is still not ready after 45 seconds, inspect the diagnostics below."}
+            </div>
           ) : null}
           {runStatus ? (
             <pre className="text-xs text-red-600 mb-3 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 overflow-auto max-h-56">{runStatus}</pre>
@@ -996,8 +996,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     <a href={`/api/projects/${encodeURIComponent(projectId)}/files`} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
                       Open File Manifest
                     </a>
-                    <a href="/checkout" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
-                      Open Checkout
+                    <a href="/api-docs" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
+                      Open Docs
                     </a>
                   </div>
                 </div>
@@ -1054,8 +1054,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                         "visibility",
                         "invite users",
                         "publish status",
+                        "runtime",
                         "integrations",
-                        "security",
                         "distribution",
                       ]
                         .filter((item) => !dashboardSearch || item.toLowerCase().includes(dashboardSearch.toLowerCase()))
@@ -1157,7 +1157,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       <div className="mt-2 text-sm text-muted-foreground">{copy.integrationsDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{copy.loginProviders}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{copy.paymentProviders}</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview runtime / API docs / Generated assets</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
                           {copy.standaloneSurfaces}
                         </div>
@@ -1167,9 +1167,9 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       <div className="text-lg font-semibold">{copy.securityTitle}</div>
                       <div className="mt-2 text-sm text-muted-foreground">{copy.securityDesc}</div>
                       <div className="mt-4 space-y-2 text-sm">
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Require login before checkout</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Require login before app access</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview token protection</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Webhook readiness checklist</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview runtime readiness checklist</div>
                       </div>
                     </div>
                   </div>
@@ -1191,7 +1191,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       <div className="mt-4 space-y-2 text-sm">
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Web preview: {previewUrl || "pending"}</div>
                         <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "文档与演示资产：/api-docs /generated/promo-assets/latest" : "Docs and demo assets: /api-docs /generated/promo-assets/latest"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Checkout chain: /login {"->"} /checkout {"->"} /payment</div>
+                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "独立后台：/admin /market" : "Standalone back-office: /admin /market"}</div>
                       </div>
                     </div>
                   </div>
