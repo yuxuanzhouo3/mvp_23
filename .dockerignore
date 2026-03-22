@@ -1,0 +1,12 @@
+.git
+.github
+.next
+node_modules
+npm-debug.log
+pnpm-debug.log
+generated
+workspaces
+.vercel
+.env.local
+.env.*.local
+tsconfig.tsbuildinfo
