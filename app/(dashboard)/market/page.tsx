@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { ArrowRight, BarChart3, BookOpen, Download, ExternalLink, Globe2, LockKeyhole, QrCode, ShieldCheck, Smartphone, Sparkles, Wallet } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { ArrowRight, Clapperboard, CreditCard, ExternalLink, Globe2, Layers3, LockKeyhole, Megaphone, Presentation, ShieldCheck, Smartphone, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -79,7 +78,7 @@ export default function BossDemoPage() {
             {demoLinks.map((item) => {
               const Icon = item.icon
               return (
-                <Link key={item.label} href={item.href} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
+                <a key={item.label} href={item.href} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       <div className="rounded-xl bg-secondary p-2">
@@ -93,7 +92,7 @@ export default function BossDemoPage() {
                     </div>
                     <ExternalLink className="h-4 w-4 text-muted-foreground" />
                   </div>
-                </Link>
+                </a>
               )
             })}
           </CardContent>

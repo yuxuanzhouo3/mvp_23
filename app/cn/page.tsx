@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { ArrowRight, BookOpen, Globe2, ShieldCheck, Smartphone } from "lucide-react"
 import { siteLinks } from "@/lib/site-links"
 

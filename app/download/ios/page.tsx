@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Apple, ArrowRight, BadgeCheck, Smartphone } from "lucide-react"
 import { siteLinks } from "@/lib/site-links"
 
