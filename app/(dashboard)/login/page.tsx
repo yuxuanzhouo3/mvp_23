@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Chrome, MessageCircle, Users } from "lucide-react"
+import { Chrome, LoaderCircle, LogOut, MessageCircle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,18 +32,22 @@ function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { locale } = useLocale()
-  const redirectTo = searchParams.get("redirect") || "/checkout"
+  const redirectTo = searchParams.get("redirect") || "/projects"
+  const switchAccount = searchParams.get("switch") === "1"
   const provider = searchParams.get("provider") || ""
   const oauthState = searchParams.get("oauth") || ""
   const oauthError = searchParams.get("error") || ""
   const [region, setRegion] = useState<"cn" | "intl">(getCurrentDomainRegion())
   const isCn = region === "cn"
+  const [sessionUser, setSessionUser] = useState<SessionResp["user"] | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [registering, setRegistering] = useState(false)
+  const [authStep, setAuthStep] = useState<"idle" | "signing-in" | "authenticated">("idle")
   const [runtimeMode, setRuntimeMode] = useState<"demo" | "password" | "supabase" | "wechat">("demo")
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [googleEnabled, setGoogleEnabled] = useState(true)
@@ -63,14 +67,31 @@ function LoginPageContent() {
         setGoogleEnabled(Boolean(json?.authRuntime?.googleEnabled))
         setFacebookEnabled(Boolean(json?.authRuntime?.facebookEnabled))
         if (json.authenticated) {
-          router.replace(redirectTo)
+          setSessionUser(json.user ?? null)
+          setAuthStep("authenticated")
+        } else {
+          setSessionUser(null)
+          setAuthStep("idle")
         }
       })
       .catch(() => null)
-  }, [redirectTo, router, isCn])
+      .finally(() => setAuthResolved(true))
+  }, [isCn, switchAccount])
+
+  async function handleSwitchAccount() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
+    setSessionUser(null)
+    setAuthStep("idle")
+    setEmail("")
+    setPassword("")
+    setName("")
+    setError("")
+  }
 
   async function handleLogin() {
+    setRegistering(false)
     setSubmitting(true)
+    setAuthStep("signing-in")
     setError("")
     try {
       const res = await fetch("/api/auth/login", {
@@ -82,16 +103,20 @@ function LoginPageContent() {
       if (!res.ok) {
         throw new Error(String(json?.error ?? "Login failed"))
       }
-      router.push(redirectTo)
+      setSessionUser(json?.user ?? null)
+      setAuthStep("authenticated")
     } catch (err: any) {
       setError(err?.message || "Login failed")
+      setAuthStep("idle")
     } finally {
       setSubmitting(false)
     }
   }
 
   async function handleRegister() {
+    setRegistering(true)
     setSubmitting(true)
+    setAuthStep("signing-in")
     setError("")
     try {
       const res = await fetch("/api/auth/register", {
@@ -103,10 +128,12 @@ function LoginPageContent() {
       if (!res.ok) {
         throw new Error(String(json?.error ?? "Register failed"))
       }
-      router.push(redirectTo)
+      setSessionUser(json?.user ?? null)
+      setAuthStep("authenticated")
     } catch (err: any) {
       const message = err?.message || "Register failed"
       setError(message === "User already exists" ? (isCn ? "该邮箱已注册，请直接点击“登录并继续”。" : "This email already exists. Please sign in instead.") : message)
+      setAuthStep("idle")
     } finally {
       setSubmitting(false)
     }
@@ -116,9 +143,48 @@ function LoginPageContent() {
     <div className="mx-auto max-w-md">
       <Card>
         <CardHeader>
-          <CardTitle>{isCn ? "登录后继续支付" : "Sign in to continue"}</CardTitle>
+          <CardTitle>
+            {switchAccount
+              ? isCn ? "切换账号" : "Switch account"
+              : isCn ? "登录后继续进入工作台" : "Sign in to continue"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!authResolved ? (
+            <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+              {isCn ? "正在检查登录状态..." : "Checking sign-in status..."}
+            </div>
+          ) : null}
+          {authStep === "signing-in" ? (
+            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-foreground">
+              <div className="flex items-center gap-2 font-medium">
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+                {isCn ? "正在登录..." : "Signing you in..."}
+              </div>
+              <div className="mt-2 text-muted-foreground">
+                {email || sessionUser?.email || (isCn ? "正在准备账号会话" : "Preparing your account session")}
+              </div>
+            </div>
+          ) : null}
+          {authStep === "authenticated" && sessionUser ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900">
+              <div className="font-medium">{isCn ? "已登录账号" : "Signed in account"}</div>
+              <div className="mt-2">{sessionUser.name || (isCn ? "未设置昵称" : "No display name")}</div>
+              <div className="text-emerald-800/80">{sessionUser.email}</div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Button className="w-full" onClick={() => router.push(redirectTo)}>
+                  {isCn ? "继续进入" : "Continue"}
+                </Button>
+                <Button className="w-full" variant="outline" onClick={handleSwitchAccount}>
+                  {isCn ? "切换账号" : "Switch account"}
+                </Button>
+              </div>
+              <Button className="mt-3 w-full" variant="ghost" onClick={handleSwitchAccount}>
+                <LogOut className="mr-2 h-4 w-4" />
+                {isCn ? "退出当前账号" : "Sign out"}
+              </Button>
+            </div>
+          ) : null}
           <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
             {isCn
               ? runtimeMode === "wechat"
@@ -155,24 +221,24 @@ function LoginPageContent() {
             </div>
           ) : null}
           {isCn && runtimeMode === "wechat" ? (
-            <Button variant="outline" className="w-full" onClick={() => router.push(`/api/auth/wechat/start?redirect=${encodeURIComponent(redirectTo)}`)}>
+            <Button variant="outline" className="w-full" onClick={() => { setAuthStep("signing-in"); router.push(`/api/auth/wechat/start?redirect=${encodeURIComponent(redirectTo)}`) }}>
               <MessageCircle className="mr-2 h-4 w-4" />
               微信登录
             </Button>
           ) : null}
           {!isCn && (googleEnabled || facebookEnabled) ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              <Button variant="outline" disabled={!googleEnabled} onClick={() => router.push(`/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`)}>
+              <Button variant="outline" disabled={!googleEnabled} onClick={() => { setAuthStep("signing-in"); router.push(`/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`) }}>
                 <Chrome className="mr-2 h-4 w-4" />
                 {googleEnabled ? "Google" : "Google Unavailable"}
               </Button>
-              <Button variant="outline" disabled={!facebookEnabled} onClick={() => router.push(`/api/auth/facebook/start?redirect=${encodeURIComponent(redirectTo)}`)}>
+              <Button variant="outline" disabled={!facebookEnabled} onClick={() => { setAuthStep("signing-in"); router.push(`/api/auth/facebook/start?redirect=${encodeURIComponent(redirectTo)}`) }}>
                 <Users className="mr-2 h-4 w-4" />
                 {facebookEnabled ? "Facebook" : "Facebook Unavailable"}
               </Button>
             </div>
           ) : null}
-          {emailEnabled ? (
+          {emailEnabled && authStep !== "authenticated" ? (
             <>
               {isCn ? <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="昵称（可选）" /> : null}
               <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={isCn ? "请输入邮箱" : "Enter your email"} />
@@ -180,12 +246,12 @@ function LoginPageContent() {
             </>
           ) : null}
           {error ? <p className="text-sm text-red-500">{error}</p> : null}
-          {emailEnabled ? (
+          {emailEnabled && authStep !== "authenticated" ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Button className="w-full" onClick={handleLogin} disabled={submitting}>
                 {submitting && !registering ? (isCn ? "登录中..." : "Signing in...") : isCn ? "登录并继续" : "Sign in and continue"}
               </Button>
-              <Button className="w-full" variant="outline" onClick={() => { setRegistering(true); void handleRegister().finally(() => setRegistering(false)) }} disabled={submitting}>
+              <Button className="w-full" variant="outline" onClick={() => { void handleRegister().finally(() => setRegistering(false)) }} disabled={submitting}>
                 {submitting && registering ? (isCn ? "注册中..." : "Creating account...") : isCn ? "注册并登录" : "Create account"}
               </Button>
             </div>

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
-import { Search, Bell, CreditCard, HelpCircle, Menu, Settings, LogOut, FileText, Terminal, MessageSquare, Sun, Moon } from "lucide-react"
+import { Search, Bell, CreditCard, HelpCircle, Menu, Settings, LogOut, FileText, Terminal, MessageSquare, Sun, Moon, UserCog } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -44,18 +44,20 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const { resolvedTheme, setTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
   const [user, setUser] = useState<{ name: string; email: string; region: "cn" | "intl" } | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/session")
       .then((res) => res.json())
       .then((json) => setUser(json?.authenticated ? json.user : null))
       .catch(() => setUser(null))
+      .finally(() => setAuthResolved(true))
   }, [])
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
     setUser(null)
-    window.location.href = "/login"
+    window.location.href = "/login?switch=1"
   }
 
   return (
@@ -168,7 +170,15 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {user ? (
+        {!authResolved ? (
+          <Button variant="ghost" size="icon" className="ml-1 opacity-60" disabled aria-label="Loading user state">
+            <Avatar className="h-7 w-7">
+              <AvatarFallback className="bg-muted text-muted-foreground text-xs font-semibold">
+                …
+              </AvatarFallback>
+            </Avatar>
+          </Button>
+        ) : user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="ml-1" aria-label="User menu">
@@ -188,6 +198,12 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
                 <Link href="/settings" className="flex items-center gap-2 text-sm cursor-pointer">
                   <Settings className="h-4 w-4" />
                   {t("settings")}
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/login?switch=1" className="flex items-center gap-2 text-sm cursor-pointer">
+                  <UserCog className="h-4 w-4" />
+                  {locale === "zh" ? "切换账号" : "Switch account"}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="bg-border" />
