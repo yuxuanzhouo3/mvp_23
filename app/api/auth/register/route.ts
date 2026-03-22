@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   try {
     const user =
       region === "intl"
-        ? authRuntime.supabaseConfigured
+        ? authRuntime.intlMode === "supabase" && authRuntime.supabaseConfigured
           ? await (async () => {
               const supabaseUser = await signUpWithSupabasePassword(email, password)
               return upsertExternalUser({
@@ -31,7 +31,12 @@ export async function POST(req: Request) {
                 region: "intl",
               })
             })()
-          : null
+          : await createLocalUser({
+              email,
+              password,
+              region: "intl",
+              name: String(body?.name ?? "").trim() || undefined,
+            })
         : await createLocalUser({
             email,
             password,
@@ -39,16 +44,12 @@ export async function POST(req: Request) {
             name: String(body?.name ?? "").trim() || undefined,
           })
 
-    if (!user) {
-      return NextResponse.json({ error: "Intl email registration requires Supabase config" }, { status: 400 })
-    }
-
     const session = await createSession(user.id)
     const cookieStore = await cookies()
     cookieStore.set(AUTH_COOKIE, session.token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: process.env.NODE_ENV === "production",
       path: "/",
       expires: new Date(session.expiresAt),
     })

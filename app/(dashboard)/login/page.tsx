@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useLocale } from "@/lib/i18n"
+import { getRegionFromHostname } from "@/lib/region-routing"
 
 type SessionResp = {
   authenticated: boolean
@@ -34,10 +35,10 @@ function LoginPageContent() {
   const provider = searchParams.get("provider") || ""
   const oauthState = searchParams.get("oauth") || ""
   const oauthError = searchParams.get("error") || ""
-  const region = locale === "zh" ? "cn" : "intl"
+  const [region, setRegion] = useState<"cn" | "intl">(locale === "zh" ? "cn" : "intl")
   const isCn = region === "cn"
-  const [email, setEmail] = useState(isCn ? "demo-cn@mornscience.ai" : "demo-intl@mornscience.ai")
-  const [password, setPassword] = useState("123456")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -48,13 +49,18 @@ function LoginPageContent() {
   const [facebookEnabled, setFacebookEnabled] = useState(true)
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+    setRegion(getRegionFromHostname(window.location.hostname))
+  }, [])
+
+  useEffect(() => {
     fetch("/api/auth/session")
       .then((res) => res.json())
       .then((json: SessionResp) => {
         setRuntimeMode((isCn ? json?.authRuntime?.cnMode : json?.authRuntime?.intlMode) ?? "demo")
         setEmailEnabled(Boolean(isCn ? json?.authRuntime?.cnEmailPasswordEnabled : json?.authRuntime?.intlEmailPasswordEnabled))
-        setGoogleEnabled(Boolean(json?.authRuntime?.googleEnabled ?? true))
-        setFacebookEnabled(Boolean(json?.authRuntime?.facebookEnabled ?? true))
+        setGoogleEnabled(Boolean(json?.authRuntime?.googleEnabled))
+        setFacebookEnabled(Boolean(json?.authRuntime?.facebookEnabled))
         if (json.authenticated) {
           router.replace(redirectTo)
         }
@@ -98,7 +104,8 @@ function LoginPageContent() {
       }
       router.push(redirectTo)
     } catch (err: any) {
-      setError(err?.message || "Register failed")
+      const message = err?.message || "Register failed"
+      setError(message === "User already exists" ? (isCn ? "该邮箱已注册，请直接点击“登录并继续”。" : "This email already exists. Please sign in instead.") : message)
     } finally {
       setSubmitting(false)
     }
@@ -120,7 +127,9 @@ function LoginPageContent() {
                   : "当前中国区仍可使用演示账号，也支持本地邮箱密码注册。"
               : runtimeMode === "supabase"
                 ? "当前国际版已切到 Supabase 邮箱密码模式，Google 登录接好配置后可一起使用。"
-                : "Demo credentials are prefilled. You can sign in with demo-intl@mornscience.ai / 123456."}
+                : runtimeMode === "password"
+                  ? "The international site is currently using direct email/password login. You can register with a real email right now, then switch to Supabase later without changing the page flow."
+                  : "Use your real email and password to sign in or create an account."}
           </div>
           <div className="rounded-lg border border-border p-3 text-sm text-muted-foreground">
             {isCn
@@ -150,7 +159,7 @@ function LoginPageContent() {
               微信登录
             </Button>
           ) : null}
-          {!isCn ? (
+          {!isCn && (googleEnabled || facebookEnabled) ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <Button variant="outline" disabled={!googleEnabled} onClick={() => router.push(`/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`)}>
                 <Chrome className="mr-2 h-4 w-4" />
@@ -165,8 +174,8 @@ function LoginPageContent() {
           {emailEnabled ? (
             <>
               {isCn ? <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="昵称（可选）" /> : null}
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-          <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={isCn ? "密码" : "Password"} />
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={isCn ? "请输入邮箱" : "Enter your email"} />
+              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={isCn ? "请输入密码" : "Enter your password"} />
             </>
           ) : null}
           {error ? <p className="text-sm text-red-500">{error}</p> : null}

@@ -6,8 +6,9 @@ import {
   type DatabaseTarget,
   type DeploymentTarget,
 } from "@/lib/fullstack-targets"
+import { getRegionFromHostname, type AppRegion } from "@/lib/region-routing"
 
-export type GenerationRegion = "cn" | "intl"
+export type GenerationRegion = AppRegion
 
 export type GenerationPreferences = {
   region: GenerationRegion
@@ -17,18 +18,6 @@ export type GenerationPreferences = {
 
 const STORAGE_KEY = "mornfullstack-generation-preferences"
 const EVENT_NAME = "mornfullstack:generation-preferences"
-
-export function getRegionFromHostname(hostname?: string | null): GenerationRegion {
-  const normalized = String(hostname ?? "").trim().toLowerCase()
-  if (!normalized) return "intl"
-  if (
-    normalized === "mornstack.mornscience.top" ||
-    normalized.endsWith(".mornscience.top")
-  ) {
-    return "cn"
-  }
-  return "intl"
-}
 
 export function getCurrentDomainRegion(fallbackRegion: GenerationRegion = "intl"): GenerationRegion {
   if (typeof window === "undefined") return fallbackRegion

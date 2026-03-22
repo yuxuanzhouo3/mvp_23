@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useLocale } from "@/lib/i18n"
 import { PAID_PLAN_IDS, PLAN_CATALOG, getPlanPriceLabel, type BillingCycle, type PlanTier } from "@/lib/plan-catalog"
+import { getRegionFromHostname } from "@/lib/region-routing"
 
 type Region = "cn" | "intl"
 
@@ -30,7 +31,7 @@ function CheckoutPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { locale } = useLocale()
-  const region: Region = locale === "zh" ? "cn" : "intl"
+  const [region, setRegion] = useState<Region>(locale === "zh" ? "cn" : "intl")
   const isCn = region === "cn"
   const [planId, setPlanId] = useState<PlanTier>((searchParams.get("plan") as PlanTier) || "pro")
   const [cycle, setCycle] = useState<BillingCycle>("yearly")
@@ -42,6 +43,11 @@ function CheckoutPageContent() {
   const [providerHint, setProviderHint] = useState("")
   const [authMode, setAuthMode] = useState<"demo" | "password" | "supabase" | "wechat">("demo")
   const [subscriptionTier, setSubscriptionTier] = useState<PlanTier>("free")
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setRegion(getRegionFromHostname(window.location.hostname))
+  }, [])
 
   useEffect(() => {
     setMethod(isCn ? "alipay" : "stripe")
@@ -59,7 +65,7 @@ function CheckoutPageContent() {
       .then((res) => res.json())
       .then((json: SessionResp) => {
         setAuthenticated(Boolean(json?.authenticated))
-        setAuthMode((locale === "zh" ? json?.authRuntime?.cnMode : json?.authRuntime?.intlMode) ?? "demo")
+        setAuthMode((region === "cn" ? json?.authRuntime?.cnMode : json?.authRuntime?.intlMode) ?? "demo")
         const tier = json?.subscription?.tier
         if (tier && tier in PLAN_CATALOG) {
           setSubscriptionTier(tier)
@@ -67,7 +73,7 @@ function CheckoutPageContent() {
       })
       .catch(() => setAuthenticated(false))
       .finally(() => setAuthLoading(false))
-  }, [locale])
+  }, [region])
 
   const paymentMethods = useMemo(
     () =>

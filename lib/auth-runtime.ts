@@ -32,9 +32,9 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     hasEnv("NEXT_PUBLIC_WECHAT_APP_ID") &&
     hasEnv("WECHAT_APP_SECRET")
 
-  const intlFallback: AuthMode = supabaseConfigured ? "supabase" : "demo"
+  const intlFallback: AuthMode = supabaseConfigured ? "supabase" : "password"
   const cnFallback: AuthMode = wechatConfigured ? "wechat" : "password"
-  const intlMode = normalizeMode(process.env.AUTH_MODE_INTL ?? "", ["demo", "supabase"], intlFallback)
+  const intlMode = normalizeMode(process.env.AUTH_MODE_INTL ?? "", ["demo", "password", "supabase"], intlFallback)
   const cnMode = normalizeMode(process.env.AUTH_MODE_CN ?? "", ["demo", "password", "wechat"], cnFallback)
   const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "true").trim() !== "false"
   const facebookEnabled = String(process.env.AUTH_ENABLE_FACEBOOK ?? "true").trim() !== "false"
@@ -50,10 +50,10 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     cnMode,
     supabaseConfigured,
     wechatConfigured,
-    intlEmailPasswordEnabled: supabaseConfigured,
+    intlEmailPasswordEnabled: intlMode === "password" || supabaseConfigured,
     cnEmailPasswordEnabled: true,
-    googleEnabled,
-    facebookEnabled,
+    googleEnabled: googleEnabled && googleConfigured,
+    facebookEnabled: facebookEnabled && facebookConfigured,
     googleConfigured,
     facebookConfigured,
   }

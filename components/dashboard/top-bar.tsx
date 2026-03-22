@@ -97,10 +97,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         </Button>
 
         <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
-          <a href={siteLinks.checkoutEntry} className="inline-flex items-center gap-1.5">
+          <Link href="/checkout" className="inline-flex items-center gap-1.5">
             <CreditCard className="h-3.5 w-3.5" />
             Checkout
-          </a>
+          </Link>
         </Button>
 
         <Button
@@ -168,45 +168,46 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="ml-1" aria-label="User menu">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-xs font-semibold">
-                  {user?.name?.slice(0, 1) || "G"}
-                </AvatarFallback>
-              </Avatar>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48 bg-card text-card-foreground border-border">
-            {user ? (
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="ml-1" aria-label="User menu">
+                <Avatar className="h-7 w-7">
+                  <AvatarFallback className="bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-xs font-semibold">
+                    {user.name?.slice(0, 1) || "G"}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 bg-card text-card-foreground border-border">
               <div className="px-2 py-2 text-xs text-muted-foreground">
                 <div className="font-medium text-foreground">{user.name}</div>
                 <div>{user.email}</div>
               </div>
-            ) : (
               <DropdownMenuItem asChild>
-                <a href={siteLinks.loginEntry} className="flex items-center gap-2 text-sm cursor-pointer">
+                <Link href="/settings" className="flex items-center gap-2 text-sm cursor-pointer">
                   <Settings className="h-4 w-4" />
-                  {locale === "zh" ? "登录" : "Sign in"}
-                </a>
+                  {t("settings")}
+                </Link>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem asChild>
-              <Link href="/settings" className="flex items-center gap-2 text-sm cursor-pointer">
-                <Settings className="h-4 w-4" />
-                {t("settings")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-border" />
-            {user ? (
+              <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem className="text-sm flex items-center gap-2 cursor-pointer" onClick={handleLogout}>
                 <LogOut className="h-4 w-4" />
                 {t("signOut")}
               </DropdownMenuItem>
-            ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Button variant="ghost" size="icon" className="ml-1" asChild aria-label={locale === "zh" ? "登录" : "Sign in"}>
+            <Link href="/login">
+              <Avatar className="h-7 w-7">
+                <AvatarFallback className="bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] text-xs font-semibold">
+                  G
+                </AvatarFallback>
+              </Avatar>
+            </Link>
+          </Button>
+        )}
       </div>
     </header>
   )
