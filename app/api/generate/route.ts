@@ -250,6 +250,8 @@ async function callGeneratorModel(
     "- A complete app must include real user flows, not just a few presentational pages.",
     "- Prefer stateful CRUD patterns, auth-aware surfaces, settings/state transitions, and actionable controls over decorative cards.",
     "- When generating dashboards, editors, admin panels, CRM, or platforms, include the operational flows those products need in order to feel usable.",
+    "- When a product needs data, settings, search, runs, or editor behavior, generate simple local API routes and in-memory or file-backed state so the flows can actually be exercised.",
+    "- Generated pages should share stateful navigation, not behave like isolated static posters.",
     "- Include settings, share/distribution, permissions, or publish surfaces when they are naturally expected for the product type.",
     "- Treat auth, billing, data mutation, visibility, and delivery controls as product capabilities, not optional polish.",
     "- Search bars, editors, command inputs, tabs, and action buttons must do something observable in the UI instead of acting as dead placeholders.",
@@ -949,8 +951,8 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
   const mandatorySurfaces =
     kind === "code_platform"
       ? isCn
-        ? ["dashboard 总览", "editor 编辑器", "runs 运行面板", "templates 模板库", "pricing 套餐页"]
-        : ["dashboard overview", "editor workspace", "runs panel", "template gallery", "pricing page"]
+        ? ["dashboard 总览", "editor 编辑器", "runs 运行面板", "templates 模板库", "settings 设置页", "pricing 套餐页"]
+        : ["dashboard overview", "editor workspace", "runs panel", "template gallery", "settings page", "pricing page"]
       : templateId === "opsdesk"
         ? isCn
           ? ["总览页", "线索页", "任务页", "分析页"]
@@ -968,11 +970,15 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
       ? isCn
         ? [
             "文件树、标签页、AI 模式、模板入口、运行入口必须可点击切换或跳转",
+            "左侧文件树、上方标签和中间代码区要联动，不能彼此断开",
+            "搜索要能命中文件、符号或命令，终端和运行状态也要能变化",
             "不要只堆卡片，要有 IDE 主壳和页面之间的导航连续性",
             "不要把用户原始要求、Prompt、AI 理解过程显示在产品页面里",
           ]
         : [
             "File tree, tabs, AI modes, template entry, and runtime entry must be clickable or switchable",
+            "The explorer, top tabs, and central code surface must stay linked instead of acting like separate mock panels",
+            "Search should hit files, symbols, or commands, and terminal/runtime state must visibly change",
             "Do not only stack cards; keep a coherent IDE shell and cross-page navigation",
             "Do not expose the raw user prompt or AI reasoning in the product UI",
           ]
@@ -1004,8 +1010,8 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
   const requiredOperationalFlows =
     kind === "code_platform"
       ? isCn
-        ? ["代码编辑", "运行预览", "模板切换", "命令或全局搜索", "分享/发布", "设置与权限"]
-        : ["code editing", "runtime preview", "template switching", "command or global search", "share/publish", "settings and permissions"]
+        ? ["代码编辑", "运行预览", "模板切换", "命令或全局搜索", "保存与回写", "分享/发布", "设置与权限"]
+        : ["code editing", "runtime preview", "template switching", "command or global search", "save and write-back", "share/publish", "settings and permissions"]
       : kind === "crm"
         ? isCn
           ? ["线索流转", "负责人分配", "权限设置", "分享与交付"]
@@ -1088,11 +1094,15 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
       },
       {
         relative: "app/runs/page.tsx",
-        pattern: /Runs|运行面板|build|deploy|preview|checkout|demo/i,
+        pattern: /Runs|运行面板|build|deploy|preview|workspace|demo/i,
       },
       {
         relative: "app/templates/page.tsx",
         pattern: /Templates|模板库|API platform|销售后台|社区反馈|China-ready Cursor|中国版 Cursor/i,
+      },
+      {
+        relative: "app/settings/page.tsx",
+        pattern: /Settings|设置|database|deployment|权限|visibility|publish/i,
       },
       {
         relative: "app/pricing/page.tsx",
@@ -1111,7 +1121,7 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
   }
 
   const requiredByTemplate: Record<string, string[]> = {
-    siteforge: ["app/dashboard/page.tsx", "app/editor/page.tsx", "app/runs/page.tsx", "app/templates/page.tsx", "app/pricing/page.tsx"],
+    siteforge: ["app/dashboard/page.tsx", "app/editor/page.tsx", "app/runs/page.tsx", "app/templates/page.tsx", "app/settings/page.tsx", "app/pricing/page.tsx"],
     opsdesk: ["app/leads/page.tsx"],
     taskflow: ["app/incidents/page.tsx"],
     orbital: ["app/events/page.tsx"],

@@ -23,3 +23,5 @@
 /generated/
 tsconfig.tsbuildinfo
 package-lock.json
+
+.vercel

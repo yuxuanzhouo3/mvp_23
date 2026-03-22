@@ -113,6 +113,7 @@ function prioritizeCodeFiles(files: string[]) {
     "app/editor/page.tsx",
     "app/runs/page.tsx",
     "app/templates/page.tsx",
+    "app/settings/page.tsx",
     "components/dashboard/app-workspace-page.tsx",
     "lib/project-spec.ts",
     "app/api/generate/route.ts",
@@ -482,6 +483,9 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commandQuery, projectId])
 
+  const runtime = project?.runtime
+  const isCn = project?.region === "cn"
+
   useEffect(() => {
     const shouldAutoStart =
       generateTask?.status === "done" &&
@@ -514,8 +518,6 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       })
   }, [generateTask?.status, previewBooting, project?.runtime?.status, projectId, isCn])
 
-  const runtime = project?.runtime
-  const isCn = project?.region === "cn"
   const copy = {
     preview: isCn ? "预览" : "Preview",
     dashboard: isCn ? "总览" : "Overview",

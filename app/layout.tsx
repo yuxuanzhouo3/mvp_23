@@ -1,12 +1,9 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
 
 import './globals.css'
 import { Providers } from "@/components/providers"
 
-const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
-const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://mornstack.vercel.app"
 
 export const metadata: Metadata = {

@@ -96,6 +96,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "Sora", "Avenir Next", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
     background-image:
       radial-gradient(circle at top, rgba(176, 148, 102, 0.10), transparent 24%),
       linear-gradient(180deg, #fffdfa 0%, #fcfaf6 36%, #f7f4ee 100%);
