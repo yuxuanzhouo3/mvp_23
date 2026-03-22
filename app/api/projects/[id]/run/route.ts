@@ -167,6 +167,26 @@ async function hasUsableInstall(workspacePath: string) {
   return (await pathExists(nextBin)) && (await pathExists(reactServerDom)) && (await pathExists(reactPkg))
 }
 
+async function ensureSharedNodeModules(workspacePath: string) {
+  const workspaceNodeModules = path.join(workspacePath, "node_modules")
+  if (await pathExists(workspaceNodeModules)) {
+    return await hasUsableInstall(workspacePath)
+  }
+
+  const hostNodeModules = path.join(process.cwd(), "node_modules")
+  const hostNextBin = path.join(hostNodeModules, "next", "dist", "bin", "next")
+  if (!(await pathExists(hostNextBin))) {
+    return false
+  }
+
+  try {
+    await fs.symlink(hostNodeModules, workspaceNodeModules, "dir")
+    return await hasUsableInstall(workspacePath)
+  } catch {
+    return false
+  }
+}
+
 async function resolvePackageManager(workspacePath: string) {
   const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm"
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
@@ -453,6 +473,10 @@ async function startProject(projectId: string) {
   const startupLogPath = path.join(workspacePath, ".mornstack-preview.log")
   const packageManager = await resolvePackageManager(workspacePath)
   logs.push(`package manager: ${packageManager.kind}`)
+  const reusedHostModules = await ensureSharedNodeModules(workspacePath)
+  if (reusedHostModules) {
+    logs.push("preview runtime: reusing host node_modules")
+  }
 
   await updateProject(projectId, (p) => ({
     ...p,
@@ -508,7 +532,9 @@ async function startProject(projectId: string) {
 
     await unlinkIfExists(path.join(workspacePath, ".next", "dev", "lock"))
     await removePathIfExists(startupLogPath)
-    const nextBin = path.join(workspacePath, "node_modules", "next", "dist", "bin", "next")
+    const workspaceNextBin = path.join(workspacePath, "node_modules", "next", "dist", "bin", "next")
+    const hostNextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next")
+    const nextBin = (await pathExists(workspaceNextBin)) ? workspaceNextBin : hostNextBin
     const mode: "dev" = "dev"
     let child: ChildProcess | null = null
     let ready = false
