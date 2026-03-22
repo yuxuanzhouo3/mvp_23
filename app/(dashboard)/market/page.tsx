@@ -40,13 +40,13 @@ export default function MarketPage() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild className="shadow-[0_16px_36px_rgba(58,48,35,0.12)]">
-                <Link href="/checkout?plan=pro">
+                <a href={siteLinks.checkoutEntry}>
                   查看开通方案
                   <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                </a>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/login?redirect=/checkout?plan=pro">账号登录</Link>
+                <a href={siteLinks.loginEntry}>账号登录</a>
               </Button>
             </div>
             <div className="mt-8 grid gap-3 md:grid-cols-3">
@@ -161,14 +161,14 @@ export default function MarketPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-muted-foreground">
-            <Link href="/login?redirect=/checkout?plan=pro" className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
+            <a href={siteLinks.loginEntry} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
               <div className="font-medium text-foreground">国内：微信登录</div>
               <div className="mt-1">适用于中国区账号接入与快速登录体验。</div>
-            </Link>
-            <Link href="/login?redirect=/checkout?plan=pro" className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
+            </a>
+            <a href={siteLinks.loginEntry} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
               <div className="font-medium text-foreground">海外：Google / Facebook</div>
               <div className="mt-1">适用于国际用户的常见社交账号接入方式。</div>
-            </Link>
+            </a>
           </CardContent>
         </Card>
 

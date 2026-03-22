@@ -35,13 +35,13 @@ export default function IntlWebsitePage() {
             admin backend, market backend, docs, and mobile download flow into one consistent demo surface.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/market" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm text-white">
+            <a href={siteLinks.marketCenter} className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm text-white">
               Open market center
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/admin" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm">
+            </a>
+            <a href={siteLinks.adminConsole} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm">
               Open admin console
-            </Link>
+            </a>
             <a href={siteLinks.docs} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm">
               View docs
             </a>

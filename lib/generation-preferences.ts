@@ -18,6 +18,24 @@ export type GenerationPreferences = {
 const STORAGE_KEY = "mornfullstack-generation-preferences"
 const EVENT_NAME = "mornfullstack:generation-preferences"
 
+export function getRegionFromHostname(hostname?: string | null): GenerationRegion {
+  const normalized = String(hostname ?? "").trim().toLowerCase()
+  if (!normalized) return "intl"
+  if (
+    normalized === "mornstack.mornscience.top" ||
+    normalized.endsWith(".mornscience.top")
+  ) {
+    return "cn"
+  }
+  return "intl"
+}
+
+export function getCurrentDomainRegion(fallbackRegion: GenerationRegion = "intl"): GenerationRegion {
+  if (typeof window === "undefined") return fallbackRegion
+  const detected = getRegionFromHostname(window.location.hostname)
+  return detected || fallbackRegion
+}
+
 export function getDefaultGenerationPreferences(region: GenerationRegion): GenerationPreferences {
   return {
     region,
@@ -27,18 +45,25 @@ export function getDefaultGenerationPreferences(region: GenerationRegion): Gener
 }
 
 export function loadGenerationPreferences(fallbackRegion: GenerationRegion): GenerationPreferences {
-  const fallback = getDefaultGenerationPreferences(fallbackRegion)
+  const lockedRegion = getCurrentDomainRegion(fallbackRegion)
+  const fallback = getDefaultGenerationPreferences(lockedRegion)
   if (typeof window === "undefined") return fallback
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) return fallback
     const parsed = JSON.parse(raw) as Partial<GenerationPreferences>
-    const region = parsed.region === "cn" || parsed.region === "intl" ? parsed.region : fallback.region
+    const parsedRegion = parsed.region === "cn" || parsed.region === "intl" ? parsed.region : lockedRegion
+    const region = lockedRegion
+    const useStoredTargets = parsedRegion === lockedRegion
     return {
       region,
-      deploymentTarget: (parsed.deploymentTarget as DeploymentTarget | undefined) ?? getDefaultDeploymentTarget(region),
-      databaseTarget: (parsed.databaseTarget as DatabaseTarget | undefined) ?? getDefaultDatabaseTarget(region),
+      deploymentTarget: useStoredTargets
+        ? (parsed.deploymentTarget as DeploymentTarget | undefined) ?? getDefaultDeploymentTarget(region)
+        : getDefaultDeploymentTarget(region),
+      databaseTarget: useStoredTargets
+        ? (parsed.databaseTarget as DatabaseTarget | undefined) ?? getDefaultDatabaseTarget(region)
+        : getDefaultDatabaseTarget(region),
     }
   } catch {
     return fallback

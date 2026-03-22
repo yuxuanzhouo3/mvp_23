@@ -13,13 +13,13 @@ export default function ChinaWebsitePage() {
             面向国内老板、客户与合作伙伴的产品展示入口。这里可以集中展示官网介绍、文档、移动端下载，以及进入后台和销售后台的演示链路。
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/market" className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm text-white">
+            <a href={siteLinks.marketCenter} className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-3 text-sm text-white">
               打开销售后台
               <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/admin" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm">
+            </a>
+            <a href={siteLinks.adminConsole} className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-3 text-sm">
               打开管理后台
-            </Link>
+            </a>
           </div>
         </section>
 

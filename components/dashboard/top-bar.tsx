@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLocale } from "@/lib/i18n"
+import { siteLinks } from "@/lib/site-links"
 
 const helpLinks = [
   { labelKey: "apiDocs" as const, href: "/api-docs", icon: FileText },
@@ -96,10 +97,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         </Button>
 
         <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" asChild>
-          <Link href="/checkout" className="inline-flex items-center gap-1.5">
+          <a href={siteLinks.checkoutEntry} className="inline-flex items-center gap-1.5">
             <CreditCard className="h-3.5 w-3.5" />
             Checkout
-          </Link>
+          </a>
         </Button>
 
         <Button
@@ -185,10 +186,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
               </div>
             ) : (
               <DropdownMenuItem asChild>
-                <Link href="/login" className="flex items-center gap-2 text-sm cursor-pointer">
+                <a href={siteLinks.loginEntry} className="flex items-center gap-2 text-sm cursor-pointer">
                   <Settings className="h-4 w-4" />
                   {locale === "zh" ? "登录" : "Sign in"}
-                </Link>
+                </a>
               </DropdownMenuItem>
             )}
             <DropdownMenuItem asChild>

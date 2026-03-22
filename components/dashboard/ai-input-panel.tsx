@@ -14,7 +14,7 @@ import {
   DEPLOYMENT_OPTIONS,
 } from "@/lib/fullstack-targets"
 import {
-  getDefaultGenerationPreferences,
+  getCurrentDomainRegion,
   loadGenerationPreferences,
   saveGenerationPreferences,
   subscribeGenerationPreferences,
@@ -157,6 +157,10 @@ export function AiInputPanel() {
   const accessiblePlans = getAccessiblePlanTiers(planTier)
   const deploymentOptions = DEPLOYMENT_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region))
   const databaseOptions = DATABASE_OPTIONS.filter((item) => item.defaultRegions.length === 0 || item.defaultRegions.includes(generationPreferences.region))
+  const editionLabel =
+    generationPreferences.region === "cn"
+      ? (locale === "zh" ? "国内版入口" : "China entry")
+      : (locale === "zh" ? "国际版入口" : "International entry")
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -216,19 +220,9 @@ export function AiInputPanel() {
               ? `你当前最高可用：${PLAN_CATALOG[planTier].nameCn}`
               : `Highest available: ${PLAN_CATALOG[planTier].nameEn}`}
           </span>
+          <Badge variant="secondary">{editionLabel}</Badge>
         </div>
-        <div className="grid gap-2 md:grid-cols-3">
-          <select
-            value={generationPreferences.region}
-            onChange={(e) => {
-              const nextRegion = e.target.value as "cn" | "intl"
-              saveGenerationPreferences(getDefaultGenerationPreferences(nextRegion))
-            }}
-            className="h-9 rounded-md border border-border bg-secondary px-3 text-xs text-foreground"
-          >
-            <option value="intl">{locale === "zh" ? "国际版" : "International"}</option>
-            <option value="cn">{locale === "zh" ? "国内版" : "China"}</option>
-          </select>
+        <div className="grid gap-2 md:grid-cols-2">
           <select
             value={generationPreferences.deploymentTarget}
             onChange={(e) =>
@@ -298,8 +292,8 @@ export function AiInputPanel() {
       </div>
       <div className="mt-2 text-xs text-muted-foreground">
         {locale === "zh"
-          ? `默认按 ${generationPreferences.region === "cn" ? "国内" : "国际"} 全栈标准生成，部署环境与数据库可单独切换。`
-          : `The generated full-stack app follows the ${generationPreferences.region === "cn" ? "China" : "international"} baseline by default, while deployment and database targets remain selectable.`}
+          ? `当前会根据访问链接自动锁定为${generationPreferences.region === "cn" ? "国内版" : "国际版"}，这里只保留部署环境与数据库切换。`
+          : `The active link now locks this workspace to the ${generationPreferences.region === "cn" ? "China" : "international"} edition, while deployment and database targets remain selectable.`}
       </div>
       {statusText ? <div className="mt-2 text-xs text-muted-foreground">{statusText}</div> : null}
     </section>

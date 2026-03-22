@@ -12,10 +12,10 @@ const stablePromoLinks = [
 ]
 
 const demoLinks = [
-  { label: "Admin", href: "/admin", icon: ShieldCheck, note: "生成宣传内容、整理链接资产、输出网页化演示材料" },
-  { label: "Market", href: "/market", icon: Megaphone, note: "集中展示官网、文档、下载、登录与开通入口" },
-  { label: "登录入口", href: "/login?redirect=/checkout?plan=pro", icon: LockKeyhole, note: "演示国内外账号入口与账号流程" },
-  { label: "开通入口", href: "/checkout?plan=pro", icon: CreditCard, note: "演示套餐选择与支付链路入口" },
+  { label: "Admin", href: siteLinks.adminConsole, icon: ShieldCheck, note: "生成宣传内容、整理链接资产、输出网页化演示材料" },
+  { label: "Market", href: siteLinks.marketCenter, icon: Megaphone, note: "集中展示官网、文档、下载、登录与开通入口" },
+  { label: "登录入口", href: siteLinks.loginEntry, icon: LockKeyhole, note: "演示国内外账号入口与账号流程" },
+  { label: "开通入口", href: siteLinks.checkoutEntry, icon: CreditCard, note: "演示套餐选择与支付链路入口" },
 ]
 
 const publicSurfaceLinks = [
@@ -39,13 +39,13 @@ export default function BossDemoPage() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild className="shadow-[0_16px_36px_rgba(58,48,35,0.12)]">
-                <Link href="/market">
+                <a href={siteLinks.marketCenter}>
                   先看 Market
                   <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+                </a>
               </Button>
               <Button variant="outline" asChild>
-                <Link href="/admin">打开 Admin</Link>
+                <a href={siteLinks.adminConsole}>打开 Admin</a>
               </Button>
               <Button variant="outline" asChild>
                 <a href={siteLinks.bossDemo} target="_blank" rel="noreferrer">
@@ -61,9 +61,9 @@ export default function BossDemoPage() {
               推荐浏览顺序
             </div>
             <div className="mt-5 space-y-3 text-sm">
-              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">1. 先看 `/market`，快速理解官网、文档、下载与开通路径</div>
-              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">2. 再看 `/login` 和 `/checkout`，展示账号与开通链路</div>
-              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">3. 在 `/admin` 生成宣传文件夹，随后直接查看网页化宣传页</div>
+              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">1. 先看当前域名下的 Market，快速理解官网、文档、下载与开通路径</div>
+              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">2. 再看当前域名下的登录和支付入口，展示账号与开通链路</div>
+              <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">3. 在当前域名下的 Admin 生成宣传文件夹，随后直接查看网页化宣传页</div>
               <div className="rounded-2xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,246,239,0.78))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_22px_rgba(104,88,63,0.06)]">4. 打开视频分镜页和 PPT 演示页，直接讲产品故事和方案价值</div>
             </div>
           </div>

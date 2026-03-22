@@ -14,7 +14,7 @@ import {
   DEPLOYMENT_OPTIONS,
 } from "@/lib/fullstack-targets"
 import {
-  getDefaultGenerationPreferences,
+  getCurrentDomainRegion,
   loadGenerationPreferences,
   saveGenerationPreferences,
   subscribeGenerationPreferences,
@@ -32,6 +32,10 @@ export function QuickActions() {
   const [statusText, setStatusText] = useState("")
   const { t, locale } = useLocale()
   const router = useRouter()
+  const editionLabel =
+    generationPreferences.region === "cn"
+      ? (locale === "zh" ? "国内版入口" : "China entry")
+      : (locale === "zh" ? "国际版入口" : "International entry")
 
   useEffect(() => {
     const fallbackRegion = locale === "zh" ? "cn" : "intl"
@@ -113,28 +117,16 @@ export function QuickActions() {
             </div>
             <div>
               <p className="text-sm font-medium text-card-foreground">{t("customGeneration")}</p>
-              <p className="text-xs text-muted-foreground">{t("customGenerationDesc")}</p>
+              <p className="text-xs text-muted-foreground">{t("customGenerationDesc")} · {editionLabel}</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.35fr)_96px_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <Input
               placeholder={t("generatePlaceholder")}
               value={promptValue}
               onChange={(e) => setPromptValue(e.target.value)}
               className="h-8 min-w-0 text-xs bg-secondary border-border text-foreground placeholder:text-muted-foreground md:col-span-2 2xl:col-span-1"
             />
-
-            <select
-              value={generationPreferences.region}
-              onChange={(e) => {
-                const nextRegion = e.target.value as "cn" | "intl"
-                saveGenerationPreferences(getDefaultGenerationPreferences(nextRegion))
-              }}
-              className="h-8 min-w-0 rounded-md border border-border bg-secondary px-2 text-xs text-foreground"
-            >
-              <option value="intl">{locale === "zh" ? "国际版" : "INTL"}</option>
-              <option value="cn">{locale === "zh" ? "国内版" : "CN"}</option>
-            </select>
             <select
               value={generationPreferences.deploymentTarget}
               onChange={(e) =>
@@ -176,6 +168,11 @@ export function QuickActions() {
             >
               {isLoading ? "生成中..." : t("generate")}
             </Button>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {locale === "zh"
+              ? `当前会根据访问域名自动使用${generationPreferences.region === "cn" ? "国内版" : "国际版"}生成链路。`
+              : `This generation card now follows the ${generationPreferences.region === "cn" ? "China" : "international"} flow based on the current domain.`}
           </div>
           {statusText ? <div className="text-xs text-muted-foreground">{statusText}</div> : null}
         </div>
