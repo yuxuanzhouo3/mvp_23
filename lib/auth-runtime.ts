@@ -52,8 +52,8 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     wechatConfigured,
     intlEmailPasswordEnabled: intlMode === "password" || supabaseConfigured,
     cnEmailPasswordEnabled: true,
-    googleEnabled: googleEnabled && googleConfigured,
-    facebookEnabled: facebookEnabled && facebookConfigured,
+    googleEnabled,
+    facebookEnabled,
     googleConfigured,
     facebookConfigured,
   }
