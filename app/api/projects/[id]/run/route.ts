@@ -197,6 +197,28 @@ async function resolvePackageManager(workspacePath: string) {
   return { cmd: npmCmd, kind: "npm" as const }
 }
 
+async function resolveNextCliArgs(workspacePath: string, port: number) {
+  const packageJsonPath = path.join(workspacePath, "package.json")
+  try {
+    const raw = await fs.readFile(packageJsonPath, "utf8")
+    const pkg = JSON.parse(raw) as {
+      dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+    const nextVersion =
+      pkg.dependencies?.next ||
+      pkg.devDependencies?.next ||
+      ""
+    const major = Number(String(nextVersion).replace(/^[^\d]*/, "").split(".")[0] || "0")
+    if (major >= 16) {
+      return ["dev", "--webpack", "-p", String(port)]
+    }
+  } catch {
+    // noop
+  }
+  return ["dev", "-p", String(port)]
+}
+
 async function installWorkspaceDependencies(packageManager: { cmd: string; kind: "pnpm" | "npm" }, workspacePath: string) {
   const attempts: Array<{ ok: boolean; output: string; label: string }> = []
   const tempHome = path.join(os.tmpdir(), "mornstack-runner")
@@ -558,8 +580,9 @@ async function startProject(projectId: string) {
         await removePathIfExists(startupLogPath)
       }
 
+      const nextArgs = await resolveNextCliArgs(workspacePath, port)
       const startupLogHandle = await fs.open(startupLogPath, "a")
-      child = spawn(process.execPath, [nextBin, "dev", "--webpack", "-p", String(port)], {
+      child = spawn(process.execPath, [nextBin, ...nextArgs], {
         cwd: workspacePath,
         detached: true,
         stdio: ["ignore", startupLogHandle.fd, startupLogHandle.fd],
