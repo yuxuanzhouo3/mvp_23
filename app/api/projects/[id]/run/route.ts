@@ -185,8 +185,8 @@ async function installWorkspaceDependencies(packageManager: { cmd: string; kind:
   await fs.mkdir(path.join(tempHome, ".pnpm"), { recursive: true })
   const installArgs =
     packageManager.kind === "pnpm"
-      ? ["install", "--no-frozen-lockfile", "--prefer-offline"]
-      : ["install", "--no-audit", "--no-fund"]
+      ? ["install", "--no-frozen-lockfile", "--prefer-offline", "--config.optional=false"]
+      : ["install", "--no-audit", "--no-fund", "--omit=optional"]
 
   const first = await runCommand(packageManager.cmd, installArgs, workspacePath)
   attempts.push({ ...first, label: "initial install" })
@@ -208,7 +208,7 @@ async function installWorkspaceDependencies(packageManager: { cmd: string; kind:
 
   const secondArgs =
     packageManager.kind === "pnpm"
-      ? ["install", "--no-frozen-lockfile", "--prefer-offline", "--force"]
+      ? ["install", "--no-frozen-lockfile", "--prefer-offline", "--force", "--config.optional=false"]
       : [...installArgs, "--prefer-offline"]
   const second = await runCommand(packageManager.cmd, secondArgs, workspacePath)
   attempts.push({ ...second, label: "clean retry" })
@@ -224,7 +224,7 @@ async function installWorkspaceDependencies(packageManager: { cmd: string; kind:
     await removePathIfExists(path.join(workspacePath, "node_modules"))
     const thirdArgs =
       packageManager.kind === "pnpm"
-        ? ["install", "--no-frozen-lockfile", "--prefer-offline", "--force"]
+        ? ["install", "--no-frozen-lockfile", "--prefer-offline", "--force", "--config.optional=false"]
         : [...installArgs, "--prefer-offline", "--force"]
     const third = await runCommand(packageManager.cmd, thirdArgs, workspacePath)
     attempts.push({ ...third, label: "network recovery retry" })
