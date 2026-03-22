@@ -31,6 +31,14 @@ async function removePathIfExists(targetPath: string) {
   }
 }
 
+async function unlinkIfExists(filePath: string) {
+  try {
+    await fs.unlink(filePath)
+  } catch {
+    // noop
+  }
+}
+
 async function runCommand(
   cmd: string,
   args: string[],
@@ -226,34 +234,29 @@ function withinStartupGrace(lastStartedAt?: string, graceMs = 25_000) {
 }
 
 async function ensureIframeHeaders(workspacePath: string) {
-  const configPath = path.join(workspacePath, "next.config.ts")
-  if (!(await pathExists(configPath))) {
+  const candidates = [
+    path.join(workspacePath, "next.config.ts"),
+    path.join(workspacePath, "next.config.js"),
+    path.join(workspacePath, "next.config.mjs"),
+  ]
+
+  for (const configPath of candidates) {
+    if (!(await pathExists(configPath))) {
+      continue
+    }
+    const raw = await fs.readFile(configPath, "utf8")
+    let next = raw
+    if (!next.includes("frame-ancestors") || !next.includes("X-Frame-Options")) {
+      next = configPath.endsWith(".ts")
+        ? `import type { NextConfig } from "next";\nconst nextConfig: NextConfig = {\n  async headers() {\n    return [\n      {\n        source: "/(.*)",\n        headers: [\n          { key: "X-Frame-Options", value: "ALLOWALL" },\n          {\n            key: "Content-Security-Policy",\n            value: "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000",\n          },\n        ],\n      },\n    ];\n  },\n};\nexport default nextConfig;\n`
+        : `const nextConfig = {\n  async headers() {\n    return [\n      {\n        source: "/(.*)",\n        headers: [\n          { key: "X-Frame-Options", value: "ALLOWALL" },\n          {\n            key: "Content-Security-Policy",\n            value: "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000",\n          },\n        ],\n      },\n    ];\n  },\n};\nexport default nextConfig;\n`
+    }
+    next = next.replace(/\s*swcMinify\s*:\s*true,?\n?/g, "\n")
+    if (next !== raw) {
+      await fs.writeFile(configPath, next, "utf8")
+    }
     return
   }
-  const raw = await fs.readFile(configPath, "utf8")
-  if (raw.includes("frame-ancestors") && raw.includes("X-Frame-Options")) {
-    return
-  }
-  const merged = `import type { NextConfig } from "next";
-const nextConfig: NextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "ALLOWALL" },
-          {
-            key: "Content-Security-Policy",
-            value: "frame-ancestors 'self' http://localhost:3000 http://127.0.0.1:3000",
-          },
-        ],
-      },
-    ];
-  },
-};
-export default nextConfig;
-`
-  await fs.writeFile(configPath, merged, "utf8")
 }
 
 async function repairLegacyPrismaImport(workspacePath: string) {
@@ -429,7 +432,7 @@ async function startProject(projectId: string) {
     return NextResponse.json({ error: "Workspace path not found", projectId }, { status: 404 })
   }
 
-  const port = await choosePort(projectId)
+  let port = await choosePort(projectId)
   const logs: string[] = []
   const startupLogPath = path.join(workspacePath, ".mornstack-preview.log")
   const packageManager = await resolvePackageManager(workspacePath)
@@ -487,28 +490,66 @@ async function startProject(projectId: string) {
       }
     }
 
+    await unlinkIfExists(path.join(workspacePath, ".next", "dev", "lock"))
     await removePathIfExists(startupLogPath)
     const nextBin = path.join(workspacePath, "node_modules", "next", "dist", "bin", "next")
     const mode: "dev" = "dev"
-    const startupLogHandle = await fs.open(startupLogPath, "a")
-    const child: ChildProcess = spawn(process.execPath, [nextBin, "dev", "--webpack", "-p", String(port)], {
-      cwd: workspacePath,
-      detached: true,
-      stdio: ["ignore", startupLogHandle.fd, startupLogHandle.fd],
-      windowsHide: true,
-      creationFlags: process.platform === "win32" ? 0x08000000 : 0,
-      env: {
-        ...process.env,
-        NODE_ENV: "development",
-      },
-    } as any)
-    child.unref()
-    await startupLogHandle.close()
+    let child: ChildProcess | null = null
+    let ready = false
 
-    const ready = await waitForPort(port, 45_000)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0) {
+        port = await choosePort(projectId)
+        await updateProject(projectId, (p) => ({
+          ...p,
+          runtime: {
+            ...(p.runtime ?? { port, url: `http://localhost:${port}` }),
+            status: "starting",
+            port,
+            url: `http://localhost:${port}`,
+            lastStartedAt: new Date().toISOString(),
+            lastError: undefined,
+          },
+        }))
+        await unlinkIfExists(path.join(workspacePath, ".next", "dev", "lock"))
+        await removePathIfExists(startupLogPath)
+      }
+
+      const startupLogHandle = await fs.open(startupLogPath, "a")
+      child = spawn(process.execPath, [nextBin, "dev", "--webpack", "-p", String(port)], {
+        cwd: workspacePath,
+        detached: true,
+        stdio: ["ignore", startupLogHandle.fd, startupLogHandle.fd],
+        windowsHide: true,
+        creationFlags: process.platform === "win32" ? 0x08000000 : 0,
+        env: {
+          ...process.env,
+          NODE_ENV: "development",
+        },
+      } as any)
+      child.unref()
+      await startupLogHandle.close()
+
+      ready = await waitForPort(port, 45_000)
+      if (ready) break
+
+      const startupDetails = await readTail(startupLogPath)
+      if (/EADDRINUSE|Unable to acquire lock|another instance of next dev running/i.test(startupDetails)) {
+        logs.push(`preview auto-retry: recovered from startup conflict on attempt ${attempt + 1}`)
+        try {
+          child.kill()
+        } catch {
+          // noop
+        }
+        child = null
+        continue
+      }
+      break
+    }
+
     if (!ready) {
       try {
-        child.kill()
+        child?.kill()
       } catch {
         // noop
       }
@@ -536,7 +577,7 @@ async function startProject(projectId: string) {
       )
     }
 
-    const runtimePid = process.platform === "win32" ? undefined : child.pid
+    const runtimePid = process.platform === "win32" ? undefined : child?.pid
     await updateProject(projectId, (p) => ({
       ...p,
       updatedAt: new Date().toISOString(),

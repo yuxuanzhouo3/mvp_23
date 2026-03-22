@@ -3833,8 +3833,8 @@ function renderDashboardPage(spec: AppSpec) {
     const isCn = spec.region === "cn"
     const brand = spec.title
     const sidebar = isCn
-      ? ["总览", "项目", "运行", "模板", "团队", "支付", "安全", "Agents", "自动化", "日志", "API", "设置"]
-      : ["Overview", "Projects", "Runs", "Templates", "Team", "Billing", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
+      ? ["总览", "项目", "运行", "模板", "团队", "安全", "Agents", "自动化", "日志", "API", "设置"]
+      : ["Overview", "Projects", "Runs", "Templates", "Team", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
     return `// @ts-nocheck
 import Link from "next/link";
 
@@ -3862,12 +3862,12 @@ export default function DashboardPage() {
     isCn
       ? [
           { title: "morncursor 主编辑器", note: "文件树、编辑器、终端、右侧 AI 面板", href: "/editor" },
-          { title: "老板演示链路", note: "demo、宣传文件夹、视频页、PPT 页", href: "/runs" },
+          { title: "运行与演示链路", note: "预览、构建日志、宣传文件夹、视频页、PPT 页", href: "/runs" },
           { title: "模板验收轨道", note: "官网、销售后台、数据平台、社区反馈", href: "/templates" },
         ]
       : [
           { title: "morncursor editor", note: "file tree, editor, terminal, and AI side panel", href: "/editor" },
-          { title: "Stakeholder demo chain", note: "demo, promo bundle, storyboard, and PPT pages", href: "/runs" },
+          { title: "Runtime and demo chain", note: "preview, build logs, promo bundle, storyboard, and PPT pages", href: "/runs" },
           { title: "Acceptance rails", note: "website, sales admin, data platform, and community", href: "/templates" },
         ],
     null,
@@ -3878,12 +3878,12 @@ export default function DashboardPage() {
       ? [
           { title: "AI 完成 IDE 主壳增强", meta: "editor 页面  ·  6 分钟前" },
           { title: "宣传文件夹 latest 输出已刷新", meta: "admin 资产  ·  12 分钟前" },
-          { title: "登录支付演示链路状态正常", meta: "market / checkout  ·  19 分钟前" },
+          { title: "登录与工作区访问链路状态正常", meta: "auth / workspace  ·  19 分钟前" },
         ]
       : [
           { title: "AI completed the IDE shell pass", meta: "editor page  ·  6 min ago" },
           { title: "Latest promo bundle refreshed", meta: "admin assets  ·  12 min ago" },
-          { title: "Auth and billing demo flow healthy", meta: "market / checkout  ·  19 min ago" },
+          { title: "Auth and workspace access flow healthy", meta: "auth / workspace  ·  19 min ago" },
         ],
     null,
     2
@@ -3989,8 +3989,8 @@ export default function DashboardPage() {
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "产品权限" : "Product access"}</div>
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                     {[
-                      { label: isCn ? "登录入口" : "Login entry", href: "/login?redirect=/checkout?plan=pro" },
-                      { label: isCn ? "支付链路" : "Billing flow", href: "/checkout?plan=pro" },
+                    { label: isCn ? "登录入口" : "Login entry", href: "/login?redirect=/editor" },
+                      { label: isCn ? "访问控制" : "Access control", href: "/editor" },
                       { label: isCn ? "模板升级" : "Template upgrade", href: "/pricing" },
                     ].map((item, index) => (
                       <Link key={item.label} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, display: "block" }}>
@@ -4191,7 +4191,7 @@ export default function EditorPage() {
       body: ${JSON.stringify(`export default function RunsPage() {
   return (
     <RuntimeBoard
-      pipelines={["generate", "build", "deploy", "payment"]}
+      pipelines={["generate", "build", "preview", "deploy"]}
       logs
       statusCards
     />
@@ -4230,13 +4230,13 @@ export default function EditorPage() {
     ? [
         { label: "> 搜索文件", desc: "按名称、路径、模块快速定位文件", action: "files" },
         { label: "> 搜索符号", desc: "定位组件、函数、接口与运行节点", action: "symbols" },
-        { label: "> 新建运行任务", desc: "触发生成、构建、部署与支付演示链路", action: "runs" },
+        { label: "> 新建运行任务", desc: "触发生成、构建、部署与预览链路", action: "runs" },
         { label: "> 打开模板库", desc: "在官网、销售后台、API 平台、社区之间切换", action: "templates" },
       ]
     : [
         { label: "> Search files", desc: "Jump by file name, path, and module", action: "files" },
         { label: "> Search symbols", desc: "Locate components, functions, interfaces, and runtime nodes", action: "symbols" },
-        { label: "> New run task", desc: "Trigger generation, build, deploy, and billing demo flows", action: "runs" },
+        { label: "> New run task", desc: "Trigger generation, build, deploy, and preview flows", action: "runs" },
         { label: "> Open templates", desc: "Switch across website, sales admin, API, and community tracks", action: "templates" },
       ];
   const runCards = ${JSON.stringify(
@@ -4591,12 +4591,12 @@ export default function RunsPage() {
       ? [
           { label: "代码生成", value: "queued -> running -> done" },
           { label: "构建验证", value: "lint / type / preview" },
-          { label: "支付演示", value: "login -> checkout -> callback" },
+          { label: "访问链路", value: "login -> workspace -> preview" },
         ]
       : [
           { label: "Code generation", value: "queued -> running -> done" },
           { label: "Build validation", value: "lint / type / preview" },
-          { label: "Billing demo", value: "login -> checkout -> callback" },
+          { label: "Access flow", value: "login -> workspace -> preview" },
         ],
     null,
     2
@@ -4641,7 +4641,7 @@ export default function RunsPage() {
           <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, marginBottom: 18 }}>
             <div style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 32%), #1b1827", padding: 22 }}>
               <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "运行叙事" : "Runtime narrative"}</div>
-              <h2 style={{ margin: "10px 0 8px", fontSize: 24, fontWeight: 900 }}>{isCn ? "把生成、构建、部署、支付链路都放进同一运维视角里" : "Keep generation, build, deploy, and billing inside one runtime view"}</h2>
+              <h2 style={{ margin: "10px 0 8px", fontSize: 24, fontWeight: 900 }}>{isCn ? "把生成、构建、预览、部署链路都放进同一运维视角里" : "Keep generation, build, preview, and deploy inside one runtime view"}</h2>
               <p style={{ margin: 0, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
                 {isCn ? "这一页要让老板看到项目不是只有静态页面，而是包含运行状态、构建日志、环境轨道和交付反馈。" : "This page should show that the product includes execution health, build logs, environment rails, and delivery feedback."}
               </p>
@@ -4701,8 +4701,8 @@ export default function RunsPage() {
                   "$ pnpm build",
                   "route: /api/generate  -> ok",
                   "preview: /demo  -> ready",
-                  "checkout: login -> hosted -> success",
-                  isCn ? "next-step: 接真实 webhook 回调" : "next-step: connect real webhook callbacks",
+                  "preview: auth -> workspace -> ready",
+                  isCn ? "next-step: 继续补强运行守卫与错误恢复" : "next-step: harden runtime guards and recovery",
                 ].join("\\n")}
               </div>
             </div>
@@ -4712,7 +4712,7 @@ export default function RunsPage() {
                 {[
                   isCn ? "1. 进入 /demo 查看老板入口" : "1. Open /demo",
                   isCn ? "2. 打开 latest 宣传文件夹页" : "2. Open latest promo bundle pages",
-                  isCn ? "3. 进入 /login 与 /checkout 演示升级链路" : "3. Walk through /login and /checkout",
+                  isCn ? "3. 进入 /login 与工作区预览验证访问链路" : "3. Walk through /login and workspace preview",
                 ].map((item, index) => (
                   <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12 }}>
                     {item}
@@ -4937,7 +4937,7 @@ export default function PricingPage() {
             <div style={{ display: "grid", gap: 10 }}>
               {[
                 isCn ? "Free: 核心编辑器 + 少量模板 + 基础 AI" : "Free: core editor + fewer templates + basic AI",
-                isCn ? "Pro: 运行面板 + 全模板库 + 登录支付演示链路" : "Pro: runs + full template library + auth/billing demo flow",
+                isCn ? "Pro: 运行面板 + 全模板库 + 登录与工作区访问链路" : "Pro: runs + full template library + auth and workspace access flow",
                 isCn ? "Elite: 五类验收项目 + 汇报层 + admin/market 联动" : "Elite: five acceptance tracks + reporting + admin/market linkage",
               ].map((item, index) => (
                 <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 1 ? "rgba(124,58,237,0.18)" : "#1b1c24", border: "1px solid rgba(255,255,255,0.07)", color: index === 1 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 13 }}>
