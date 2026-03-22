@@ -38,10 +38,9 @@ export function QuickActions() {
       : (locale === "zh" ? "国际版入口" : "International entry")
 
   useEffect(() => {
-    const fallbackRegion = locale === "zh" ? "cn" : "intl"
-    setGenerationPreferences(loadGenerationPreferences(fallbackRegion))
+    setGenerationPreferences(loadGenerationPreferences(getCurrentDomainRegion()))
     return subscribeGenerationPreferences((next) => setGenerationPreferences(next))
-  }, [locale])
+  }, [])
 
   async function handleGenerate() {
     const prompt = promptValue.trim()

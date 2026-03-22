@@ -84,10 +84,9 @@ export function AiInputPanel() {
   }, [loadedTemplateId, locale, searchParams])
 
   useEffect(() => {
-    const fallbackRegion = locale === "zh" ? "cn" : "intl"
-    setGenerationPreferences(loadGenerationPreferences(fallbackRegion))
+    setGenerationPreferences(loadGenerationPreferences(getCurrentDomainRegion()))
     return subscribeGenerationPreferences((next) => setGenerationPreferences(next))
-  }, [locale])
+  }, [])
 
   useEffect(() => {
     const promptFromUrl = String(searchParams.get("prompt") ?? "").trim()

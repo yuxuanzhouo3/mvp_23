@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useLocale } from "@/lib/i18n"
 import { PAID_PLAN_IDS, PLAN_CATALOG, getPlanPriceLabel, type BillingCycle, type PlanTier } from "@/lib/plan-catalog"
+import { getCurrentDomainRegion } from "@/lib/generation-preferences"
 import { getRegionFromHostname } from "@/lib/region-routing"
 
 type Region = "cn" | "intl"
@@ -31,7 +32,7 @@ function CheckoutPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { locale } = useLocale()
-  const [region, setRegion] = useState<Region>(locale === "zh" ? "cn" : "intl")
+  const [region, setRegion] = useState<Region>(getCurrentDomainRegion())
   const isCn = region === "cn"
   const [planId, setPlanId] = useState<PlanTier>((searchParams.get("plan") as PlanTier) || "pro")
   const [cycle, setCycle] = useState<BillingCycle>("yearly")

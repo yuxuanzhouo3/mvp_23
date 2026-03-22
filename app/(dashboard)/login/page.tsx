@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useLocale } from "@/lib/i18n"
+import { getCurrentDomainRegion } from "@/lib/generation-preferences"
 import { getRegionFromHostname } from "@/lib/region-routing"
 
 type SessionResp = {
@@ -35,7 +36,7 @@ function LoginPageContent() {
   const provider = searchParams.get("provider") || ""
   const oauthState = searchParams.get("oauth") || ""
   const oauthError = searchParams.get("error") || ""
-  const [region, setRegion] = useState<"cn" | "intl">(locale === "zh" ? "cn" : "intl")
+  const [region, setRegion] = useState<"cn" | "intl">(getCurrentDomainRegion())
   const isCn = region === "cn"
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")

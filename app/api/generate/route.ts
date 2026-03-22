@@ -252,6 +252,9 @@ async function callGeneratorModel(
     "- When generating dashboards, editors, admin panels, CRM, or platforms, include the operational flows those products need in order to feel usable.",
     "- Include settings, share/distribution, permissions, or publish surfaces when they are naturally expected for the product type.",
     "- Treat auth, billing, data mutation, visibility, and delivery controls as product capabilities, not optional polish.",
+    "- Search bars, editors, command inputs, tabs, and action buttons must do something observable in the UI instead of acting as dead placeholders.",
+    "- For code platforms or IDE-like products, include real file navigation, tab switching, editable code surfaces, runtime status, logs, and command or global search behavior.",
+    "- For generated workspaces, include enough local state and API routes so demo flows can be exercised immediately after generation.",
     "- Keep admin and market as separate standalone surfaces rather than embedding them into the end-user workspace navigation.",
     "- Prefer modifying these files: app/page.tsx, app/layout.tsx, app/api/items/route.ts, prisma/schema.prisma, README.md.",
     "- Never return markdown, only JSON.",
@@ -279,6 +282,9 @@ async function callGeneratorModel(
     region === "cn"
       ? "如果是平台、后台、编辑器、CRM、数据面板，默认需要有设置、权限、分享、可见性、发布或交付控制之一。"
       : "For platforms, admin tools, editors, CRM, or data panels, include at least some combination of settings, permissions, sharing, visibility, publishing, or delivery controls.",
+    region === "cn"
+      ? "如果是代码平台或中国版 Cursor 类产品，必须体现：文件树、标签页、可编辑代码、命令/全局搜索、运行日志、模板入口、发布与交付状态。"
+      : "For code platforms or Cursor-like products, include: file tree, tabs, editable code, command/global search, runtime logs, template entry, and publish/delivery state.",
   ].join("\n\n")
 
   const messages = [
@@ -998,8 +1004,8 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
   const requiredOperationalFlows =
     kind === "code_platform"
       ? isCn
-        ? ["代码编辑", "运行预览", "模板切换", "分享/发布", "设置与权限"]
-        : ["code editing", "runtime preview", "template switching", "share/publish", "settings and permissions"]
+        ? ["代码编辑", "运行预览", "模板切换", "命令或全局搜索", "分享/发布", "设置与权限"]
+        : ["code editing", "runtime preview", "template switching", "command or global search", "share/publish", "settings and permissions"]
       : kind === "crm"
         ? isCn
           ? ["线索流转", "负责人分配", "权限设置", "分享与交付"]
@@ -1303,14 +1309,14 @@ export async function POST(req: Request) {
       getPlanRank(requestedPlanTier) <= getPlanRank(maxPlanTier)
         ? requestedPlanTier
         : maxPlanTier
+    const region = (body?.region === "cn" ? "cn" : "intl") as Region
     const prompt = template
-      ? `${rawPrompt}\n\nTemplate baseline:\n${templatePrompt || template.promptEn}\n\nKeep the generated result stylistically close to the selected template while fulfilling the user's request.\n\nGeneration tier: ${planTierForGeneration}.`
+      ? `${rawPrompt}\n\nTemplate baseline:\n${templatePrompt || (region === "cn" ? template.promptZh : template.promptEn)}\n\nKeep the generated result stylistically close to the selected template while fulfilling the user's request.\n\nGeneration tier: ${planTierForGeneration}.`
       : rawPrompt
     if (!prompt) {
       return NextResponse.json({ error: "prompt is required" }, { status: 400 })
     }
 
-    const region = (body?.region === "cn" ? "cn" : "intl") as Region
     const deploymentTarget = normalizeDeploymentTarget(String(body?.deploymentTarget ?? ""), region)
     const databaseTarget = normalizeDatabaseTarget(String(body?.databaseTarget ?? ""), region)
     const projectId = createProjectId()

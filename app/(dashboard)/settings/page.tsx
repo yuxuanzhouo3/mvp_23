@@ -21,10 +21,20 @@ type PaymentRecord = {
   createdAt: string
 }
 
+type SessionResp = {
+  authenticated?: boolean
+  user?: {
+    name?: string
+    email?: string
+    region?: "cn" | "intl"
+  }
+}
+
 export default function SettingsPage() {
   const { t, locale } = useLocale()
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loadingBilling, setLoadingBilling] = useState(true)
+  const [profile, setProfile] = useState({ name: "Developer", email: "dev@mornhub.app" })
 
   useEffect(() => {
     fetch("/api/payment/list")
@@ -32,6 +42,20 @@ export default function SettingsPage() {
       .then((json) => setPayments(Array.isArray(json?.payments) ? json.payments : []))
       .catch(() => setPayments([]))
       .finally(() => setLoadingBilling(false))
+  }, [])
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: SessionResp | null) => {
+        if (json?.authenticated && json.user) {
+          setProfile({
+            name: String(json.user.name ?? "").trim() || "Developer",
+            email: String(json.user.email ?? "").trim() || "dev@mornhub.app",
+          })
+        }
+      })
+      .catch(() => null)
   }, [])
 
   const latestPayment = payments[0] ?? null
@@ -114,11 +138,11 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="name">{t("displayName")}</Label>
-            <Input id="name" defaultValue="Developer" className="mt-1.5" />
+            <Input id="name" value={profile.name} readOnly className="mt-1.5" />
           </div>
           <div>
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" defaultValue="dev@mornhub.app" className="mt-1.5" />
+            <Input id="email" type="email" value={profile.email} readOnly className="mt-1.5" />
           </div>
           <Button size="sm">{t("saveChanges")}</Button>
         </CardContent>
