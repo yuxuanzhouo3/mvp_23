@@ -598,7 +598,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   } as const
   const previewUrl = runtime?.url
   const previewTabUrl = previewUrl || ""
-  const canRenderPreview = Boolean(previewUrl) && runtime?.status === "running"
+  const canRenderPreview =
+    Boolean(previewUrl) &&
+    (runtime?.status === "running" ||
+      runtime?.status === "error" ||
+      Boolean(runtime?.lastError) ||
+      Boolean(runStatus))
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
     generateTask?.status !== "error" &&
