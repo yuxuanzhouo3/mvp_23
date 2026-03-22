@@ -218,6 +218,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const jobId = searchParams.get("jobId") || projectId
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
+  const [projectMissing, setProjectMissing] = useState(false)
   const [prompt, setPrompt] = useState("")
   const [iterating, setIterating] = useState(false)
   const [iterateResult, setIterateResult] = useState<IterateResp | null>(null)
@@ -251,11 +252,13 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
     if (!res.ok) {
+      setProjectMissing(true)
       setLoading(false)
       return
     }
     const json = await res.json()
     setProject(json.project as ProjectDetail)
+    setProjectMissing(false)
     setLoading(false)
   }
 
@@ -772,7 +775,13 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }
 
   if (!project) {
-    return <div className="text-sm text-red-500">Project not found.</div>
+    return (
+      <div className={`rounded-md border p-4 text-sm ${projectMissing ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-600"}`}>
+        {projectMissing
+          ? "项目记录暂时还没同步完成，系统会继续自动重试加载。 Project record is still syncing and will retry automatically."
+          : "Project not found."}
+      </div>
+    )
   }
 
   return (
@@ -888,21 +897,21 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <Card className="overflow-hidden">
+        <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
           <CardTitle className="text-base">{project.projectId}</CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {runtimeBadge}
             {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
-            <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy}>
+            <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
               <Play className="h-4 w-4 mr-1.5" />
               Start
             </Button>
-            <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy}>
+            <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
               <RotateCcw className="h-4 w-4 mr-1.5" />
               Restart
             </Button>
-            <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy}>
+            <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
               <Square className="h-4 w-4 mr-1.5" />
               Stop
             </Button>

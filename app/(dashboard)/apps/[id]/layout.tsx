@@ -33,8 +33,8 @@ export default function AppDetailLayout({
     )
 
   return (
-    <div className="flex flex-col lg:flex-row gap-1 -m-4 lg:-m-6 p-4 lg:p-6 bg-muted/30 min-h-0">
-      <aside className="lg:w-[9.75rem] shrink-0">
+    <div className="flex flex-col gap-3 -m-4 bg-muted/30 p-4 lg:-m-6 lg:flex-row lg:gap-1 lg:p-6 min-h-0 overflow-x-hidden">
+      <aside className="shrink-0 lg:w-[9.75rem]">
         <Link
           href="/"
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
@@ -42,7 +42,7 @@ export default function AppDetailLayout({
           <ArrowLeft className="h-4 w-4" />
           {t("backToDashboard")}
         </Link>
-        <nav className="space-y-0.5">
+        <nav className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-0.5 lg:overflow-visible">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -53,7 +53,7 @@ export default function AppDetailLayout({
                 <Collapsible key={item.labelKey} defaultOpen={isActive}>
                   <CollapsibleTrigger
                     className={cn(
-                      "w-full flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors text-left",
+                      "flex min-w-[9rem] items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors text-left lg:w-full lg:min-w-0",
                       isActive
                         ? "bg-background text-foreground font-medium shadow-sm"
                         : "text-muted-foreground hover:text-foreground hover:bg-background/80"
@@ -72,7 +72,7 @@ export default function AppDetailLayout({
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-2 rounded-md px-2.5 py-1.5 pl-8 text-sm transition-colors",
+                        "flex min-w-[9rem] items-center gap-2 rounded-md px-2.5 py-1.5 pl-8 text-sm transition-colors lg:min-w-0",
                         isActive
                           ? "bg-background text-foreground font-medium"
                           : "text-muted-foreground hover:text-foreground hover:bg-background/80"
@@ -89,7 +89,7 @@ export default function AppDetailLayout({
               <Link
                 key={item.labelKey}
                 href={item.href}
-                className={linkClass(isActive)}
+                className={cn(linkClass(isActive), "min-w-[9rem] lg:min-w-0")}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
                 <span className="flex-1 truncate">{t(item.labelKey)}</span>

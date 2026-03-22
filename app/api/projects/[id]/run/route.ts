@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "child_process"
 import net from "net"
+import os from "os"
 import { promises as fs } from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
@@ -53,6 +54,17 @@ async function runCommand(
 ) {
   return new Promise<{ ok: boolean; output: string }>((resolve) => {
     const chunks: string[] = []
+    const tempHome = path.join(os.tmpdir(), "mornstack-runner")
+    const baseEnv = {
+      ...process.env,
+      HOME: process.env.HOME || tempHome,
+      USERPROFILE: process.env.USERPROFILE || tempHome,
+      npm_config_cache: process.env.npm_config_cache || path.join(tempHome, ".npm"),
+      NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE || path.join(tempHome, ".npm"),
+      PNPM_HOME: process.env.PNPM_HOME || path.join(tempHome, ".pnpm"),
+      XDG_CACHE_HOME: process.env.XDG_CACHE_HOME || path.join(tempHome, ".cache"),
+      ...envOverrides,
+    }
     let child: ChildProcess
     if (process.platform === "win32" && (cmd === "npm" || cmd === "npm.cmd")) {
       const npmExecPath = process.env.npm_execpath
@@ -65,10 +77,7 @@ async function runCommand(
         windowsHide: true,
         shell: false,
         creationFlags: 0x08000000,
-        env: {
-          ...process.env,
-          ...envOverrides,
-        },
+        env: baseEnv,
       } as any)
     } else {
       child = spawn(cmd, args, {
@@ -76,10 +85,7 @@ async function runCommand(
         windowsHide: true,
         shell: false,
         creationFlags: process.platform === "win32" ? 0x08000000 : 0,
-        env: {
-          ...process.env,
-          ...envOverrides,
-        },
+        env: baseEnv,
       } as any)
     }
     const timer = setTimeout(() => {
@@ -173,6 +179,10 @@ async function resolvePackageManager(workspacePath: string) {
 
 async function installWorkspaceDependencies(packageManager: { cmd: string; kind: "pnpm" | "npm" }, workspacePath: string) {
   const attempts: Array<{ ok: boolean; output: string; label: string }> = []
+  const tempHome = path.join(os.tmpdir(), "mornstack-runner")
+  await fs.mkdir(path.join(tempHome, ".npm"), { recursive: true })
+  await fs.mkdir(path.join(tempHome, ".cache"), { recursive: true })
+  await fs.mkdir(path.join(tempHome, ".pnpm"), { recursive: true })
   const installArgs =
     packageManager.kind === "pnpm"
       ? ["install", "--no-frozen-lockfile", "--prefer-offline"]
