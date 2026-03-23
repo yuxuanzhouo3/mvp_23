@@ -17,7 +17,7 @@ export const runtime = "nodejs"
 
 function buildPreviewPath(projectId: string, suffix = "") {
   const base = `/api/projects/${encodeURIComponent(projectId)}/preview`
-  return suffix ? `${base}/${suffix.replace(/^\/+/, "")}` : base
+  return suffix ? `${base}/${suffix.replace(/^\/+/, "")}` : `${base}/`
 }
 
 async function pathExists(filePath: string) {

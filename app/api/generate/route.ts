@@ -49,7 +49,7 @@ export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
 
 function buildProjectPreviewPath(projectId: string) {
-  return `/api/projects/${encodeURIComponent(projectId)}/preview`
+  return `/api/projects/${encodeURIComponent(projectId)}/preview/`
 }
 
 type GeneratedFile = {

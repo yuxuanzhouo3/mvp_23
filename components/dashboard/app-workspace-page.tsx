@@ -248,6 +248,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [publishStatus, setPublishStatus] = useState<"draft" | "ready" | "published">("draft")
   const [publishChannel, setPublishChannel] = useState<"preview" | "staging" | "production">("preview")
   const [dashboardSearch, setDashboardSearch] = useState("")
+  const [workspaceRegion, setWorkspaceRegion] = useState<"cn" | "intl">("intl")
+  const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "mysql">("supabase_postgres")
 
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
@@ -452,6 +454,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }, [projectId])
 
   useEffect(() => {
+    if (!project) return
+    setWorkspaceRegion(project.region)
+    setWorkspaceDatabase(project.databaseTarget === "mysql" ? "mysql" : "supabase_postgres")
+  }, [project])
+
+  useEffect(() => {
     loadGenerateTask()
     const timer = setInterval(async () => {
       const res = await fetch(`/api/generate?jobId=${encodeURIComponent(jobId)}`)
@@ -597,7 +605,11 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     standaloneSurfaces: isCn ? "admin、market、文档与演示资产均作为独立入口维护" : "admin, market, docs, and demo assets are maintained as standalone entry surfaces",
   } as const
   const previewUrl = runtime?.url
-  const previewTabUrl = previewUrl || ""
+  const previewTabUrl = previewUrl
+    ? previewUrl.endsWith("/preview")
+      ? `${previewUrl}/`
+      : previewUrl
+    : ""
   const canRenderPreview =
     Boolean(previewUrl) &&
     (runtime?.status === "running" ||
@@ -866,7 +878,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[280px_320px_minmax(0,1fr)]">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{copy.iterateProject}</CardTitle>
@@ -901,6 +913,101 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           ) : null}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{isCn ? "版本与数据库路径" : "Edition and database path"}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">{isCn ? "版本入口" : "Edition entry"}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: "cn", label: isCn ? "国内版" : "China" },
+                { key: "intl", label: isCn ? "国际版" : "International" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setWorkspaceRegion(item.key as "cn" | "intl")}
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    workspaceRegion === item.key
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-secondary/20 text-foreground"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">{isCn ? "数据库方案" : "Database path"}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: "supabase_postgres", label: "Supabase" },
+                { key: "mysql", label: "MySQL" },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => setWorkspaceDatabase(item.key as "supabase_postgres" | "mysql")}
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    workspaceDatabase === item.key
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-secondary/20 text-foreground"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-secondary/20 p-3 text-sm text-muted-foreground">
+            {isCn
+              ? `当前用于继续修改的路径：${workspaceRegion === "cn" ? "国内版" : "国际版"} · ${
+                  workspaceDatabase === "mysql" ? "MySQL" : "Supabase"
+                }`
+              : `Current path for further edits: ${workspaceRegion === "cn" ? "China" : "International"} · ${
+                  workspaceDatabase === "mysql" ? "MySQL" : "Supabase"
+                }`}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-base">{isCn ? "运行与展示" : "Runtime and delivery"}</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {isCn ? "把版本路径配置放在 AI 与主展示中间，下面保留纯项目工作区。" : "Keep version-path controls between AI and the main canvas, with the pure project workspace below."}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {runtimeBadge}
+            {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
+            <Badge variant="outline">{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "International"}</Badge>
+            <Badge variant="outline">{workspaceDatabase === "mysql" ? "MySQL" : "Supabase"}</Badge>
+          </div>
+          <div className="rounded-xl border border-border bg-secondary/20 p-3">
+            <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
+            <div className="mt-2 break-all text-sm">{previewUrl || "Not running"}</div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <div className="text-xs text-muted-foreground">{isCn ? "部署目标" : "Deployment target"}</div>
+              <div className="mt-2 text-sm font-medium">{project.deploymentTarget || (isCn ? "未指定" : "Not set")}</div>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <div className="text-xs text-muted-foreground">{isCn ? "工程文件数" : "Code files"}</div>
+              <div className="mt-2 text-sm font-medium">{codeFiles.length}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      </div>
 
       <Card className="overflow-hidden">
         <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
@@ -1419,7 +1526,6 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           )}
         </CardContent>
       </Card>
-      </div>
 
       <Card>
         <CardHeader>

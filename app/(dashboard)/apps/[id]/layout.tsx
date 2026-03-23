@@ -26,23 +26,24 @@ export default function AppDetailLayout({
 
   const linkClass = (active: boolean) =>
     cn(
-      "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+      "flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors",
       active
-        ? "bg-background text-foreground font-medium shadow-sm"
-        : "text-muted-foreground hover:text-foreground hover:bg-background/80"
+        ? "bg-primary/10 text-foreground font-medium"
+        : "text-muted-foreground hover:text-foreground hover:bg-accent"
     )
 
   return (
-    <div className="flex flex-col gap-3 -m-4 bg-muted/30 p-4 lg:-m-6 lg:flex-row lg:gap-1 lg:p-6 min-h-0 overflow-x-hidden">
-      <aside className="shrink-0 lg:w-[9.75rem]">
+    <div className="min-h-0 overflow-x-hidden -m-4 flex flex-col gap-4 bg-transparent p-4 lg:-m-6 lg:flex-row lg:gap-4 lg:p-6">
+      <aside className="shrink-0 lg:w-[13rem]">
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+          className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           {t("backToDashboard")}
         </Link>
-        <nav className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-0.5 lg:overflow-visible">
+        <nav className="rounded-[24px] border border-border/70 bg-card/80 p-3 shadow-[0_12px_40px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none">
+          <div className="flex gap-2 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -53,10 +54,10 @@ export default function AppDetailLayout({
                 <Collapsible key={item.labelKey} defaultOpen={isActive}>
                   <CollapsibleTrigger
                     className={cn(
-                      "flex min-w-[9rem] items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors text-left lg:w-full lg:min-w-0",
+                      "flex min-w-[9rem] items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors lg:w-full lg:min-w-0",
                       isActive
-                        ? "bg-background text-foreground font-medium shadow-sm"
-                        : "text-muted-foreground hover:text-foreground hover:bg-background/80"
+                        ? "bg-primary/10 text-foreground font-medium"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
                     )}
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
@@ -72,10 +73,10 @@ export default function AppDetailLayout({
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex min-w-[9rem] items-center gap-2 rounded-md px-2.5 py-1.5 pl-8 text-sm transition-colors lg:min-w-0",
+                        "flex min-w-[9rem] items-center gap-2 rounded-xl px-3 py-2 pl-8 text-sm transition-colors lg:min-w-0",
                         isActive
-                          ? "bg-background text-foreground font-medium"
-                          : "text-muted-foreground hover:text-foreground hover:bg-background/80"
+                          ? "bg-primary/10 text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
                       )}
                     >
                       {t(item.labelKey)}
@@ -101,6 +102,7 @@ export default function AppDetailLayout({
               </Link>
             )
           })}
+          </div>
         </nav>
       </aside>
       <div className="flex-1 min-w-0">{children}</div>

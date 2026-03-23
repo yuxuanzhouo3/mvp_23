@@ -1,8 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -11,17 +9,15 @@ import { Button } from "@/components/ui/button"
 import { mainNav, devTools, community } from "@/lib/nav-config"
 import { useLocale } from "@/lib/i18n"
 
-export function SidebarNav() {
+type SidebarNavProps = {
+  collapsed: boolean
+  onToggleCollapsed: () => void
+}
+
+export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
   const pathname = usePathname()
-  const isAppDetail = pathname?.startsWith("/apps/") ?? false
-  const [workspaceOpen, setWorkspaceOpen] = useState(true)
-  const [collapsed, setCollapsed] = useState(isAppDetail)
-
-  useEffect(() => {
-    setCollapsed(pathname?.startsWith("/apps/") ?? false)
-  }, [pathname])
-
   const { t } = useLocale()
+  const workspaceOpen = true
 
   const NavLink = ({ item }: { item: (typeof mainNav)[0] }) => {
     const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
@@ -30,11 +26,11 @@ export function SidebarNav() {
         href={item.href}
         title={collapsed ? t(item.labelKey) : undefined}
         className={cn(
-          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-sm transition-all duration-200",
+          "flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm transition-all duration-200",
           collapsed && "justify-center px-2",
           isActive
-            ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,240,232,0.96))] text-foreground font-medium shadow-[0_8px_20px_rgba(89,74,50,0.06)]"
-            : "text-sidebar-foreground hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,240,232,0.8))] hover:text-foreground"
+            ? "bg-primary/10 text-foreground font-medium shadow-none"
+            : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
@@ -45,25 +41,27 @@ export function SidebarNav() {
 
   const linkClass = (isActive: boolean) =>
     cn(
-      "flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-sm transition-all duration-200",
+      "flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-sm transition-all duration-200",
       collapsed && "justify-center px-2",
       isActive
-        ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(244,240,232,0.96))] text-foreground font-medium shadow-[0_8px_20px_rgba(89,74,50,0.06)]"
-        : "text-sidebar-foreground hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(244,240,232,0.8))] hover:text-foreground"
+        ? "bg-primary/10 text-foreground font-medium shadow-none"
+        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
     )
 
   return (
     <aside
       className={cn(
-        "hidden lg:flex flex-col border-r border-border bg-[linear-gradient(180deg,rgba(255,253,250,0.98),rgba(246,242,235,0.96))] h-screen sticky top-0 overflow-y-auto transition-[width] duration-200 ease-in-out shadow-[inset_-1px_0_0_rgba(255,255,255,0.55)]",
-        collapsed ? "w-[4.5rem]" : "w-64"
+        "sticky top-0 hidden h-screen flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar-background/92 transition-[width] duration-200 ease-in-out lg:flex",
+        collapsed ? "w-[4.75rem]" : "w-64"
       )}
     >
-      <div className={cn("flex items-center gap-3 py-5 shrink-0", collapsed ? "justify-center px-0" : "px-5")}>
-        <Image src="/logo.svg" alt="mornFullStack" width={32} height={32} priority className="rounded-lg shrink-0" />
+      <div className={cn("flex shrink-0 items-center gap-3 py-5", collapsed ? "justify-center px-0" : "px-5")}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#4f7cff,#7c3aed)] text-sm font-semibold text-white shadow-[0_12px_30px_rgba(79,124,255,0.25)]">
+          M
+        </div>
         {!collapsed && (
           <span className="font-semibold text-sm text-foreground tracking-tight truncate">
-            {t("brand")}
+            mornstack
           </span>
         )}
       </div>
@@ -72,8 +70,8 @@ export function SidebarNav() {
         <Button
           variant="ghost"
           size="icon"
-          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-8 w-8" : "w-full justify-start gap-2 rounded-xl")}
-          onClick={() => setCollapsed(!collapsed)}
+          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-8 w-8" : "w-full justify-start gap-2 rounded-xl border border-border/70")}
+          onClick={onToggleCollapsed}
           aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
           title={collapsed ? t("expandSidebar") : t("collapseSidebar")}
         >
@@ -88,14 +86,13 @@ export function SidebarNav() {
         </Button>
       </div>
 
-      <Separator />
+      <Separator className="bg-sidebar-border" />
 
       {!collapsed && (
         <div className="px-3 py-3">
           <button
             type="button"
-            onClick={() => setWorkspaceOpen(!workspaceOpen)}
-            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground"
           >
             <span>{t("personalWorkspace")}</span>
             {workspaceOpen ? (
@@ -117,7 +114,7 @@ export function SidebarNav() {
             ))}
           </ul>
 
-          <Separator className="my-4" />
+          <Separator className="my-4 bg-sidebar-border" />
 
           {!collapsed && (
             <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -139,7 +136,7 @@ export function SidebarNav() {
             ))}
           </ul>
 
-          <Separator className="my-4" />
+          <Separator className="my-4 bg-sidebar-border" />
 
           {!collapsed && (
             <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -163,7 +160,7 @@ export function SidebarNav() {
         </nav>
       )}
 
-      <Separator />
+      <Separator className="bg-sidebar-border" />
 
       <div className={cn("shrink-0 py-4", collapsed ? "flex flex-col items-center gap-1 px-0" : "px-5")}>
         {!collapsed && (
