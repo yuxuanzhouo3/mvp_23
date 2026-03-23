@@ -4,11 +4,21 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
+
+concurrency:
+  group: cloudbase-cloudrun-master
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      TCB_SECRET_ID: ${{ secrets.TCB_SECRET_ID }}
+      TCB_SECRET_KEY: ${{ secrets.TCB_SECRET_KEY }}
+      TCB_ENV_ID: ${{ secrets.TCB_ENV_ID }}
+      TCB_RUN_NAME: ${{ secrets.TCB_RUN_NAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,18 +26,24 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
+
+      - name: Validate required secrets
+        run: |
+          test -n "$TCB_SECRET_ID"
+          test -n "$TCB_SECRET_KEY"
+          test -n "$TCB_ENV_ID"
+          test -n "$TCB_RUN_NAME"
 
       - name: Install CloudBase CLI
         run: npm i -g @cloudbase/cli
 
       - name: Login CloudBase
-        run: tcb login --apiKeyId "${{ secrets.TCB_SECRET_ID }}" --apiKey "${{ secrets.TCB_SECRET_KEY }}"
+        run: tcb login --apiKeyId "$TCB_SECRET_ID" --apiKey "$TCB_SECRET_KEY"
 
       - name: Deploy CloudRun service
         run: |
           tcb cloudrun deploy \
-            --envId "${{ secrets.TCB_ENV_ID }}" \
-            --name "${{ secrets.TCB_RUN_NAME }}" \
+            --envId "$TCB_ENV_ID" \
+            --name "$TCB_RUN_NAME" \
             --source .
-
