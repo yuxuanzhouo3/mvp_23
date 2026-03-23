@@ -8,7 +8,14 @@ import { Input } from "@/components/ui/input"
 import { useLocale } from "@/lib/i18n"
 import { getCurrentDomainRegion, loadGenerationPreferences, saveGenerationPreferences } from "@/lib/generation-preferences"
 import { siteLinks } from "@/lib/site-links"
-import { getDatabaseOption, type DatabaseTarget } from "@/lib/fullstack-targets"
+import {
+  getDatabaseOption,
+  getDefaultDatabaseTarget,
+  getDefaultDeploymentTarget,
+  getDeploymentOption,
+  type DatabaseTarget,
+  type DeploymentTarget,
+} from "@/lib/fullstack-targets"
 
 type GeneratePostResp = {
   projectId?: string
@@ -24,12 +31,14 @@ export default function DashboardPage() {
   const [submitting, setSubmitting] = useState(false)
   const [status, setStatus] = useState("")
   const [region, setRegion] = useState<"cn" | "intl">("intl")
+  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>("vercel")
   const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>("supabase_postgres")
 
   useEffect(() => {
     const currentRegion = getCurrentDomainRegion()
-    setRegion(currentRegion)
     const prefs = loadGenerationPreferences(currentRegion)
+    setRegion(prefs.region)
+    setDeploymentTarget(prefs.deploymentTarget)
     setDatabaseTarget(prefs.databaseTarget)
   }, [])
 
@@ -41,7 +50,7 @@ export default function DashboardPage() {
     }
 
     const prefs = loadGenerationPreferences(region)
-    const nextPrefs = { ...prefs, databaseTarget }
+    const nextPrefs = { ...prefs, region, deploymentTarget, databaseTarget }
     saveGenerationPreferences(nextPrefs)
 
     try {
@@ -139,15 +148,64 @@ export default function DashboardPage() {
         "Iterate, demo, and hand off from the same flow",
       ]
 
+  const deploymentOptions =
+    region === "cn"
+      ? [
+          {
+            id: "cloudbase" as DeploymentTarget,
+            nameCn: "腾讯云",
+            nameEn: "Tencent Cloud",
+            descriptionCn: "国内默认部署环境，适合云托管与中国区访问链路。",
+            descriptionEn: "Default China deployment target for CloudBase hosting and mainland delivery paths.",
+          },
+          {
+            id: "self_hosted" as DeploymentTarget,
+            nameCn: "自托管",
+            nameEn: "Self-hosted",
+            descriptionCn: "适合私有化交付、企业内网或独立服务器部署。",
+            descriptionEn: "Useful for private delivery, internal networks, or dedicated servers.",
+          },
+          {
+            id: "render" as DeploymentTarget,
+            nameCn: "Docker 环境",
+            nameEn: "Docker hosting",
+            descriptionCn: "适合需要容器化运行和稳定预发环境的场景。",
+            descriptionEn: "Good for containerized deployments and stable staging environments.",
+          },
+        ]
+      : [
+          {
+            id: "vercel" as DeploymentTarget,
+            nameCn: "Vercel",
+            nameEn: "Vercel",
+            descriptionCn: "海外默认部署环境，适合 Next.js 直出与快速展示。",
+            descriptionEn: "Default international deployment target for fast Next.js shipping.",
+          },
+          {
+            id: "railway" as DeploymentTarget,
+            nameCn: "Railway",
+            nameEn: "Railway",
+            descriptionCn: "适合快速部署全栈 Node 服务和独立数据库。",
+            descriptionEn: "Useful for shipping full-stack Node services with managed databases.",
+          },
+          {
+            id: "render" as DeploymentTarget,
+            nameCn: "Render",
+            nameEn: "Render",
+            descriptionCn: "适合 Docker 化服务与稳定预发环境。",
+            descriptionEn: "Useful for Dockerized services and stable staging environments.",
+          },
+        ]
+
   const databaseOptions =
     region === "cn"
       ? [
           {
             id: "cloudbase_document" as DatabaseTarget,
-            nameCn: "Cloud 数据集",
-            nameEn: "Cloud Dataset",
-            descriptionCn: "适合国内版云开发文档型数据与云托管配套。",
-            descriptionEn: "Best for China cloud document-style data and managed hosting.",
+            nameCn: "云文档",
+            nameEn: "Cloud Document",
+            descriptionCn: "国内默认数据方案，适合云文档型数据与轻量业务模型。",
+            descriptionEn: "Default China data path for document-style content and lightweight app data.",
           },
           {
             id: "mysql" as DatabaseTarget,
@@ -155,6 +213,13 @@ export default function DashboardPage() {
             nameEn: "MySQL",
             descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
             descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
+          },
+          {
+            id: "mongodb" as DatabaseTarget,
+            nameCn: "MongoDB",
+            nameEn: "MongoDB",
+            descriptionCn: "适合更灵活的文档型结构和内容数据。",
+            descriptionEn: "Good for flexible document structures and content-heavy models.",
           },
         ]
       : [
@@ -172,8 +237,38 @@ export default function DashboardPage() {
             descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
             descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
           },
+          {
+            id: "neon_postgres" as DatabaseTarget,
+            nameCn: "Neon",
+            nameEn: "Neon",
+            descriptionCn: "适合 serverless Postgres 和预览环境分支库。",
+            descriptionEn: "Useful for serverless Postgres and preview-branch databases.",
+          },
         ]
+  const activeDeployment = getDeploymentOption(deploymentTarget)
   const activeDatabase = getDatabaseOption(databaseTarget)
+  const currentPathSummary = isZh
+    ? `当前路径：${region === "cn" ? "国内" : "海外"} · ${
+        region === "cn" && deploymentTarget === "cloudbase"
+          ? "腾讯云"
+          : activeDeployment.nameCn
+      } · ${region === "cn" && databaseTarget === "cloudbase_document" ? "云文档" : activeDatabase.nameCn}`
+    : `Current path: ${region === "cn" ? "China" : "Global"} · ${
+        region === "cn" && deploymentTarget === "cloudbase" ? "Tencent Cloud" : activeDeployment.nameEn
+      } · ${region === "cn" && databaseTarget === "cloudbase_document" ? "Cloud Document" : activeDatabase.nameEn}`
+
+  function applyRegionDefaults(nextRegion: "cn" | "intl") {
+    const nextDeployment = getDefaultDeploymentTarget(nextRegion)
+    const nextDatabase = getDefaultDatabaseTarget(nextRegion)
+    setRegion(nextRegion)
+    setDeploymentTarget(nextDeployment)
+    setDatabaseTarget(nextDatabase)
+    saveGenerationPreferences({
+      region: nextRegion,
+      deploymentTarget: nextDeployment,
+      databaseTarget: nextDatabase,
+    })
+  }
 
   return (
     <main className="min-h-[calc(100vh-4rem)] bg-background text-foreground">
@@ -225,8 +320,8 @@ export default function DashboardPage() {
               <p className="mt-3 text-left text-sm text-muted-foreground">
                 {status ||
                   (isZh
-                    ? `当前入口：${region === "cn" ? "国内版" : "国际版"}。数据库方案可自行选择。`
-                    : `Current entry: ${region === "cn" ? "China" : "International"}. Choose the database path you want to use.`)}
+                    ? currentPathSummary
+                    : currentPathSummary)}
               </p>
 
               <div className="mt-4 rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/[0.03]">
@@ -234,19 +329,91 @@ export default function DashboardPage() {
                   <div className="text-left">
                     <div className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
                       <Database className="h-4 w-4 text-primary" />
-                      {isZh ? "数据库配置" : "Database target"}
+                      {isZh ? "部署与数据配置" : "Deployment and data setup"}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {isZh ? "选择这次生成要走的数据库路径。" : "Choose the database path for this generation."}
+                      {isZh ? "选择版本入口、部署环境与数据方案，当前路径会实时同步。" : "Pick the edition, deployment environment, and data path for this generation."}
                     </p>
                   </div>
                   <div className="rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                    {isZh ? `当前选择：${activeDatabase.nameCn}` : `Selected: ${activeDatabase.nameEn}`}
+                    {currentPathSummary}
                   </div>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {databaseOptions.map((item) => {
+                <div className="mt-5 space-y-4 text-left">
+                  <div>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {isZh ? "版本入口" : "Edition"}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: "cn" as const, label: isZh ? "国内版" : "China" },
+                        { key: "intl" as const, label: isZh ? "海外版" : "Global" },
+                      ].map((item) => {
+                        const active = region === item.key
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => applyRegionDefaults(item.key)}
+                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                              active
+                                ? "border-primary/25 bg-primary text-primary-foreground"
+                                : "border-border/80 bg-card text-foreground hover:border-primary/25 hover:bg-primary/5 dark:border-white/10 dark:bg-white/[0.03]"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {isZh ? "部署环境" : "Deployment"}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {deploymentOptions.map((item) => {
+                        const active = deploymentTarget === item.id
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              setDeploymentTarget(item.id)
+                              saveGenerationPreferences({
+                                region,
+                                deploymentTarget: item.id,
+                                databaseTarget,
+                              })
+                            }}
+                            className={`rounded-full border px-4 py-2 text-sm transition-colors ${
+                              active
+                                ? "border-primary/25 bg-primary text-primary-foreground"
+                                : "border-border/80 bg-card text-foreground hover:border-primary/25 hover:bg-primary/5 dark:border-white/10 dark:bg-white/[0.03]"
+                            }`}
+                          >
+                            {isZh && item.id === "cloudbase" ? "腾讯云" : isZh ? item.nameCn : item.nameEn}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {isZh && deploymentTarget === "cloudbase"
+                        ? "国内默认部署环境，适合云托管与中国区访问链路。"
+                        : isZh
+                          ? deploymentOptions.find((item) => item.id === deploymentTarget)?.descriptionCn
+                          : deploymentOptions.find((item) => item.id === deploymentTarget)?.descriptionEn}
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                      {isZh ? "数据 / 文档方案" : "Data / document path"}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {databaseOptions.map((item) => {
                     const active = databaseTarget === item.id
                     return (
                       <button
@@ -266,17 +433,21 @@ export default function DashboardPage() {
                             : "border-border/80 bg-card text-foreground hover:border-primary/25 hover:bg-primary/5 dark:border-white/10 dark:bg-white/[0.03]"
                         }`}
                       >
-                        {isZh ? item.nameCn : item.nameEn}
+                        {isZh && item.id === "cloudbase_document" ? "云文档" : isZh ? item.nameCn : item.nameEn}
                       </button>
                     )
                   })}
-                </div>
+                    </div>
 
-                <p className="mt-3 text-left text-sm text-muted-foreground">
-                  {isZh
-                    ? databaseOptions.find((item) => item.id === databaseTarget)?.descriptionCn
-                    : databaseOptions.find((item) => item.id === databaseTarget)?.descriptionEn}
-                </p>
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {isZh && databaseTarget === "cloudbase_document"
+                        ? "国内默认数据方案，适合云文档型数据与轻量业务模型。"
+                        : isZh
+                          ? databaseOptions.find((item) => item.id === databaseTarget)?.descriptionCn
+                          : databaseOptions.find((item) => item.id === databaseTarget)?.descriptionEn}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 

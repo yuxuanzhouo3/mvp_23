@@ -4,6 +4,22 @@ import { getProject, isPidAlive, listProjects, safeProjectId } from "@/lib/proje
 
 export const runtime = "nodejs"
 
+function buildPreviewUrl(projectId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/preview/`
+}
+
+function normalizeRuntimeUrl(projectId: string, url?: string) {
+  const normalized = String(url ?? "").trim()
+  if (!normalized) return buildPreviewUrl(projectId)
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) {
+    return buildPreviewUrl(projectId)
+  }
+  if (normalized.startsWith("/api/projects/")) {
+    return normalized.endsWith("/preview") ? `${normalized}/` : normalized
+  }
+  return normalized
+}
+
 async function isPortInUse(port?: number) {
   if (!port) return false
   return new Promise<boolean>((resolve) => {
@@ -69,7 +85,17 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Project not found", projectId }, { status: 404 })
     }
     const runtime = await normalizeRuntimeStatus(project.runtime)
-    return NextResponse.json({ project: { ...project, runtime } })
+    return NextResponse.json({
+      project: {
+        ...project,
+        runtime: runtime
+          ? {
+              ...runtime,
+              url: normalizeRuntimeUrl(projectId, (runtime as { url?: string }).url),
+            }
+          : runtime,
+      },
+    })
   }
 
   const projects = await listProjects()
@@ -103,7 +129,12 @@ export async function GET(req: Request) {
       updatedAt: p.updatedAt,
       workspacePath: p.workspacePath,
       historyCount: p.history.length,
-      runtime,
+      runtime: runtime
+        ? {
+            ...runtime,
+            url: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string }).url),
+          }
+        : runtime,
     })
   }
 

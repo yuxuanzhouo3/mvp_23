@@ -17,6 +17,14 @@ function buildPreviewBase(projectId: string) {
   return `/api/projects/${encodeURIComponent(projectId)}/preview`
 }
 
+function isHtmlLikeRequest(req: Request, pathSegments: string[]) {
+  if (pathSegments.length === 0) return true
+  const accept = req.headers.get("accept") || ""
+  if (accept.includes("text/html")) return true
+  const last = pathSegments[pathSegments.length - 1] || ""
+  return !/\.[a-z0-9]+$/i.test(last)
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -156,9 +164,10 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   const projectId = safeProjectId(projectIdRaw)
   const project = await getProject(projectId)
   const runtimeState = project?.runtime
+  const wantsHtml = isHtmlLikeRequest(req, pathSegments)
 
   if (!project || !runtimeState?.port) {
-    return renderFallbackPreview(projectId)
+    return wantsHtml ? renderFallbackPreview(projectId) : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
   }
 
   const target = buildTargetUrl(req, runtimeState.port, pathSegments)
@@ -173,10 +182,10 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
       duplex: "half",
     } as RequestInit)
   } catch {
-    return renderFallbackPreview(projectId)
+    return wantsHtml ? renderFallbackPreview(projectId) : NextResponse.json({ error: "Preview upstream unavailable" }, { status: 502 })
   }
 
-  if (!upstream.ok && req.method === "GET") {
+  if (!upstream.ok && req.method === "GET" && wantsHtml) {
     return renderFallbackPreview(projectId)
   }
 

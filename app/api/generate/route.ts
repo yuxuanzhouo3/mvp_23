@@ -261,6 +261,10 @@ async function callGeneratorModel(
     "- Search bars, editors, command inputs, tabs, and action buttons must do something observable in the UI instead of acting as dead placeholders.",
     "- For code platforms or IDE-like products, include real file navigation, tab switching, editable code surfaces, runtime status, logs, and command or global search behavior.",
     "- For generated workspaces, include enough local state and API routes so demo flows can be exercised immediately after generation.",
+    "- Make the first generated version feel like a usable product: include a strong primary surface, at least 2 supporting routes or views when the product type needs them, and clear navigation between them.",
+    "- Prefer a small set of well-connected modules over many shallow placeholder sections. Each major surface should have a reason to exist.",
+    "- Keep dependencies conservative. Do not import packages that are not already declared in package.json unless they are truly necessary.",
+    "- Avoid fragile code patterns that often break preview startup: missing default exports, invalid hooks usage, browser-only APIs during server render, or references to undefined config.",
     "- Keep admin and market as separate standalone surfaces rather than embedding them into the end-user workspace navigation.",
     "- Prefer modifying these files: app/page.tsx, app/layout.tsx, app/api/items/route.ts, prisma/schema.prisma, README.md.",
     "- Never return markdown, only JSON.",
@@ -291,6 +295,9 @@ async function callGeneratorModel(
     region === "cn"
       ? "如果是代码平台或中国版 Cursor 类产品，必须体现：文件树、标签页、可编辑代码、命令/全局搜索、运行日志、模板入口、发布与交付状态。"
       : "For code platforms or Cursor-like products, include: file tree, tabs, editable code, command/global search, runtime logs, template entry, and publish/delivery state.",
+    region === "cn"
+      ? "产出目标参考成熟 AI SaaS / Base44 风格：不是静态海报页，而是具备导航、主工作区、可操作面板、设置或发布链路的可演示产品。"
+      : "Aim closer to a mature AI SaaS / Base44-style MVP: not a poster page, but a demoable product with navigation, a main workspace, actionable panels, and settings or publish flows.",
   ].join("\n\n")
 
   const messages = [
