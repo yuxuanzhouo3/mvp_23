@@ -140,20 +140,39 @@ export default function DashboardPage() {
       ]
 
   const databaseOptions = [
-    {
-      id: "supabase_postgres" as DatabaseTarget,
-      nameCn: "Supabase",
-      nameEn: "Supabase",
-      descriptionCn: "适合国际版登录、权限和关系型业务数据。",
-      descriptionEn: "Best for auth, permissions, and relational product data.",
-    },
-    {
-      id: "mysql" as DatabaseTarget,
-      nameCn: "MySQL",
-      nameEn: "MySQL",
-      descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
-      descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
-    },
+    ...(region === "cn"
+      ? [
+          {
+            id: "cloudbase_document" as DatabaseTarget,
+            nameCn: "Cloud 数据集",
+            nameEn: "Cloud Dataset",
+            descriptionCn: "适合国内版云开发文档型数据与云托管配套。",
+            descriptionEn: "Best for China cloud document-style data and managed hosting.",
+          },
+          {
+            id: "mysql" as DatabaseTarget,
+            nameCn: "MySQL",
+            nameEn: "MySQL",
+            descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
+            descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
+          },
+        ]
+      : [
+          {
+            id: "supabase_postgres" as DatabaseTarget,
+            nameCn: "Supabase",
+            nameEn: "Supabase",
+            descriptionCn: "适合国际版登录、权限和关系型业务数据。",
+            descriptionEn: "Best for auth, permissions, and relational product data.",
+          },
+          {
+            id: "mysql" as DatabaseTarget,
+            nameCn: "MySQL",
+            nameEn: "MySQL",
+            descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
+            descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
+          },
+        ]))
   ]
   const activeDatabase = getDatabaseOption(databaseTarget)
 
