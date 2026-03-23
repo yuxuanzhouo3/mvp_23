@@ -139,8 +139,8 @@ export default function DashboardPage() {
         "Iterate, demo, and hand off from the same flow",
       ]
 
-  const databaseOptions = [
-    ...(region === "cn"
+  const databaseOptions =
+    region === "cn"
       ? [
           {
             id: "cloudbase_document" as DatabaseTarget,
@@ -172,8 +172,7 @@ export default function DashboardPage() {
             descriptionCn: "适合传统业务表结构与现有 MySQL 体系接入。",
             descriptionEn: "Good for traditional business schemas and existing MySQL stacks.",
           },
-        ]))
-  ]
+        ]
   const activeDatabase = getDatabaseOption(databaseTarget)
 
   return (
