@@ -45,5 +45,7 @@ jobs:
         run: |
           tcb cloudrun deploy \
             --envId "$TCB_ENV_ID" \
-            --name "$TCB_RUN_NAME" \
-            --source .
+            --serviceName "$TCB_RUN_NAME" \
+            --source . \
+            --port 3000 \
+            --force
