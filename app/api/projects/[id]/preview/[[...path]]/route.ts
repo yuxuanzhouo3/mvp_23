@@ -13,6 +13,10 @@ function buildTargetUrl(req: Request, port: number, pathSegments: string[]) {
   return target
 }
 
+function buildPreviewBase(projectId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/preview`
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -127,6 +131,27 @@ async function renderFallbackPreview(projectId: string) {
   })
 }
 
+function rewriteHtmlForPreview(html: string, projectId: string) {
+  const previewBase = buildPreviewBase(projectId)
+  let next = html
+
+  next = next.replace(/(href|src|action)=("|')\/(?!\/)/g, `$1=$2${previewBase}/`)
+  next = next.replace(/(["'])\/_next\//g, `$1${previewBase}/_next/`)
+  next = next.replace(/(["'])\/favicon/g, `$1${previewBase}/favicon`)
+  next = next.replace(/url\(\/(?!\/)/g, `url(${previewBase}/`)
+  next = next.replace(/"\/(?!\/)/g, `"${previewBase}/`)
+  next = next.replace(/'\/(?!\/)/g, `'${previewBase}/`)
+
+  if (next.includes("</head>")) {
+    next = next.replace(
+      "</head>",
+      `<script>window.__MORNSTACK_PREVIEW_BASE__=${JSON.stringify(previewBase)};</script></head>`
+    )
+  }
+
+  return next
+}
+
 async function proxy(req: Request, projectIdRaw: string, pathSegments: string[]) {
   const projectId = safeProjectId(projectIdRaw)
   const project = await getProject(projectId)
@@ -161,6 +186,16 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   headers.delete("connection")
   headers.delete("host")
   headers.set("cache-control", "no-store")
+
+  const contentType = headers.get("content-type") || ""
+  if (contentType.includes("text/html")) {
+    const html = await upstream.text()
+    return new NextResponse(rewriteHtmlForPreview(html, projectId), {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers,
+    })
+  }
 
   return new NextResponse(upstream.body, {
     status: upstream.status,
