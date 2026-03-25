@@ -8,12 +8,14 @@
   <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16.1.6-000000?logo=next.js" />
   <img alt="React" src="https://img.shields.io/badge/React-19-149ECA?logo=react" />
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white" />
-  <img alt="License" src="https://img.shields.io/badge/License-MIT-green" />
+  <img alt="Rights" src="https://img.shields.io/badge/Rights-All%20rights%20reserved-red" />
 </p>
 
 ---
 
 ## 中文
+
+版权声明：`Copyright (c) 2024 yuxuan zhou @mornscience All rights reserved.`
 
 一个本地可运行的 AI 应用生成与迭代控制台：
 输入 Prompt 即可生成子项目，支持启动预览、继续迭代、快速回滚。
@@ -96,6 +98,8 @@ docs/           文档
 ---
 
 ## English
+
+Copyright notice: `Copyright (c) 2024 yuxuan zhou @mornscience All rights reserved.`
 
 Local AI app builder dashboard for generation + iteration:
 Prompt -> generate project -> run preview -> iterate -> revert.
