@@ -1,18 +1,22 @@
 import { NextResponse } from "next/server"
 import net from "net"
-import { getProject, isPidAlive, listProjects, safeProjectId } from "@/lib/project-workspace"
+import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl } from "@/lib/preview-url"
+import { readProjectSpec } from "@/lib/project-spec"
+import { buildProjectPresentation } from "@/lib/project-presentation"
+import { getProject, isPidAlive, listProjects, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
+import { getDefaultPreviewMode, getSandboxReadiness, supportsSandboxRuntime } from "@/lib/sandbox-preview"
 
 export const runtime = "nodejs"
 
 function buildPreviewUrl(projectId: string) {
-  return `/api/projects/${encodeURIComponent(projectId)}/preview/`
+  return buildCanonicalPreviewUrl(projectId)
 }
 
 function normalizeRuntimeUrl(projectId: string, url?: string) {
   const normalized = String(url ?? "").trim()
-  if (!normalized) return buildPreviewUrl(projectId)
+  if (!normalized) return buildRuntimePreviewUrl(projectId)
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) {
-    return buildPreviewUrl(projectId)
+    return buildRuntimePreviewUrl(projectId)
   }
   if (normalized.startsWith("/api/projects/")) {
     return normalized.endsWith("/preview") ? `${normalized}/` : normalized
@@ -85,9 +89,31 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Project not found", projectId }, { status: 404 })
     }
     const runtime = await normalizeRuntimeStatus(project.runtime)
+    const projectDir = await resolveProjectPath(projectId)
+    const spec = projectDir ? await readProjectSpec(projectDir) : null
+    const latestHistory = project.history?.length ? project.history[project.history.length - 1] : null
+    const presentation = buildProjectPresentation({
+      projectId,
+      region: project.region,
+      spec,
+      latestHistory,
+    })
     return NextResponse.json({
       project: {
         ...project,
+        spec,
+        presentation,
+        preview: {
+          defaultMode: "static_ssr",
+          activeMode: project.previewMode ?? getDefaultPreviewMode(),
+          canonicalUrl: buildPreviewUrl(projectId),
+          runtimeUrl: normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url),
+          sandboxUrl: project.sandboxRuntime?.url || null,
+          sandboxStatus: project.sandboxRuntime?.status ?? "stopped",
+          supportsDynamicRuntime: !Boolean(process.env.VERCEL),
+          supportsSandboxRuntime: supportsSandboxRuntime(),
+          sandboxReadiness: getSandboxReadiness(),
+        },
         runtime: runtime
           ? {
               ...runtime,
@@ -108,6 +134,7 @@ export async function GET(req: Request) {
     updatedAt: string
     workspacePath: string
     historyCount: number
+    presentation: ReturnType<typeof buildProjectPresentation>
     runtime?: {
       status: "stopped" | "starting" | "running" | "error"
       pid?: number
@@ -116,10 +143,24 @@ export async function GET(req: Request) {
       lastStartedAt?: string
       lastError?: string
     }
+    preview: {
+      defaultMode: "static_ssr"
+      activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+      canonicalUrl: string
+      runtimeUrl: string
+      sandboxUrl: string | null
+      sandboxStatus: "stopped" | "starting" | "running" | "error"
+      supportsDynamicRuntime: boolean
+      supportsSandboxRuntime: boolean
+      sandboxReadiness: ReturnType<typeof getSandboxReadiness>
+    }
   }> = []
 
   for (const p of projects) {
     const runtime = await normalizeRuntimeStatus(p.runtime)
+    const projectDir = await resolveProjectPath(p.projectId)
+    const spec = projectDir ? await readProjectSpec(projectDir) : null
+    const latestHistory = p.history?.length ? p.history[p.history.length - 1] : null
     normalized.push({
       projectId: p.projectId,
       region: p.region,
@@ -129,6 +170,23 @@ export async function GET(req: Request) {
       updatedAt: p.updatedAt,
       workspacePath: p.workspacePath,
       historyCount: p.history.length,
+      presentation: buildProjectPresentation({
+        projectId: p.projectId,
+        region: p.region,
+        spec,
+        latestHistory,
+      }),
+      preview: {
+        defaultMode: "static_ssr",
+        activeMode: p.previewMode ?? getDefaultPreviewMode(),
+        canonicalUrl: buildPreviewUrl(p.projectId),
+        runtimeUrl: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url),
+        sandboxUrl: p.sandboxRuntime?.url || null,
+        sandboxStatus: p.sandboxRuntime?.status ?? "stopped",
+        supportsDynamicRuntime: !Boolean(process.env.VERCEL),
+        supportsSandboxRuntime: supportsSandboxRuntime(),
+        sandboxReadiness: getSandboxReadiness(),
+      },
       runtime: runtime
         ? {
             ...runtime,

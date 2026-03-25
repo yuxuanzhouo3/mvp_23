@@ -10,11 +10,26 @@ export type AiConfig = {
   enableThinking: boolean
 }
 
+export type AiTaskMode = "default" | "planner" | "builder" | "fixer"
+
+export function resolveThinkingForMode(mode: AiTaskMode) {
+  if (mode === "planner" || mode === "fixer") return true
+  return false
+}
+
+export function resolveTemperatureForMode(mode: AiTaskMode, fallback = 0.2) {
+  if (mode === "planner") return 0.4
+  if (mode === "fixer") return 0.25
+  if (mode === "builder") return 0.2
+  return fallback
+}
+
 export function resolveAiConfig(options?: {
   apiKey?: string
   baseUrl?: string
   model?: string
   enableThinking?: boolean
+  mode?: AiTaskMode
 }): AiConfig {
   const envEnableThinking = String(process.env.DASHSCOPE_ENABLE_THINKING ?? "").toLowerCase() === "true"
   const genericEnableThinking = String(process.env.AI_ENABLE_THINKING ?? "").toLowerCase() === "true"
@@ -46,7 +61,10 @@ export function resolveAiConfig(options?: {
     process.env.OPENAI_MODEL ||
     "deepseek-v3.2"
 
-  const enableThinking = options?.enableThinking ?? (genericEnableThinking || envEnableThinking)
+  const enableThinking =
+    options?.enableThinking ??
+    (options?.mode ? resolveThinkingForMode(options.mode) : undefined) ??
+    (genericEnableThinking || envEnableThinking)
 
   return { apiKey, baseUrl, model, enableThinking }
 }
@@ -101,11 +119,15 @@ export async function requestJsonChatCompletion(args: {
   messages: AiChatMessage[]
   temperature?: number
   timeoutMs?: number
+  mode?: AiTaskMode
 }): Promise<{ content: string; reasoning: string }> {
   const { config, messages } = args
-  const temperature = args.temperature ?? 0.2
+  const mode = args.mode ?? "default"
+  const temperature = args.temperature ?? resolveTemperatureForMode(mode, 0.2)
   const timeoutMs = args.timeoutMs ?? 120_000
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`
+
+  console.info(`[LLM] mode=${mode} model=${config.model} thinking=${config.enableThinking ? "true" : "false"}`)
 
   const payload: Record<string, unknown> = {
     model: config.model,
@@ -116,7 +138,9 @@ export async function requestJsonChatCompletion(args: {
   }
 
   if (config.enableThinking) {
-    payload.extra_body = { enable_thinking: true }
+    payload.enable_thinking = true
+    payload.incremental_output = true
+    payload.extra_body = { enable_thinking: true, incremental_output: true }
   }
 
   const ctrl = new AbortController()

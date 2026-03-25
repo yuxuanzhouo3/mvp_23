@@ -23,6 +23,22 @@ type GeneratePostResp = {
   error?: string
 }
 
+type RecentApp = {
+  projectId: string
+  updatedAt: string
+  presentation: {
+    displayName: string
+    subtitle: string
+    summary: string
+    icon: {
+      glyph: string
+      from: string
+      to: string
+      ring: string
+    }
+  }
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { locale } = useLocale()
@@ -33,6 +49,7 @@ export default function DashboardPage() {
   const [region, setRegion] = useState<"cn" | "intl">("intl")
   const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>("vercel")
   const [databaseTarget, setDatabaseTarget] = useState<DatabaseTarget>("supabase_postgres")
+  const [recentApps, setRecentApps] = useState<RecentApp[]>([])
 
   useEffect(() => {
     const currentRegion = getCurrentDomainRegion()
@@ -40,6 +57,13 @@ export default function DashboardPage() {
     setRegion(prefs.region)
     setDeploymentTarget(prefs.deploymentTarget)
     setDatabaseTarget(prefs.databaseTarget)
+  }, [])
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((json) => setRecentApps((json.projects ?? []).slice(0, 6)))
+      .catch(() => setRecentApps([]))
   }, [])
 
   async function handleGenerate() {
@@ -146,6 +170,20 @@ export default function DashboardPage() {
         "Describe the product in one sentence",
         "Generate the workspace and core pages",
         "Iterate, demo, and hand off from the same flow",
+      ]
+
+  const templateHighlights = isZh
+    ? [
+        { title: "官网与下载站", summary: "首页、定价、下载与文档入口" },
+        { title: "销售后台", summary: "客户、线索、成交与交付看板" },
+        { title: "API 数据平台", summary: "接口、监控、趋势与告警" },
+        { title: "社区反馈中心", summary: "反馈、工单、公告与知识库" },
+      ]
+    : [
+        { title: "Website + downloads", summary: "Home, pricing, downloads, and docs" },
+        { title: "Sales admin", summary: "Customers, pipeline, close, and delivery" },
+        { title: "API platform", summary: "Endpoints, monitoring, trends, and alerts" },
+        { title: "Community hub", summary: "Feedback, tickets, announcements, and docs" },
       ]
 
   const deploymentOptions =
@@ -463,6 +501,86 @@ export default function DashboardPage() {
                   {item}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-4 md:px-8">
+        <div className="rounded-[28px] border border-border/70 bg-card/82 p-6 shadow-[0_18px_60px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
+            <div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-sm font-semibold text-foreground">{isZh ? "Recent apps" : "Recent apps"}</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {recentApps.length
+                      ? isZh
+                        ? "优先展示你最近真正生成过的应用。"
+                        : "Your recently generated apps appear here first."
+                      : isZh
+                        ? "还没有生成记录时，这里会在你创建应用后自动出现。"
+                        : "This fills up automatically after you generate apps."}
+                  </p>
+                </div>
+                {recentApps.length ? (
+                  <Button variant="ghost" size="sm" asChild>
+                    <a href="/projects">{isZh ? "查看全部" : "View all"}</a>
+                  </Button>
+                ) : null}
+              </div>
+
+              {recentApps.length ? (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {recentApps.slice(0, 4).map((app) => (
+                    <a
+                      key={app.projectId}
+                      href={`/apps/${app.projectId}`}
+                      className="rounded-[22px] border border-border/70 bg-background/75 p-4 transition-colors hover:border-primary/30 dark:border-white/10 dark:bg-white/[0.03]"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-semibold text-white"
+                          style={{ background: `linear-gradient(135deg, ${app.presentation.icon.from}, ${app.presentation.icon.to})`, boxShadow: `0 0 0 1px ${app.presentation.icon.ring}` }}
+                        >
+                          {app.presentation.icon.glyph}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-semibold text-foreground">{app.presentation.displayName}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{app.presentation.subtitle}</div>
+                        </div>
+                      </div>
+                      <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{app.presentation.summary}</p>
+                      <div className="mt-4 text-xs text-muted-foreground">
+                        {isZh ? "最近更新" : "Updated"} · {new Date(app.updatedAt).toLocaleString()}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-[22px] border border-dashed border-border/80 bg-background/60 p-6 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/[0.02]">
+                  {isZh ? "先生成一个应用，这里就会开始显示你的 Recent apps。" : "Generate your first app and this area will turn into Recent apps."}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold text-foreground">{isZh ? "Templates" : "Templates"}</div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isZh ? "继续保留模板入口，但已使用用户会优先看到 recent apps。" : "Templates stay available, but recent apps lead for returning users."}
+              </p>
+              <div className="mt-5 grid gap-3">
+                {templateHighlights.map((item) => (
+                  <a
+                    key={item.title}
+                    href="/templates"
+                    className="rounded-[22px] border border-border/70 bg-background/75 p-4 transition-colors hover:border-primary/30 dark:border-white/10 dark:bg-white/[0.03]"
+                  >
+                    <div className="text-base font-semibold text-foreground">{item.title}</div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.summary}</p>
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         </div>

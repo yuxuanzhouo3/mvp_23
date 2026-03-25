@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -14,9 +15,30 @@ interface MobileSidebarProps {
   onClose: () => void
 }
 
+type RecentProject = {
+  projectId: string
+  presentation: {
+    displayName: string
+    icon: {
+      glyph: string
+      from: string
+      to: string
+      ring: string
+    }
+  }
+}
+
 export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
   const pathname = usePathname()
   const { t } = useLocale()
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((json) => setRecentProjects((json.projects ?? []).slice(0, 4)))
+      .catch(() => setRecentProjects([]))
+  }, [])
 
   const linkClass = (href: string) =>
     cn(
@@ -111,6 +133,34 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
               </li>
             ))}
           </ul>
+
+          {recentProjects.length ? (
+            <>
+              <Separator className="my-4 bg-sidebar-border" />
+              <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Recents
+              </p>
+              <ul className="flex flex-col gap-1" role="list">
+                {recentProjects.map((project) => {
+                  const active = pathname?.startsWith(`/apps/${project.projectId}`) ?? false
+                  const icon = project.presentation.icon
+                  return (
+                    <li key={project.projectId}>
+                      <Link href={`/apps/${project.projectId}`} onClick={onClose} className={linkClass(`/apps/${project.projectId}`)}>
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold text-white"
+                          style={{ background: `linear-gradient(135deg, ${icon.from}, ${icon.to})`, boxShadow: `0 0 0 1px ${icon.ring}` }}
+                        >
+                          {icon.glyph}
+                        </span>
+                        <span className={active ? "font-medium" : ""}>{project.presentation.displayName}</span>
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          ) : null}
         </nav>
       </div>
     </>

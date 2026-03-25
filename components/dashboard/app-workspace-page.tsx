@@ -2,7 +2,20 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
-import { ChevronDown, ChevronUp, ExternalLink, Play, RotateCcw, Search, Sparkles, Square, SquareTerminal, Undo2 } from "lucide-react"
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Play,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Square,
+  SquareTerminal,
+  Undo2,
+  Wand2,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -37,6 +50,41 @@ type ProjectDetail = {
   deploymentTarget?: string
   databaseTarget?: string
   workspacePath: string
+  spec?: {
+    title?: string
+    kind?: string
+    modules?: string[]
+    features?: string[]
+    deploymentTarget?: string
+    databaseTarget?: string
+  } | null
+  presentation?: {
+    displayName: string
+    subtitle: string
+    summary: string
+    routes: string[]
+    icon: {
+      glyph: string
+      from: string
+      to: string
+      ring: string
+    }
+  }
+  preview?: {
+    defaultMode: "static_ssr"
+    activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+    canonicalUrl: string
+    runtimeUrl: string
+    sandboxUrl: string | null
+    sandboxStatus: "stopped" | "starting" | "running" | "error"
+    supportsDynamicRuntime: boolean
+    supportsSandboxRuntime: boolean
+    sandboxReadiness?: {
+      supported: boolean
+      reason: string
+      authMode: "oidc" | "token" | "missing"
+    }
+  }
   runtime?: RuntimeState
   history: HistoryItem[]
 }
@@ -107,11 +155,10 @@ type FileTreeNode = {
 }
 
 function normalizePreviewUrl(projectId: string, url?: string) {
-  const fallback = `/api/projects/${encodeURIComponent(projectId)}/preview/`
+  const fallback = `/preview/${encodeURIComponent(projectId)}`
   const normalized = String(url ?? "").trim()
   if (!normalized) return fallback
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) return fallback
-  if (normalized.startsWith("/api/projects/") && normalized.endsWith("/preview")) return `${normalized}/`
   return normalized
 }
 
@@ -238,6 +285,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [generateTask, setGenerateTask] = useState<GenerateTaskResp | null>(null)
   const [generatePanelOpen, setGeneratePanelOpen] = useState(true)
   const [previewBooting, setPreviewBooting] = useState(false)
+  const [sandboxBusy, setSandboxBusy] = useState(false)
   const [previewTab, setPreviewTab] = useState<"preview" | "dashboard" | "code">("preview")
   const [codeFiles, setCodeFiles] = useState<string[]>([])
   const [codeQuery, setCodeQuery] = useState("")
@@ -251,12 +299,6 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [commandQuery, setCommandQuery] = useState("")
   const [searchResults, setSearchResults] = useState<WorkspaceSearchResp["results"]>([])
   const [focusedLine, setFocusedLine] = useState<number | null>(null)
-  const [appVisibility, setAppVisibility] = useState<"public" | "private">("public")
-  const [requireLogin, setRequireLogin] = useState(true)
-  const [inviteStatus, setInviteStatus] = useState("Ready to invite")
-  const [publishStatus, setPublishStatus] = useState<"draft" | "ready" | "published">("draft")
-  const [publishChannel, setPublishChannel] = useState<"preview" | "staging" | "production">("preview")
-  const [dashboardSearch, setDashboardSearch] = useState("")
   const [workspaceRegion, setWorkspaceRegion] = useState<"cn" | "intl">("intl")
   const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "cloudbase_document" | "mysql">("supabase_postgres")
 
@@ -336,7 +378,6 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       }
       setSelectedCodeContent(draftCodeContent)
       setRunStatus(`Saved ${selectedCodeFile}`)
-      setInviteStatus("Latest code saved")
     } finally {
       setCodeSaving(false)
     }
@@ -382,6 +423,26 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       }
     } finally {
       setRunBusy(false)
+    }
+  }
+
+  async function sandboxAction(action: "start" | "stop" | "restart") {
+    setSandboxBusy(true)
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/sandbox`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setRunStatus(String(json?.sandboxRuntime?.lastError ?? json?.error ?? "Sandbox action failed"))
+      } else {
+        setRunStatus("")
+      }
+      await loadProject()
+    } finally {
+      setSandboxBusy(false)
     }
   }
 
@@ -516,6 +577,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     const shouldAutoStart =
       generateTask?.status === "done" &&
       !previewBooting &&
+      Boolean(project?.preview?.supportsDynamicRuntime) &&
       (project?.runtime?.status === "stopped" || project?.runtime?.status === "error")
 
     if (!shouldAutoStart) return
@@ -542,7 +604,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       .finally(() => {
         setPreviewBooting(false)
       })
-  }, [generateTask?.status, previewBooting, project?.runtime?.status, projectId, isCn])
+  }, [generateTask?.status, previewBooting, project?.preview?.supportsDynamicRuntime, project?.runtime?.status, projectId, isCn])
 
   const copy = {
     preview: isCn ? "预览" : "Preview",
@@ -565,7 +627,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     save: isCn ? "保存" : "Save",
     saving: isCn ? "保存中..." : "Saving...",
     refreshPreview: isCn ? "刷新预览" : "Refresh Preview",
-    openRaw: isCn ? "打开原始内容" : "Open Raw",
+    openRaw: isCn ? "打开动态预览" : "Open Runtime Preview",
     routeEntryFile: isCn ? "路由入口文件" : "Route entry file",
     backendApiHandler: isCn ? "后端 API 处理器" : "Backend API handler",
     noSymbols: isCn ? "当前文件未检测到符号" : "No symbols detected in current file",
@@ -618,19 +680,34 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       : "This panel owns visibility, sharing, delivery status, and distribution operations instead of turning them into in-app business pages.",
     loginProviders: isCn ? "邮箱 / 微信 / Google / Facebook" : "Email / Google / Facebook / WeChat",
     standaloneSurfaces: isCn ? "admin、market、文档与演示资产均作为独立入口维护" : "admin, market, docs, and demo assets are maintained as standalone entry surfaces",
+    workspaceTitle: isCn ? "AI 产品工作台" : "AI Product Workspace",
+    workspaceSubtitle: isCn ? "左侧查看结果，右侧持续驱动 AI 修改。" : "Review results on the left and keep iterating with AI on the right.",
+    projectOverview: isCn ? "项目概览" : "Project Overview",
+    aiStudio: isCn ? "AI 共创助手" : "AI Co-Creation",
+    taskSummary: isCn ? "当前任务摘要" : "Current task summary",
+    conversationHistory: isCn ? "创作记录" : "Creation history",
+    quickSuggestions: isCn ? "快捷修改建议" : "Quick suggestions",
+    continuePrompt: isCn ? "继续告诉 AI 你要改什么..." : "Tell AI what to change next...",
+    queuedChanges: isCn ? "待应用修改" : "Queued change",
+    applyHint: isCn ? "右侧输入修改建议后，左侧工作区会继续承接最新结果。" : "Add a change request on the right and the left workspace will keep reflecting the latest result.",
+    currentPath: isCn ? "当前路径" : "Current path",
+    deploymentTarget: isCn ? "部署环境" : "Deployment target",
+    dataTarget: isCn ? "数据 / 文档方案" : "Data / document path",
+    latestAiUpdate: isCn ? "最近一次 AI 更新" : "Latest AI update",
+    openPreview: isCn ? "打开预览" : "Open Preview",
+    refresh: isCn ? "刷新" : "Refresh",
+    initialRequest: isCn ? "初始需求" : "Initial prompt",
+    noConversation: isCn ? "生成完成后，这里会记录你和 AI 的持续修改过程。" : "Once generation finishes, this rail will capture your ongoing edits with AI.",
   } as const
-  const previewUrl = normalizePreviewUrl(projectId, runtime?.url)
+  const previewUrl = normalizePreviewUrl(projectId, project?.preview?.canonicalUrl)
   const previewTabUrl = previewUrl
-    ? previewUrl.endsWith("/preview")
-      ? `${previewUrl}/`
-      : previewUrl
-    : ""
-  const canRenderPreview =
-    Boolean(previewUrl) &&
-    (runtime?.status === "running" ||
-      runtime?.status === "error" ||
-      Boolean(runtime?.lastError) ||
-      Boolean(runStatus))
+  const runtimePreviewUrl = normalizePreviewUrl(projectId, project?.preview?.runtimeUrl || runtime?.url)
+  const sandboxPreviewUrl = normalizePreviewUrl(projectId, project?.preview?.sandboxUrl || undefined)
+  const activePreviewUrl =
+    project?.preview?.activeMode === "sandbox_runtime" && sandboxPreviewUrl
+      ? sandboxPreviewUrl
+      : previewTabUrl
+  const canRenderPreview = Boolean(previewUrl)
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
     generateTask?.status !== "error" &&
@@ -644,6 +721,15 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     [iterateResult?.changedFiles]
   )
   const allCodeTree = useMemo(() => buildFileTree(codeFiles), [codeFiles])
+  const pageManifest = useMemo(() => {
+    return codeFiles
+      .filter((filePath) => /^app\/.+\/page\.(tsx|jsx)$/.test(filePath) || filePath === "app/page.tsx")
+      .map((filePath) => {
+        if (filePath === "app/page.tsx") return { filePath, route: "/" }
+        const route = filePath.replace(/^app\//, "/").replace(/\/page\.(tsx|jsx)$/, "")
+        return { filePath, route }
+      })
+  }, [codeFiles])
   const filteredCodeFiles = useMemo(() => {
     const query = codeQuery.trim().toLowerCase()
     if (!query) return codeFiles
@@ -784,22 +870,80 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 : "Project file"
     return `${typeLabel} · ${selectedCodeSymbols.length} ${isCn ? "个符号" : "symbols"} · ${draftCodeContent.split(/\r?\n/).length} ${isCn ? "行" : "lines"}`
   }, [copy.backendApiHandler, copy.routeEntryFile, draftCodeContent, isCn, selectedCodeFile, selectedCodeSymbols.length])
-  const recentDashboardEvents = useMemo(
-    () => [
-      { title: "Publish configuration updated", meta: `channel · ${publishChannel}` },
-      { title: "Invite workflow ready", meta: inviteStatus },
-      { title: "Workspace visibility synced", meta: `${appVisibility}${requireLogin ? " · login required" : ""}` },
-      { title: "Latest generation status", meta: generateTask?.status ?? "unknown" },
-    ],
-    [publishChannel, inviteStatus, appVisibility, requireLogin, generateTask?.status]
-  )
   const dashboardActions = useMemo(
     () => [
       { label: "Open App", onClick: () => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer") },
-      { label: "Share App", onClick: () => setInviteStatus("Share link prepared for stakeholders") },
-      { label: "Publish", onClick: () => setPublishStatus("published") },
+      { label: "Open Files", onClick: () => window.open(`/api/projects/${encodeURIComponent(projectId)}/files`, "_blank", "noopener,noreferrer") },
+      { label: "Open Docs", onClick: () => window.open("/api-docs", "_blank", "noopener,noreferrer") },
+      ...(project?.preview?.supportsDynamicRuntime && runtimePreviewUrl ? [{ label: "Open Runtime", onClick: () => window.open(runtimePreviewUrl, "_blank", "noopener,noreferrer") }] : []),
+      ...(project?.preview?.supportsSandboxRuntime && sandboxPreviewUrl ? [{ label: "Open Sandbox", onClick: () => window.open(sandboxPreviewUrl, "_blank", "noopener,noreferrer") }] : []),
     ],
-    [previewUrl]
+    [previewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
+  )
+  const latestHistoryItem = project?.history?.length ? project.history[project.history.length - 1] : null
+  const projectName = project?.presentation?.displayName || project?.spec?.title || project?.projectId || "Project"
+  const projectSubtitle = project?.presentation?.subtitle || (isCn ? "AI 生成应用工作区" : "AI generated app workspace")
+  const projectSummary = project?.presentation?.summary || latestHistoryItem?.summary || aiInterpretation || copy.applyHint
+  const projectIcon = project?.presentation?.icon
+  const overviewPoints = useMemo(() => {
+    const rows: string[] = []
+    const kindLabel =
+      project?.spec?.kind === "code_platform"
+        ? isCn ? "AI 代码编辑平台" : "AI coding platform"
+        : project?.spec?.kind === "crm"
+          ? isCn ? "销售与客户管理工作区" : "Sales and CRM workspace"
+          : projectSubtitle
+    rows.push(`${isCn ? "产品类型" : "Product type"}：${kindLabel}`)
+    rows.push(`${isCn ? "已生成页面" : "Generated pages"}：${(project?.presentation?.routes ?? pageManifest.map((item) => item.route)).join(" / ")}`)
+    if (project?.spec?.kind === "code_platform") {
+      rows.push(`${isCn ? "AI 工具" : "AI tools"}：explain / fix / generate / refactor`)
+    }
+    rows.push(`${isCn ? "默认部署" : "Deployment"}：${project?.deploymentTarget || "vercel"}`)
+    rows.push(`${isCn ? "数据方案" : "Data path"}：${project?.databaseTarget || workspaceDatabase}`)
+    return rows
+  }, [isCn, pageManifest, project?.databaseTarget, project?.deploymentTarget, project?.presentation?.routes, project?.spec?.kind, projectSubtitle, workspaceDatabase])
+  const currentPathLabel = `${workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "International"} · ${
+    project?.deploymentTarget || (workspaceRegion === "cn" ? "cloudbase" : "vercel")
+  } · ${
+    workspaceDatabase === "mysql"
+      ? "MySQL"
+      : workspaceDatabase === "cloudbase_document"
+        ? isCn
+          ? "Cloud 数据集"
+          : "Cloud Dataset"
+        : "Supabase"
+  }`
+  const quickSuggestions = isCn
+    ? [
+        "把首页改成深色科技风",
+        "增加登录页和账号切换入口",
+        "把按钮层级变得更简洁",
+        "增加支付入口与状态说明",
+        "补充数据库配置切换",
+        "切换为国内版默认方案",
+      ]
+    : [
+        "Turn the homepage into a darker AI SaaS style",
+        "Add a login page and account switcher",
+        "Simplify button hierarchy",
+        "Add a payment entry and status flow",
+        "Expose database configuration choices",
+        "Switch to the China-default setup",
+      ]
+  const conversationItems = useMemo(
+    () =>
+      (project?.history ?? [])
+        .slice()
+        .reverse()
+        .map((item) => ({
+          id: item.id,
+          prompt: item.prompt,
+          summary: item.summary,
+          status: item.status,
+          time: new Date(item.createdAt).toLocaleString(),
+          type: item.type,
+        })),
+    [project?.history]
   )
 
   if (loading) {
@@ -817,401 +961,247 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="grid gap-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <div className="space-y-1">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              {copy.generationStatus}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {copy.generationStatusDesc}
-            </p>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => setGeneratePanelOpen((open) => !open)}>
-            {generatePanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge variant="outline">job: {jobId}</Badge>
-            {generateTask?.templateTitle ? <Badge variant="outline">template: {generateTask.templateTitle}</Badge> : null}
-            <Badge
-              variant={
-                generateTask?.status === "done"
-                  ? "secondary"
-                  : generateTask?.status === "error" && !recoveringGenerateTask
-                    ? "destructive"
-                    : "outline"
-              }
-            >
-              {recoveringGenerateTask ? "recovering" : generateTask?.status ?? "loading"}
-            </Badge>
-          </div>
-
-          {generatePanelOpen && generateTask?.logs?.length ? (
-            <div className="rounded-md border border-border bg-secondary/40 p-3">
-              <div className="text-xs font-medium mb-2">{copy.runLogs}</div>
-              <div className="space-y-2">
-                {generateTask.logs.map((line, index) => (
-                  <div key={`${index}-${line}`} className="flex gap-2 text-xs">
-                    <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
-                    <span className="text-muted-foreground">{line}</span>
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="min-w-0 space-y-4">
+        <Card className="border-border/70 bg-card/90">
+          <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">job: {jobId}</Badge>
+                {runtimeBadge}
+                {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
+                {generateTask?.templateTitle ? <Badge variant="outline">{generateTask.templateTitle}</Badge> : null}
+              </div>
+              <div className="flex items-start gap-3">
+                {projectIcon ? (
+                  <div
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-semibold text-white"
+                    style={{ background: `linear-gradient(135deg, ${projectIcon.from}, ${projectIcon.to})`, boxShadow: `0 0 0 1px ${projectIcon.ring}` }}
+                  >
+                    {projectIcon.glyph}
                   </div>
+                ) : null}
+                <div>
+                  <h1 className="text-xl font-semibold tracking-tight text-foreground">{projectName}</h1>
+                  <p className="mt-1 text-sm text-muted-foreground">{projectSubtitle}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full border border-border bg-secondary/30 px-3 py-1">{copy.workspaceTitle}</span>
+                <span className="rounded-full border border-border bg-secondary/30 px-3 py-1">{copy.currentPath}: {currentPathLabel}</span>
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3 lg:w-[320px]">
+              <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy} className="w-full">
+                <Play className="mr-1.5 h-4 w-4" />
+                Start
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy} className="w-full">
+                <RotateCcw className="mr-1.5 h-4 w-4" />
+                Restart
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy} className="w-full">
+                <Square className="mr-1.5 h-4 w-4" />
+                Stop
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden border-border/70 bg-card/90">
+          <CardHeader className="gap-3 border-b border-border/70 bg-background/50">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-secondary/30 p-1">
+                {[
+                  { key: "preview", label: copy.preview },
+                  { key: "dashboard", label: "Dashboard" },
+                  { key: "code", label: copy.code },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPreviewTab(item.key as "preview" | "dashboard" | "code")}
+                    className={`rounded-xl px-3 py-2 text-sm transition ${
+                      previewTab === item.key
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
                 ))}
               </div>
-            </div>
-          ) : null}
 
-          {recoveringGenerateTask ? (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-              生成过程曾被热更新打断，系统正在自动恢复，本次不会直接判定失败。
-            </div>
-          ) : null}
-
-          {generateTask?.summary ? (
-            <div className="rounded-md border border-border p-3">
-              <div className="text-xs font-medium mb-1">{copy.generationSummary}</div>
-              <p className="text-sm">{generateTask.summary}</p>
-            </div>
-          ) : null}
-
-          {aiInterpretation ? (
-            <div className="rounded-md border border-border p-3 bg-secondary/20">
-              <div className="text-xs font-medium mb-1">{copy.artifactState}</div>
-              <p className="text-sm text-muted-foreground">{aiInterpretation}</p>
-            </div>
-          ) : null}
-
-          {generateTask?.changedFiles?.length ? (
-            <div className="rounded-md border border-border bg-secondary/40 p-3">
-              <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
-              <div className="max-h-48 overflow-auto">{renderFileTree(generatedTree)}</div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <Card className="overflow-hidden">
-        <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-          <CardTitle className="text-base">{project.projectId}</CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            {runtimeBadge}
-            {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
-            <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
-              <Play className="h-4 w-4 mr-1.5" />
-              Start
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
-              <RotateCcw className="h-4 w-4 mr-1.5" />
-              Restart
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy} className="min-w-0 flex-1 sm:flex-none">
-              <Square className="h-4 w-4 mr-1.5" />
-              Stop
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {runtime?.lastError ? (
-            <pre className="text-xs text-amber-700 mb-3 whitespace-pre-wrap rounded-md border border-amber-200 bg-amber-50 p-3 overflow-auto max-h-56">{runtime.lastError}</pre>
-          ) : null}
-          {previewStarting && !runtime?.lastError && !runStatus ? (
-            <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
-              {isCn
-                ? "预览正在启动，通常是在安装依赖、修复生成文件或拉起本地 Next 预览。若超过 45 秒仍未就绪，再看下方诊断。"
-                : "Preview is starting. It may be installing dependencies, repairing generated files, or launching the local Next preview. If it is still not ready after 45 seconds, inspect the diagnostics below."}
-            </div>
-          ) : null}
-          {runStatus ? (
-            <pre className="text-xs text-red-600 mb-3 whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 p-3 overflow-auto max-h-56">{runStatus}</pre>
-          ) : null}
-          <div className="mb-3 flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/30 p-1">
-              {[
-                { key: "preview", label: copy.preview },
-                { key: "dashboard", label: copy.dashboard },
-                { key: "code", label: copy.code },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  onClick={() => setPreviewTab(item.key as "preview" | "dashboard" | "code")}
-                  className={`rounded-lg px-3 py-1.5 transition ${
-                    previewTab === item.key
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy}>
+                  <RefreshCw className="mr-1.5 h-4 w-4" />
+                  {copy.refresh}
+                </Button>
+                {project?.preview?.supportsSandboxRuntime ? (
+                  project?.preview?.activeMode === "sandbox_runtime" && project?.preview?.sandboxStatus === "running" ? (
+                    <Button variant="outline" size="sm" onClick={() => sandboxAction("stop")} disabled={sandboxBusy}>
+                      <SquareTerminal className="mr-1.5 h-4 w-4" />
+                      {isCn ? "关闭高级预览" : "Stop Sandbox"}
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => sandboxAction("start")} disabled={sandboxBusy}>
+                      <SquareTerminal className="mr-1.5 h-4 w-4" />
+                      {isCn ? "启动高级预览" : "Start Sandbox"}
+                    </Button>
+                  )
+                ) : null}
+                <a
+                  href={activePreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-sm font-medium"
                 >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            {previewTab === "preview" ? (
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <span className="hidden min-w-0 truncate md:inline">{previewTabUrl}</span>
-                <a href={previewTabUrl} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">
-                  Open
-                  <ExternalLink className="h-3 w-3" />
+                  {copy.openPreview}
+                  <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
                 </a>
               </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4">
+            {runtime?.lastError ? (
+              <pre className="mb-3 max-h-56 overflow-auto rounded-md border border-amber-200 bg-amber-50 p-3 text-xs whitespace-pre-wrap text-amber-700">{runtime.lastError}</pre>
             ) : null}
-          </div>
-          {previewTab === "dashboard" ? (
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card className="border-border/70">
-                  <CardContent className="p-4">
-                    <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
-                    <div className="mt-2 break-all text-sm">{previewUrl || "Not running"}</div>
-                  </CardContent>
-                </Card>
-                <Card className="border-border/70">
-                  <CardContent className="p-4">
-                    <div className="text-xs text-muted-foreground">{copy.generatedFiles}</div>
-                    <div className="mt-2 text-2xl font-semibold">{codeFiles.length}</div>
-                  </CardContent>
-                </Card>
-                <Card className="border-border/70">
-                  <CardContent className="p-4">
-                    <div className="text-xs text-muted-foreground">{copy.workspace}</div>
-                    <div className="mt-2 break-all text-sm">{project.workspacePath}</div>
-                  </CardContent>
-                </Card>
+            {runStatus ? (
+              <pre className="mb-3 max-h-56 overflow-auto rounded-md border border-red-200 bg-red-50 p-3 text-xs whitespace-pre-wrap text-red-600">{runStatus}</pre>
+            ) : null}
+            {previewStarting && !runtime?.lastError && !runStatus ? (
+              <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                {copy.previewStarting}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card className="border-border/70">
-                  <CardContent className="p-4">
-                    <div className="text-xs text-muted-foreground">{isCn ? "部署目标" : "Deployment target"}</div>
-                    <div className="mt-2 text-sm font-medium">{project.deploymentTarget || (isCn ? "未指定" : "Not set")}</div>
-                  </CardContent>
-                </Card>
-                <Card className="border-border/70">
-                  <CardContent className="p-4">
-                    <div className="text-xs text-muted-foreground">{isCn ? "数据库目标" : "Database target"}</div>
-                    <div className="mt-2 text-sm font-medium">{project.databaseTarget || (isCn ? "未指定" : "Not set")}</div>
-                  </CardContent>
-                </Card>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-md border border-border bg-secondary/20 p-4">
-                    <div className="text-sm font-medium">{copy.openAndDelivery}</div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <a href={previewUrl || "#"} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
-                      Open App Preview
-                    </a>
-                    <a href={`/api/projects/${encodeURIComponent(projectId)}/files`} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
-                      Open File Manifest
-                    </a>
-                    <a href="/api-docs" className="inline-flex items-center rounded-md border border-border px-3 py-2 text-sm">
-                      Open Docs
-                    </a>
+            ) : null}
+
+            {previewTab === "dashboard" ? (
+              <div className="space-y-4">
+                <div className="grid gap-4 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                    <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
+                    <div className="mt-2 text-lg font-semibold">{projectName}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{projectSubtitle}</div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                    <div className="text-xs text-muted-foreground">{copy.generationStatus}</div>
+                    <div className="mt-2 text-lg font-semibold">{generateTask?.status ?? runtime?.status ?? "ready"}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      {latestHistoryItem ? new Date(latestHistoryItem.createdAt).toLocaleString() : copy.generationStatusDesc}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                    <div className="text-xs text-muted-foreground">{copy.deploymentTarget}</div>
+                    <div className="mt-2 text-lg font-semibold">{project.deploymentTarget || "vercel"}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{copy.currentPath}: {workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "International"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                    <div className="text-xs text-muted-foreground">{copy.dataTarget}</div>
+                    <div className="mt-2 text-lg font-semibold">{project.databaseTarget || workspaceDatabase}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{copy.generatedFiles}: {codeFiles.length}</div>
                   </div>
                 </div>
-                  <div className="rounded-md border border-border bg-secondary/20 p-4">
-                    <div className="text-sm font-medium">{copy.workspaceProfile}</div>
+
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
+                  <div className="rounded-2xl border border-border bg-background/80 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">{isCn ? "产品概览" : "Product overview"}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{projectSummary}</div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">{workspaceRegion === "cn" ? (isCn ? "国内" : "China") : isCn ? "海外" : "Global"}</Badge>
+                        <Badge variant="outline">{project.deploymentTarget || "vercel"}</Badge>
+                        <Badge variant="outline">{project.databaseTarget || workspaceDatabase}</Badge>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                        <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
+                        <div className="mt-2 break-all text-sm">{activePreviewUrl || "Not running"}</div>
+                      </div>
+                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                        <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
+                        <div className="mt-2 text-sm">{latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}</div>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                        <div className="text-xs text-muted-foreground">{isCn ? "页面结构" : "Generated pages"}</div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {pageManifest.length ? pageManifest.map((item) => (
+                            <Badge key={item.filePath} variant="outline">
+                              {item.route}
+                            </Badge>
+                          )) : <span className="text-sm text-muted-foreground">{isCn ? "等待脚手架生成页面" : "Waiting for scaffold pages"}</span>}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                        <div className="text-xs text-muted-foreground">{isCn ? "结构化摘要" : "Structured summary"}</div>
+                        <div className="mt-3 space-y-2">
+                          {overviewPoints.map((item) => (
+                            <div key={item} className="text-sm text-foreground">
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
+                    <div className="text-sm font-semibold text-foreground">{isCn ? "运行与交付" : "Runtime and delivery"}</div>
                     <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                      <p className="text-base font-semibold text-foreground">morncursor</p>
-                    <p>{isCn ? "面向中国研发团队的 AI 代码编辑平台，深度集成业务交付、销售资产管理和团队协作。" : "An AI coding workspace for delivery-focused teams, combining execution visibility, collaboration, and launch readiness."}</p>
-                    <p>{copy.workspaceProfileDesc}</p>
-                    <div className="flex flex-wrap gap-2 pt-2">
                       {dashboardActions.map((action) => (
-                        <Button key={action.label} size="sm" variant={action.label === "Publish" ? "default" : "outline"} onClick={action.onClick}>
-                          {action.label}
-                        </Button>
+                        <button
+                          key={action.label}
+                          type="button"
+                          onClick={action.onClick}
+                          className="flex w-full items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left hover:bg-secondary/30"
+                        >
+                          <span>{action.label}</span>
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </button>
                       ))}
                     </div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-                <div className="rounded-md border border-border bg-background p-4">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                    <Search className="h-4 w-4" />
-                    {copy.workspaceSearch}
-                  </div>
-                  <Input value={commandQuery} onChange={(e) => setCommandQuery(e.target.value)} placeholder={copy.commandSearchPlaceholder} />
-                  <div className="mt-3 max-h-[52vh] space-y-2 overflow-auto">
-                    {workspaceCommands.map((command) => (
-                      <button
-                        key={command.id}
-                        type="button"
-                        onClick={() => void handleWorkspaceCommand(command)}
-                        className="w-full rounded-md border border-border bg-secondary/20 px-3 py-2 text-left"
-                      >
-                        <div className="text-sm font-medium">{command.label}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">{command.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="rounded-md border border-border bg-background p-4">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                      <Search className="h-4 w-4" />
-                      {copy.dashboardSearchTitle}
+                    <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
+                      <div className="text-xs text-muted-foreground">{isCn ? "预览状态" : "Preview status"}</div>
+                      <div className="mt-2 text-sm text-foreground">{runtime?.status ?? generateTask?.status ?? "ready"}</div>
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {project?.preview?.activeMode === "sandbox_runtime"
+                          ? project?.preview?.sandboxStatus === "running"
+                            ? (isCn ? "当前正在使用 Sandbox 高级预览。" : "Sandbox preview is active.")
+                            : runStatus || (isCn ? "Sandbox 尚未就绪。" : "Sandbox preview is not ready.")
+                          : runtime?.lastError || runStatus || (previewStarting ? copy.previewStarting : isCn ? "当前默认使用站内 canonical preview，动态 runtime 作为增强模式。" : "Canonical preview is active by default, with runtime preview as an enhancement.")}
+                      </div>
                     </div>
-                    <Input
-                      value={dashboardSearch}
-                      onChange={(e) => setDashboardSearch(e.target.value)}
-                      placeholder={copy.dashboardSearchPlaceholder}
-                    />
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {[
-                        "visibility",
-                        "invite users",
-                        "publish status",
-                        "runtime",
-                        "integrations",
-                        "distribution",
-                      ]
-                        .filter((item) => !dashboardSearch || item.toLowerCase().includes(dashboardSearch.toLowerCase()))
-                        .map((item) => (
-                          <div key={item} className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-xs">
-                            {item}
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.appVisibility}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.appVisibilityDesc}</div>
-                      <div className="mt-4 space-y-3">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setAppVisibility("public")}
-                            className={`rounded-md border px-3 py-2 text-sm ${appVisibility === "public" ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"}`}
-                          >
-                            {copy.public}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setAppVisibility("private")}
-                            className={`rounded-md border px-3 py-2 text-sm ${appVisibility === "private" ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"}`}
-                          >
-                            {copy.private}
-                          </button>
+                    {project?.preview?.supportsSandboxRuntime || project?.preview?.sandboxReadiness ? (
+                      <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
+                        <div className="text-xs text-muted-foreground">{isCn ? "Sandbox 就绪状态" : "Sandbox readiness"}</div>
+                        <div className="mt-2 text-sm text-foreground">
+                          {project.preview.sandboxReadiness?.supported
+                            ? isCn
+                              ? "可用"
+                              : "ready"
+                            : isCn
+                              ? "未配置完成"
+                              : "not configured"}
                         </div>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={requireLogin} onChange={(e) => setRequireLogin(e.target.checked)} />
-                          {copy.requireLogin}
-                        </label>
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.inviteUsers}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.inviteUsersDesc}</div>
-                      <div className="mt-4 flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setInviteStatus(isCn ? "链接已复制" : "Link copied to clipboard")}>{copy.copyLink}</Button>
-                        <Button size="sm" onClick={() => setInviteStatus(isCn ? "邀请流程已排队" : "Invite flow queued")}>{copy.sendInvites}</Button>
-                      </div>
-                      <div className="mt-3 text-xs text-muted-foreground">{inviteStatus}</div>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.moveToWorkspace}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.moveToWorkspaceDesc}</div>
-                      <div className="mt-4 flex justify-end">
-                        <Button variant="outline" size="sm">{copy.moveApp}</Button>
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.publishStatusTitle}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.publishStatusDesc}</div>
-                      <div className="mt-4 space-y-2 text-sm">
-                        <div className="flex gap-2">
-                          {(["draft", "ready", "published"] as const).map((status) => (
-                            <button
-                              key={status}
-                              type="button"
-                              onClick={() => setPublishStatus(status)}
-                              className={`rounded-md border px-3 py-1.5 text-xs ${
-                                publishStatus === status ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"
-                              }`}
-                            >
-                              {status}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="flex gap-2">
-                          {(["preview", "staging", "production"] as const).map((channel) => (
-                            <button
-                              key={channel}
-                              type="button"
-                              onClick={() => setPublishChannel(channel)}
-                              className={`rounded-md border px-3 py-1.5 text-xs ${
-                                publishChannel === channel ? "border-foreground bg-foreground text-background" : "border-border bg-secondary/20"
-                              }`}
-                            >
-                              {channel}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview: {runtime?.status ?? "stopped"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Code files: {codeFiles.length}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Latest task: {generateTask?.status ?? "unknown"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Publish state: {publishStatus}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Channel: {publishChannel}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.integrationsTitle}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.integrationsDesc}</div>
-                      <div className="mt-4 space-y-2 text-sm">
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{copy.loginProviders}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview runtime / API docs / Generated assets</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                          {copy.standaloneSurfaces}
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {project.preview.sandboxReadiness?.reason || (isCn ? "等待配置" : "Waiting for configuration")}
                         </div>
                       </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.securityTitle}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.securityDesc}</div>
-                      <div className="mt-4 space-y-2 text-sm">
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Require login before app access</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview token protection</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Preview runtime readiness checklist</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.recentActivityTitle}</div>
-                      <div className="mt-3 space-y-2">
-                        {recentDashboardEvents.map((event) => (
-                          <div key={event.title + event.meta} className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                            <div className="text-sm font-medium">{event.title}</div>
-                            <div className="mt-1 text-xs text-muted-foreground">{event.meta}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="rounded-md border border-border bg-background p-4">
-                      <div className="text-lg font-semibold">{copy.distributionTitle}</div>
-                      <div className="mt-2 text-sm text-muted-foreground">{copy.distributionDesc}</div>
-                      <div className="mt-4 space-y-2 text-sm">
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">Web preview: {previewUrl || "pending"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "文档与演示资产：/api-docs /generated/promo-assets/latest" : "Docs and demo assets: /api-docs /generated/promo-assets/latest"}</div>
-                        <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">{isCn ? "独立后台：/admin /market" : "Standalone back-office: /admin /market"}</div>
-                      </div>
+                    ) : null}
+                    <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
+                      <div className="text-xs text-muted-foreground">{isCn ? "最近任务结果" : "Latest task result"}</div>
+                      <div className="mt-2 text-sm text-foreground">{projectSummary}</div>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-border bg-secondary/20 p-4">
-                <div className="mb-2 text-sm font-medium">{copy.workspaceFiles}</div>
-                <div className="max-h-[48vh] overflow-auto">{renderFileTree(allCodeTree)}</div>
-              </div>
-            </div>
-          ) : previewTab === "code" ? (
+            ) : previewTab === "code" ? (
             <div className="grid min-h-[78vh] gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
               <div className="rounded-md border border-border bg-secondary/20 p-3">
                 <div className="mb-3 flex items-center gap-2 text-sm font-medium">
@@ -1309,7 +1299,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       {copy.refreshPreview}
                     </button>
                     <a
-                      href={selectedCodeFile ? `/api/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(selectedCodeFile)}` : "#"}
+                      href={runtimePreviewUrl || "#"}
                       target="_blank"
                       rel="noreferrer"
                       className="underline"
@@ -1396,7 +1386,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             <div className="space-y-2">
               <iframe
                 title="app-preview"
-                src={previewTabUrl}
+                src={activePreviewUrl}
                 className="w-full min-h-[65vh] rounded-md border border-border bg-white md:min-h-[78vh]"
               />
             </div>
@@ -1409,198 +1399,134 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               {copy.previewNotRunning}
             </div>
           )}
-        </CardContent>
+          </CardContent>
         </Card>
+      </div>
 
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{isCn ? "版本与数据库路径" : "Edition and database path"}</CardTitle>
+      <div className="min-w-0">
+        <div className="sticky top-24">
+          <Card className="border-border/70 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <CardHeader className="space-y-4 border-b border-border/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bot className="h-4 w-4 text-primary" />
+                    {copy.aiStudio}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">{copy.applyHint}</p>
+                </div>
+                <Badge variant="outline">{iterating ? copy.applying : generateTask?.status ?? runtime?.status ?? "ready"}</Badge>
+              </div>
+
+              <div className="grid gap-3 rounded-2xl border border-border bg-secondary/20 p-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
+                  <div className="mt-1 text-sm font-semibold">{projectName}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{projectSubtitle}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">{copy.taskSummary}</div>
+                  <div className="mt-1 text-sm text-foreground">{projectSummary}</div>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">{isCn ? "版本入口" : "Edition entry"}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { key: "cn", label: isCn ? "国内版" : "China" },
-                    { key: "intl", label: isCn ? "国际版" : "International" },
-                  ].map((item) => (
+
+            <CardContent className="space-y-5 p-4">
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="text-sm font-medium">{copy.conversationHistory}</div>
+                  <Button variant="ghost" size="sm" onClick={() => setGeneratePanelOpen((open) => !open)}>
+                    {generatePanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                <div className="max-h-[42vh] space-y-3 overflow-auto pr-1">
+                  <div className="rounded-2xl border border-border bg-background/80 p-3">
+                    <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.initialRequest}</div>
+                    <div className="text-sm line-clamp-6">{project.history[0]?.prompt || generateTask?.summary || projectName}</div>
+                  </div>
+
+                  {generatePanelOpen && generateTask?.logs?.length ? (
+                    <div className="rounded-2xl border border-border bg-secondary/20 p-3">
+                      <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.runLogs}</div>
+                      <div className="space-y-2">
+                        {generateTask.logs.slice(-6).map((line, index) => (
+                          <div key={`${index}-${line}`} className="flex gap-2 text-xs">
+                            <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+                            <span className="text-muted-foreground">{line}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {conversationItems.length ? (
+                    conversationItems.map((item) => (
+                      <div key={item.id} className="rounded-2xl border border-border bg-background/80 p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.type}</div>
+                          <Badge variant={item.status === "done" ? "secondary" : "destructive"}>{item.status}</Badge>
+                        </div>
+                        <div className="text-sm font-medium text-foreground line-clamp-4">{item.prompt}</div>
+                        {item.summary ? <div className="mt-2 text-sm text-muted-foreground">{item.summary}</div> : null}
+                        <div className="mt-3 text-xs text-muted-foreground">{item.time}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                      {copy.noConversation}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3 text-sm font-medium">{copy.quickSuggestions}</div>
+                <div className="flex flex-wrap gap-2">
+                  {quickSuggestions.map((item) => (
                     <button
-                      key={item.key}
+                      key={item}
                       type="button"
-                      onClick={() => setWorkspaceRegion(item.key as "cn" | "intl")}
-                      className={`rounded-xl border px-3 py-2 text-sm ${
-                        workspaceRegion === item.key
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-secondary/20 text-foreground"
-                      }`}
+                      onClick={() => setPrompt(item)}
+                      className="rounded-full border border-border bg-background px-3 py-2 text-xs text-foreground hover:border-primary/30 hover:bg-primary/5"
                     >
-                      {item.label}
+                      {item}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">{isCn ? "数据库方案" : "Database path"}</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {(workspaceRegion === "cn"
-                    ? [
-                        { key: "cloudbase_document", label: isCn ? "Cloud 数据集" : "Cloud Dataset" },
-                        { key: "mysql", label: "MySQL" },
-                      ]
-                    : [
-                        { key: "supabase_postgres", label: "Supabase" },
-                        { key: "mysql", label: "MySQL" },
-                      ]
-                  ).map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() =>
-                        setWorkspaceDatabase(item.key as "supabase_postgres" | "cloudbase_document" | "mysql")
-                      }
-                      className={`rounded-xl border px-3 py-2 text-sm ${
-                        workspaceDatabase === item.key
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-secondary/20 text-foreground"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border bg-secondary/20 p-3 text-sm text-muted-foreground">
-                {isCn
-                  ? `当前用于继续修改的路径：${workspaceRegion === "cn" ? "国内版" : "国际版"} · ${
-                      workspaceDatabase === "mysql"
-                        ? "MySQL"
-                        : workspaceDatabase === "cloudbase_document"
-                          ? "Cloud 数据集"
-                          : "Supabase"
-                    }`
-                  : `Current path for further edits: ${workspaceRegion === "cn" ? "China" : "International"} · ${
-                      workspaceDatabase === "mysql"
-                        ? "MySQL"
-                        : workspaceDatabase === "cloudbase_document"
-                          ? "Cloud Dataset"
-                          : "Supabase"
-                    }`}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-base">{isCn ? "运行与展示" : "Runtime and delivery"}</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {isCn
-                  ? "把版本路径配置收进右侧信息栏，主预览区优先展示真实生成结果。"
-                  : "Keep version and delivery settings in the side rail while the main canvas prioritizes the live preview."}
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                {runtimeBadge}
-                {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
-                <Badge variant="outline">{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "International"}</Badge>
-                <Badge variant="outline">
-                  {workspaceDatabase === "mysql"
-                    ? "MySQL"
-                    : workspaceDatabase === "cloudbase_document"
-                      ? isCn
-                        ? "Cloud 数据集"
-                        : "Cloud Dataset"
-                      : "Supabase"}
-                </Badge>
-              </div>
-              <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
-                <div className="mt-2 break-all text-sm">{previewUrl || "Not running"}</div>
-              </div>
-              <div className="grid gap-3">
-                <div className="rounded-xl border border-border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">{isCn ? "部署目标" : "Deployment target"}</div>
-                  <div className="mt-2 text-sm font-medium">{project.deploymentTarget || (isCn ? "未指定" : "Not set")}</div>
-                </div>
-                <div className="rounded-xl border border-border bg-background p-3">
-                  <div className="text-xs text-muted-foreground">{isCn ? "工程文件数" : "Code files"}</div>
-                  <div className="mt-2 text-sm font-medium">{codeFiles.length}</div>
+              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
+                <div className="text-sm font-medium">{copy.queuedChanges}</div>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={copy.continuePrompt}
+                  className="min-h-[120px] w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none"
+                />
+                {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
+                {iterateResult?.summary ? <p className="text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
+                {iterateResult?.changedFiles?.length ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
+                    <div className="max-h-32 overflow-auto">{renderFileTree(iterateTree)}</div>
+                  </div>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button onClick={iterate} disabled={iterating} className="w-full">
+                    <Wand2 className="mr-2 h-4 w-4" />
+                    {iterating ? copy.applying : copy.applyChange}
+                  </Button>
+                  <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
+                    <Undo2 className="mr-2 h-4 w-4" />
+                    {revertBusy ? copy.reverting : copy.revert}
+                  </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{copy.iterateProject}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Input
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={copy.iteratePlaceholder}
-            className="min-w-0"
-          />
-          <Button onClick={iterate} disabled={iterating} className="w-full">
-            <SquareTerminal className="h-4 w-4 mr-2" />
-            {iterating ? copy.applying : copy.applyChange}
-          </Button>
-          <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
-            <Undo2 className="h-4 w-4 mr-2" />
-            {revertBusy ? copy.reverting : copy.revert}
-          </Button>
-          {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
-          {iterateResult?.summary ? <p className="text-xs">{iterateResult.summary}</p> : null}
-          {iterateResult?.changedFiles?.length ? (
-            <div className="rounded-md border border-border bg-secondary/40 p-3">
-              <div className="mb-2 text-xs font-medium">Changed Files</div>
-              <div className="max-h-48 overflow-auto">{renderFileTree(iterateTree)}</div>
-            </div>
-          ) : null}
-          {iterateResult?.thinking ? (
-            <pre className="text-xs whitespace-pre-wrap rounded-md bg-secondary p-2 border border-border max-h-48 overflow-auto">
-{iterateResult.thinking}
-            </pre>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{copy.historySummary}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {project.history.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{copy.noHistory}</p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {project.history
-                .slice()
-                .reverse()
-                .map((item) => (
-                  <div key={item.id} className="rounded-xl border border-border p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{item.type}</span>
-                      <Badge variant={item.status === "done" ? "secondary" : "destructive"}>{item.status}</Badge>
-                    </div>
-                    <p className="line-clamp-4 text-sm text-muted-foreground whitespace-pre-wrap">{item.prompt}</p>
-                    {item.summary ? <p className="mt-2 text-sm">{item.summary}</p> : null}
-                    {item.error ? <p className="mt-2 text-xs text-red-500">{item.error}</p> : null}
-                    <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{new Date(item.createdAt).toLocaleString()}</span>
-                      <span>{item.changedFiles?.length ?? 0} {copy.fileUnit}</span>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { FolderKanban, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -15,10 +15,28 @@ type ProjectItem = {
   createdAt: string
   updatedAt: string
   historyCount: number
+  presentation: {
+    displayName: string
+    subtitle: string
+    summary: string
+    icon: {
+      glyph: string
+      from: string
+      to: string
+      ring: string
+    }
+  }
   runtime?: {
     status: "stopped" | "starting" | "running" | "error"
     port?: number
     url?: string
+  }
+  preview?: {
+    defaultMode: "static_ssr"
+    canonicalUrl: string
+    runtimeUrl: string
+    supportsDynamicRuntime: boolean
+    supportsSandboxRuntime: boolean
   }
 }
 
@@ -106,8 +124,16 @@ export default function ProjectsPage() {
           <Card key={project.projectId} className="hover:border-primary/50 transition-colors">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div className="flex items-center gap-3">
-                <FolderKanban className="h-5 w-5 text-muted-foreground" />
-                <span className="font-medium">{project.projectId}</span>
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white"
+                  style={{ background: `linear-gradient(135deg, ${project.presentation.icon.from}, ${project.presentation.icon.to})`, boxShadow: `0 0 0 1px ${project.presentation.icon.ring}` }}
+                >
+                  {project.presentation.icon.glyph}
+                </div>
+                <div>
+                  <div className="font-medium">{project.presentation.displayName}</div>
+                  <div className="text-xs text-muted-foreground">{project.presentation.subtitle}</div>
+                </div>
               </div>
               <Badge
                 variant={
@@ -124,6 +150,7 @@ export default function ProjectsPage() {
               </Badge>
             </CardHeader>
             <CardContent>
+              <p className="text-sm text-muted-foreground">{project.presentation.summary}</p>
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <span>Region: {project.region.toUpperCase()}</span>
                 <span>Events: {project.historyCount}</span>
@@ -133,9 +160,9 @@ export default function ProjectsPage() {
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/apps/${project.projectId}`}>Open Workspace</Link>
                 </Button>
-                {project.runtime?.url ? (
+                {project.preview?.canonicalUrl ? (
                   <Button variant="ghost" size="sm" asChild>
-                    <a href={project.runtime.url} target="_blank" rel="noreferrer">
+                    <a href={project.preview.canonicalUrl} target="_blank" rel="noreferrer">
                       Open Preview
                     </a>
                   </Button>

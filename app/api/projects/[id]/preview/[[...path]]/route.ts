@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server"
+import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
 import { readProjectSpec } from "@/lib/project-spec"
 import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function buildTargetUrl(req: Request, port: number, pathSegments: string[]) {
+function buildTargetUrl(req: Request, projectId: string, port: number) {
   const incoming = new URL(req.url)
-  const pathname = pathSegments.length ? `/${pathSegments.join("/")}` : "/"
+  const previewBase = buildPreviewBase(projectId)
+  const suffix = incoming.pathname.startsWith(previewBase)
+    ? incoming.pathname.slice(previewBase.length) || "/"
+    : "/"
+  const pathname = suffix.startsWith("/") ? suffix : `/${suffix}`
   const target = new URL(`http://127.0.0.1:${port}${pathname}`)
   target.search = incoming.search
   return target
@@ -147,8 +152,6 @@ function rewriteHtmlForPreview(html: string, projectId: string) {
   next = next.replace(/(["'])\/_next\//g, `$1${previewBase}/_next/`)
   next = next.replace(/(["'])\/favicon/g, `$1${previewBase}/favicon`)
   next = next.replace(/url\(\/(?!\/)/g, `url(${previewBase}/`)
-  next = next.replace(/"\/(?!\/)/g, `"${previewBase}/`)
-  next = next.replace(/'\/(?!\/)/g, `'${previewBase}/`)
 
   if (next.includes("</head>")) {
     next = next.replace(
@@ -165,12 +168,15 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   const project = await getProject(projectId)
   const runtimeState = project?.runtime
   const wantsHtml = isHtmlLikeRequest(req, pathSegments)
+  const fallbackUrl = buildCanonicalPreviewUrl(projectId, pathSegments.join("/"))
 
   if (!project || !runtimeState?.port) {
-    return wantsHtml ? renderFallbackPreview(projectId) : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
+    return wantsHtml
+      ? NextResponse.redirect(new URL(fallbackUrl, req.url))
+      : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
   }
 
-  const target = buildTargetUrl(req, runtimeState.port, pathSegments)
+  const target = buildTargetUrl(req, projectId, runtimeState.port)
   let upstream: Response
   try {
     upstream = await fetch(target, {
@@ -182,11 +188,13 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
       duplex: "half",
     } as RequestInit)
   } catch {
-    return wantsHtml ? renderFallbackPreview(projectId) : NextResponse.json({ error: "Preview upstream unavailable" }, { status: 502 })
+    return wantsHtml
+      ? NextResponse.redirect(new URL(fallbackUrl, req.url))
+      : NextResponse.json({ error: "Preview upstream unavailable" }, { status: 502 })
   }
 
   if (!upstream.ok && req.method === "GET" && wantsHtml) {
-    return renderFallbackPreview(projectId)
+    return NextResponse.redirect(new URL(fallbackUrl, req.url))
   }
 
   const headers = new Headers(upstream.headers)

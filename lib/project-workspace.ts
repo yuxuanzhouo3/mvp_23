@@ -1,6 +1,7 @@
 import path from "path"
 import { promises as fs } from "fs"
 import type { DatabaseTarget, DeploymentTarget } from "@/lib/fullstack-targets"
+import type { PreviewMode } from "@/lib/preview-url"
 
 export type Region = "cn" | "intl"
 
@@ -39,6 +40,16 @@ export type ProjectRecord = {
     url?: string
     lastStartedAt?: string
     lastError?: string
+  }
+  previewMode?: PreviewMode
+  sandboxRuntime?: {
+    status: "stopped" | "starting" | "running" | "error"
+    sandboxId?: string
+    cmdId?: string
+    url?: string
+    lastStartedAt?: string
+    lastError?: string
+    snapshotId?: string
   }
 }
 

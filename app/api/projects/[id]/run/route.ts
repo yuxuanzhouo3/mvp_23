@@ -198,24 +198,6 @@ async function resolvePackageManager(workspacePath: string) {
 }
 
 async function resolveNextCliArgs(workspacePath: string, port: number) {
-  const packageJsonPath = path.join(workspacePath, "package.json")
-  try {
-    const raw = await fs.readFile(packageJsonPath, "utf8")
-    const pkg = JSON.parse(raw) as {
-      dependencies?: Record<string, string>
-      devDependencies?: Record<string, string>
-    }
-    const nextVersion =
-      pkg.dependencies?.next ||
-      pkg.devDependencies?.next ||
-      ""
-    const major = Number(String(nextVersion).replace(/^[^\d]*/, "").split(".")[0] || "0")
-    if (major >= 16) {
-      return ["dev", "--webpack", "-p", String(port)]
-    }
-  } catch {
-    // noop
-  }
   return ["dev", "-p", String(port)]
 }
 
@@ -582,16 +564,19 @@ async function startProject(projectId: string) {
 
       const nextArgs = await resolveNextCliArgs(workspacePath, port)
       const startupLogHandle = await fs.open(startupLogPath, "a")
+      const childEnv = {
+        ...process.env,
+        NODE_ENV: "development",
+      } as NodeJS.ProcessEnv
+      delete childEnv.TURBOPACK
+
       child = spawn(process.execPath, [nextBin, ...nextArgs], {
         cwd: workspacePath,
         detached: true,
         stdio: ["ignore", startupLogHandle.fd, startupLogHandle.fd],
         windowsHide: true,
         creationFlags: process.platform === "win32" ? 0x08000000 : 0,
-        env: {
-          ...process.env,
-          NODE_ENV: "development",
-        },
+        env: childEnv,
       } as any)
       child.unref()
       await startupLogHandle.close()

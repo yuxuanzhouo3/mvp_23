@@ -241,6 +241,7 @@ async function callEditorModel(projectDir: string, prompt: string, region: Regio
     baseUrl: String(body?.baseUrl ?? "").trim() || undefined,
     model: String(body?.model ?? "").trim() || undefined,
     enableThinking: typeof body?.enableThinking === "boolean" ? body.enableThinking : undefined,
+    mode: "fixer",
   })
 
   const files = await collectContextFiles(projectDir)
@@ -281,6 +282,7 @@ async function callEditorModel(projectDir: string, prompt: string, region: Regio
     ],
     temperature: 0.2,
     timeoutMs: 120_000,
+    mode: "fixer",
   })
 
   if (!rawContent) {

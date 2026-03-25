@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -14,10 +15,34 @@ type SidebarNavProps = {
   onToggleCollapsed: () => void
 }
 
+type RecentProject = {
+  projectId: string
+  updatedAt: string
+  presentation: {
+    displayName: string
+    subtitle: string
+    summary: string
+    icon: {
+      glyph: string
+      from: string
+      to: string
+      ring: string
+    }
+  }
+}
+
 export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
   const pathname = usePathname()
   const { t } = useLocale()
   const workspaceOpen = true
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((json) => setRecentProjects((json.projects ?? []).slice(0, 5)))
+      .catch(() => setRecentProjects([]))
+  }, [])
 
   const NavLink = ({ item }: { item: (typeof mainNav)[0] }) => {
     const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))
@@ -157,6 +182,42 @@ export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
               </li>
             ))}
           </ul>
+
+          {recentProjects.length ? (
+            <>
+              <Separator className="my-4 bg-sidebar-border" />
+              {!collapsed && (
+                <p className="px-2.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recents
+                </p>
+              )}
+              <ul className="flex flex-col gap-1" role="list">
+                {recentProjects.map((project) => {
+                  const active = pathname?.startsWith(`/apps/${project.projectId}`) ?? false
+                  const icon = project.presentation.icon
+                  return (
+                    <li key={project.projectId}>
+                      <Link
+                        href={`/apps/${project.projectId}`}
+                        title={collapsed ? project.presentation.displayName : undefined}
+                        className={linkClass(active)}
+                      >
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold text-white"
+                          style={{ background: `linear-gradient(135deg, ${icon.from}, ${icon.to})`, boxShadow: `0 0 0 1px ${icon.ring}` }}
+                        >
+                          {icon.glyph}
+                        </span>
+                        {!collapsed && (
+                          <span className="min-w-0 truncate">{project.presentation.displayName}</span>
+                        )}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          ) : null}
         </nav>
       )}
 

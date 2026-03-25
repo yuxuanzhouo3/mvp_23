@@ -14,6 +14,7 @@ import {
   type Region,
 } from "@/lib/project-workspace"
 import { requestJsonChatCompletion, resolveAiConfig } from "@/lib/ai-provider"
+import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
 import {
   appendGenerateTaskLog,
   createGenerateTask,
@@ -27,6 +28,9 @@ import {
   createAppSpec,
   readProjectSpec,
   writeProjectSpec,
+  type AppKind,
+  type AppSpec,
+  type SpecFeature,
 } from "@/lib/project-spec"
 import { getCurrentSession } from "@/lib/auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
@@ -44,12 +48,13 @@ import {
   type DatabaseTarget,
   type DeploymentTarget,
 } from "@/lib/fullstack-targets"
+import { getDefaultPreviewMode } from "@/lib/sandbox-preview"
 
 export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
 
 function buildProjectPreviewPath(projectId: string) {
-  return `/api/projects/${encodeURIComponent(projectId)}/preview/`
+  return buildCanonicalPreviewUrl(projectId)
 }
 
 type GeneratedFile = {
@@ -66,6 +71,38 @@ type GenerateTaskRecord = GenerateTask & {
   rawPrompt?: string
   templateId?: string
   templateTitle?: string
+}
+
+type PlannerProductType =
+  | "ai_code_platform"
+  | "crm_workspace"
+  | "api_platform"
+  | "community_hub"
+  | "content_site"
+  | "task_workspace"
+
+type PlannerSpec = {
+  productName: string
+  productType: PlannerProductType
+  targetLocale: "zh-CN" | "en-US"
+  style: {
+    theme: "dark" | "light"
+    tone: string
+    market: "china" | "global"
+  }
+  pages: string[]
+  layout: {
+    editor?: string[]
+  }
+  aiTools: string[]
+  templates: string[]
+  plans: string[]
+  deploymentDefaults: {
+    cn: [string, string]
+    global: [string, string]
+  }
+  preferredScaffold: string
+  summary: string
 }
 
 type RegionDefaults = {
@@ -198,6 +235,132 @@ function parseGeneratorOutput(rawContent: string): GeneratorModelOutput {
   }
 }
 
+function uniqueLowerStrings(input: string[], fallback: string[]) {
+  const values = Array.from(new Set(input.map((item) => sanitizeUiText(String(item))).filter(Boolean)))
+  return values.length ? values : fallback
+}
+
+function inferPlannerProductType(prompt: string): PlannerProductType {
+  const kind = inferAppKind(prompt)
+  if (kind === "code_platform") return "ai_code_platform"
+  if (kind === "crm") return "crm_workspace"
+  if (/api|analytics|monitoring|dashboard|接口|分析平台|监控|趋势/i.test(prompt)) return "api_platform"
+  if (kind === "community") return "community_hub"
+  if (kind === "blog" || /website|landing|homepage|download|官网|下载站|落地页|文档/i.test(prompt)) return "content_site"
+  return "task_workspace"
+}
+
+function fallbackPlannerSpec(
+  prompt: string,
+  region: Region,
+  deploymentTarget: DeploymentTarget,
+  databaseTarget: DatabaseTarget
+): PlannerSpec {
+  const productType = inferPlannerProductType(prompt)
+  const targetLocale = region === "cn" ? "zh-CN" : "en-US"
+  const productName = deriveProjectHeadline(prompt) || (region === "cn" ? "Mornstack 应用" : "Mornstack App")
+  const cnDefaults: [string, string] = ["cloudbase", "cloud_docs"]
+  const globalDefaults: [string, string] = ["vercel", "supabase"]
+
+  if (productType === "ai_code_platform") {
+    return {
+      productName,
+      productType,
+      targetLocale,
+      style: {
+        theme: "dark",
+        tone: "production-ready",
+        market: region === "cn" ? "china" : "global",
+      },
+      pages: ["dashboard", "editor", "runs", "templates", "pricing"],
+      layout: {
+        editor: ["activity_bar", "file_tree", "tab_editor", "terminal_panel", "ai_assistant_panel"],
+      },
+      aiTools: ["explain", "fix", "generate", "refactor"],
+      templates:
+        region === "cn"
+          ? ["官网与下载站", "销售后台", "API 数据平台", "社区反馈中心"]
+          : ["Website and downloads", "Sales admin", "API platform", "Community hub"],
+      plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
+      deploymentDefaults: {
+        cn: cnDefaults,
+        global: globalDefaults,
+      },
+      preferredScaffold: "ai_code_platform_scaffold",
+      summary:
+        region === "cn"
+          ? `规划为 AI 代码编辑平台，输出 dashboard、editor、runs、templates、pricing 五页骨架，并默认接入 ${deploymentTarget} + ${databaseTarget}。`
+          : `Planned as an AI coding platform with dashboard, editor, runs, templates, and pricing routes on ${deploymentTarget} + ${databaseTarget}.`,
+    }
+  }
+
+  const fallbackPages =
+    productType === "crm_workspace"
+      ? ["dashboard", "leads", "tasks", "pricing"]
+      : productType === "api_platform"
+        ? ["dashboard", "runs", "docs", "pricing"]
+        : productType === "community_hub"
+          ? ["home", "events", "feedback", "pricing"]
+          : productType === "content_site"
+            ? ["home", "downloads", "docs", "pricing"]
+            : ["home", "dashboard", "tasks", "pricing"]
+
+  return {
+    productName,
+    productType,
+    targetLocale,
+    style: {
+      theme: productType === "content_site" ? "light" : "dark",
+      tone: "production-ready",
+      market: region === "cn" ? "china" : "global",
+    },
+    pages: fallbackPages,
+    layout: {},
+    aiTools: ["generate"],
+    templates: [],
+    plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
+    deploymentDefaults: { cn: cnDefaults, global: globalDefaults },
+    preferredScaffold: `${productType}_scaffold`,
+    summary:
+      region === "cn"
+        ? `已规划为 ${productType}，优先输出可运行的多页面产品骨架。`
+        : `Planned as ${productType} with a runnable multi-page scaffold.`,
+  }
+}
+
+function normalizePlannerSpec(
+  parsed: Partial<PlannerSpec> | null | undefined,
+  prompt: string,
+  region: Region,
+  deploymentTarget: DeploymentTarget,
+  databaseTarget: DatabaseTarget
+) {
+  const fallback = fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+  const productType = (parsed?.productType as PlannerProductType | undefined) ?? fallback.productType
+  return {
+    ...fallback,
+    ...parsed,
+    productName: sanitizeUiText(parsed?.productName || "") || fallback.productName,
+    productType,
+    targetLocale: parsed?.targetLocale === "zh-CN" || parsed?.targetLocale === "en-US" ? parsed.targetLocale : fallback.targetLocale,
+    style: {
+      theme: parsed?.style?.theme === "light" ? "light" : fallback.style.theme,
+      tone: sanitizeUiText(parsed?.style?.tone || "") || fallback.style.tone,
+      market: parsed?.style?.market === "global" ? "global" : fallback.style.market,
+    },
+    pages: uniqueLowerStrings(parsed?.pages ?? [], fallback.pages),
+    layout: {
+      editor: uniqueLowerStrings(parsed?.layout?.editor ?? [], fallback.layout.editor ?? []),
+    },
+    aiTools: uniqueLowerStrings(parsed?.aiTools ?? [], fallback.aiTools),
+    templates: uniqueLowerStrings(parsed?.templates ?? [], fallback.templates),
+    plans: uniqueLowerStrings(parsed?.plans ?? [], fallback.plans),
+    deploymentDefaults: fallback.deploymentDefaults,
+    preferredScaffold: sanitizeUiText(parsed?.preferredScaffold || "") || fallback.preferredScaffold,
+    summary: sanitizeUiText(parsed?.summary || "") || fallback.summary,
+  } satisfies PlannerSpec
+}
+
 function getPlanGenerationDirective(planTier: PlanTier, region: Region) {
   if (planTier === "elite") {
     return region === "cn"
@@ -219,15 +382,104 @@ function getPlanGenerationDirective(planTier: PlanTier, region: Region) {
     : "Target the free or starter tier: keep it complete and usable, but scoped to a solid first version without over-expanding."
 }
 
+async function callPlannerModel(args: {
+  prompt: string
+  region: Region
+  planTier: PlanTier
+  deploymentTarget: DeploymentTarget
+  databaseTarget: DatabaseTarget
+}): Promise<PlannerSpec> {
+  const { prompt, region, planTier, deploymentTarget, databaseTarget } = args
+  const config = resolveAiConfig({ mode: "planner" })
+  const system = [
+    "You are the planning layer for a Next.js application generator.",
+    "Return strict JSON only.",
+    "Do not write UI copy from the raw prompt. Convert the prompt into structured product intent.",
+    "Prefer product language and reusable structure over literal prompt echoing.",
+    "For AI code platform or Cursor-like prompts, always include dashboard, editor, runs, templates, and pricing.",
+    "For code-platform products, the editor layout must include activity_bar, file_tree, tab_editor, terminal_panel, and ai_assistant_panel.",
+    "For code-platform products, AI tools must include explain, fix, generate, and refactor.",
+  ].join("\n")
+
+  const user = [
+    `Prompt: ${prompt}`,
+    `Region: ${region}`,
+    `Plan tier: ${planTier}`,
+    `Deployment target: ${deploymentTarget}`,
+    `Database target: ${databaseTarget}`,
+    'Return JSON with this schema: {"productName":"","productType":"","targetLocale":"zh-CN|en-US","style":{"theme":"dark|light","tone":"","market":"china|global"},"pages":[],"layout":{"editor":[]},"aiTools":[],"templates":[],"plans":[],"deploymentDefaults":{"cn":["cloudbase","cloud_docs"],"global":["vercel","supabase"]},"preferredScaffold":"","summary":""}',
+  ].join("\n\n")
+
+  try {
+    const { content } = await requestJsonChatCompletion({
+      config,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      timeoutMs: 90_000,
+      mode: "planner",
+    })
+    if (!content) {
+      return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+    }
+    const parsed = JSON.parse(sanitizeJsonText(extractJsonObject(content))) as Partial<PlannerSpec>
+    return normalizePlannerSpec(parsed, prompt, region, deploymentTarget, databaseTarget)
+  } catch {
+    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+  }
+}
+
+function plannerProductTypeToAppKind(productType: PlannerProductType): AppKind {
+  if (productType === "ai_code_platform") return "code_platform"
+  if (productType === "crm_workspace") return "crm"
+  if (productType === "community_hub") return "community"
+  if (productType === "content_site") return "blog"
+  return "task"
+}
+
+function createPlannedAppSpec(args: {
+  prompt: string
+  region: Region
+  planTier: PlanTier
+  planner: PlannerSpec
+  deploymentTarget: DeploymentTarget
+  databaseTarget: DatabaseTarget
+}): AppSpec {
+  const { prompt, region, planTier, planner, deploymentTarget, databaseTarget } = args
+  const kind = plannerProductTypeToAppKind(planner.productType)
+  const modules = [
+    ...planner.pages.map((page) => `${page} page`),
+    ...planner.aiTools.map((tool) => `ai:${tool}`),
+    ...planner.templates,
+  ]
+  const features: SpecFeature[] =
+    kind === "code_platform"
+      ? (["description_field", "assignee_filter", ...(planTier === "pro" || planTier === "elite" ? ["analytics_page", "about_page", "blocked_status"] : [])] as SpecFeature[])
+      : (["description_field", "assignee_filter"] as SpecFeature[])
+
+  return createAppSpec(prompt, region, {
+    title: planner.productName,
+    kind,
+    planTier,
+    templateId: kind === "code_platform" ? "" : inferTemplateIdFromPrompt(prompt),
+    deploymentTarget,
+    databaseTarget,
+    modules,
+    features,
+  })
+}
+
 async function callGeneratorModel(
   prompt: string,
+  planner: PlannerSpec,
   region: Region,
   projectId: string,
   planTier: PlanTier,
   deploymentTarget?: DeploymentTarget,
   databaseTarget?: DatabaseTarget
 ): Promise<GeneratorModelOutput> {
-  const config = resolveAiConfig()
+  const config = resolveAiConfig({ mode: "builder" })
   const brief = buildGenerationBrief(prompt, region, planTier)
   const deployment = getDeploymentOption(deploymentTarget ?? getDefaultDeploymentTarget(region))
   const database = getDatabaseOption(databaseTarget ?? getDefaultDatabaseTarget(region))
@@ -276,7 +528,8 @@ async function callGeneratorModel(
     `Plan tier: ${planTier}`,
     `Deployment target: ${deployment.id} (${deployment.runtime}, dockerRequired=${deployment.dockerRequired})`,
     `Database target: ${database.id} (${database.engine})`,
-    `User prompt: ${prompt}`,
+    `Raw user prompt: ${prompt}`,
+    `Planner spec: ${JSON.stringify(planner)}`,
     `Generation brief: ${JSON.stringify(brief)}`,
     getPlanGenerationDirective(planTier, region),
     region === "cn"
@@ -309,6 +562,7 @@ async function callGeneratorModel(
     messages,
     temperature: 0.3,
     timeoutMs: 90_000,
+    mode: "builder",
   })
   if (!raw) {
     throw new Error("Empty model response")
@@ -343,6 +597,7 @@ async function writeGeneratedProjectFiles(
   region: Region,
   prompt: string,
   options?: {
+    titleOverride?: string
     templateId?: string
     templateStyle?: TemplatePreviewStyle
     planTier?: PlanTier
@@ -519,7 +774,7 @@ export default nextConfig;
       prompt,
       region,
       {
-        title: template ? (region === "cn" ? template.titleZh : template.titleEn) : undefined,
+        title: options?.titleOverride,
         planTier: options?.planTier ?? ((latestCompletedPayment?.planId as PlanTier | undefined) ?? "free"),
         templateId: options?.templateId,
         templateStyle: options?.templateStyle,
@@ -881,9 +1136,23 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 }
 
 function deriveProjectHeadline(prompt: string) {
+  const explicitName = extractProductNameFromPrompt(prompt)
+  if (explicitName) return explicitName
   const clean = sanitizeUiText(prompt)
   if (!clean) return "Generated Task Workspace"
   return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean
+}
+
+function extractProductNameFromPrompt(prompt: string) {
+  const patterns = [
+    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
+    /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
+  ]
+  for (const re of patterns) {
+    const match = prompt.match(re)
+    if (match?.[1]) return sanitizeUiText(match[1])
+  }
+  return ""
 }
 
 function inferAppKind(prompt: string) {
@@ -1189,6 +1458,7 @@ async function runGenerateTaskWorker(jobId: string) {
   if (!current) return
 
   const outDir = getWorkspacePath(current.projectId)
+  const rawPrompt = current.rawPrompt || current.prompt
   const projectRecord = (await getProject(current.projectId)) as
     | ({
         deploymentTarget?: DeploymentTarget
@@ -1210,7 +1480,21 @@ async function runGenerateTaskWorker(jobId: string) {
 
   try {
     await ensureDir(outDir)
-    await writeGeneratedProjectFiles(outDir, current.projectId, current.region, current.rawPrompt || current.prompt, {
+    await appendGenerateTaskLog(jobId, "[2/6] 正在规划产品蓝图")
+    const planner = await callPlannerModel({
+      prompt: rawPrompt,
+      region: current.region,
+      planTier: current.planTier ?? "free",
+      deploymentTarget,
+      databaseTarget,
+    })
+    await appendGenerateTaskLog(
+      jobId,
+      `[2.5/6] 规划完成：${planner.productName} · ${planner.productType} · scaffold=${planner.preferredScaffold}`
+    )
+
+    await writeGeneratedProjectFiles(outDir, current.projectId, current.region, rawPrompt, {
+      titleOverride: planner.productName,
       templateId: current.templateId,
       templateStyle: currentTemplate?.previewStyle,
       planTier: current.planTier,
@@ -1218,44 +1502,70 @@ async function runGenerateTaskWorker(jobId: string) {
       databaseTarget,
     })
     logs.push("[OK] Base scaffold generated")
-    await appendGenerateTaskLog(jobId, "[2/6] 基础脚手架已生成")
+    await appendGenerateTaskLog(jobId, "[3/6] 基础脚手架已生成")
 
-    try {
-      await appendGenerateTaskLog(jobId, "[3/6] 正在调用 AI 生成业务页面和代码")
-      const modelOutput = await callGeneratorModel(
-        current.prompt,
-        current.region,
-        current.projectId,
-        current.planTier ?? "free",
-        deploymentTarget,
-        databaseTarget
-      )
-      const aiChanged = await applyGeneratedFiles(outDir, modelOutput.files)
-      changedFiles = aiChanged
+    const plannedSpec = createPlannedAppSpec({
+      prompt: rawPrompt,
+      region: current.region,
+      planTier: current.planTier ?? "free",
+      planner,
+      deploymentTarget,
+      databaseTarget,
+    })
+    await writeProjectSpec(outDir, plannedSpec)
+    const scaffoldFiles = await buildSpecDrivenWorkspaceFiles(outDir, plannedSpec)
+    const scaffoldChanged = await applyGeneratedFiles(
+      outDir,
+      scaffoldFiles.map((file) => ({ path: file.path, content: file.content }))
+    )
+    changedFiles = Array.from(new Set([...changedFiles, ...scaffoldChanged]))
+    await appendGenerateTaskLog(jobId, `[3.5/6] 已按规划落地 ${scaffoldChanged.length} 个 scaffold 文件`)
 
-      const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
-      changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
+    if (plannedSpec.kind === "code_platform") {
+      summary =
+        current.region === "cn"
+          ? `已生成 ${planner.productName} 的 AI 代码平台骨架，包含 dashboard、editor、runs、templates、pricing 五页与可演示工作台。`
+          : `Generated the ${planner.productName} AI code platform scaffold with dashboard, editor, runs, templates, and pricing.`
+      await appendGenerateTaskLog(jobId, "[4/6] 命中 ai_code_platform_scaffold，跳过自由生成并保留稳定骨架")
+    } else {
+      try {
+        await appendGenerateTaskLog(jobId, "[4/6] 正在调用 AI Builder 生成业务页面和代码")
+        const modelOutput = await callGeneratorModel(
+          rawPrompt,
+          planner,
+          current.region,
+          current.projectId,
+          current.planTier ?? "free",
+          deploymentTarget,
+          databaseTarget
+        )
+        const aiChanged = await applyGeneratedFiles(outDir, modelOutput.files)
+        changedFiles = Array.from(new Set([...changedFiles, ...aiChanged]))
 
-      if (aiChanged.length > 0) {
-        summary =
-          current.region === "cn"
-            ? `已生成并稳定化 ${aiChanged.length} 个核心文件，工作区可继续预览与迭代`
-            : `Generated and stabilized ${aiChanged.length} core files for further preview and iteration`
-        logs.push(`[OK] AI generation applied: ${aiChanged.length} files`)
-        await appendGenerateTaskLog(jobId, `[4/6] AI 输出已应用：${aiChanged.length} 个文件`)
-        await appendGenerateTaskLog(jobId, "[4.5/6] 已对核心页面执行稳定化与模板锁定")
-      } else {
+        const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
+        changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
+
+        if (aiChanged.length > 0) {
+          summary =
+            current.region === "cn"
+              ? `已生成并稳定化 ${aiChanged.length} 个核心文件，工作区可继续预览与迭代`
+              : `Generated and stabilized ${aiChanged.length} core files for further preview and iteration`
+          logs.push(`[OK] AI generation applied: ${aiChanged.length} files`)
+          await appendGenerateTaskLog(jobId, `[4/6] AI 输出已应用：${aiChanged.length} 个文件`)
+          await appendGenerateTaskLog(jobId, "[4.5/6] 已对核心页面执行稳定化与模板锁定")
+        } else {
+          summary = "Structured workspace generated from the built-in product scaffold"
+          logs.push("[WARN] AI response had no applicable files; fallback applied")
+          await appendGenerateTaskLog(jobId, "[4/6] AI 未返回可用文件，已切换到本地业务模板")
+        }
+      } catch (e: any) {
+        const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
+        changedFiles = Array.from(new Set([...changedFiles, ...fallbackChanged]))
         summary = "Structured workspace generated from the built-in product scaffold"
-        logs.push("[WARN] AI response had no applicable files; fallback applied")
-        await appendGenerateTaskLog(jobId, "[4/6] AI 未返回可用文件，已切换到本地业务模板")
+        logs.push(`[WARN] AI generation skipped: ${e?.message || String(e)}`)
+        logs.push(`[OK] Fallback generation applied: ${fallbackChanged.length} files`)
+        await appendGenerateTaskLog(jobId, `[4/6] AI 调用失败，已使用本地业务模板。原因：${e?.message || String(e)}`)
       }
-    } catch (e: any) {
-      const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
-      changedFiles = fallbackChanged
-      summary = "Structured workspace generated from the built-in product scaffold"
-      logs.push(`[WARN] AI generation skipped: ${e?.message || String(e)}`)
-      logs.push(`[OK] Fallback generation applied: ${fallbackChanged.length} files`)
-      await appendGenerateTaskLog(jobId, `[4/6] AI 调用失败，已使用本地业务模板。原因：${e?.message || String(e)}`)
     }
 
     const identityChanged = await enforcePromptIdentity(outDir, current.prompt)
@@ -1318,6 +1628,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
     const rawPrompt = String(body?.prompt ?? "").trim()
     const requestedTemplateId = String(body?.templateId ?? "").trim()
+    const inferredKind = inferAppKind(rawPrompt)
     const templateId = requestedTemplateId || inferTemplateIdFromPrompt(rawPrompt) || ""
     const template = getTemplateById(templateId)
     const templatePrompt = String(body?.templatePrompt ?? "").trim()
@@ -1331,8 +1642,11 @@ export async function POST(req: Request) {
         ? requestedPlanTier
         : maxPlanTier
     const region = (body?.region === "cn" ? "cn" : "intl") as Region
-    const prompt = template
-      ? `${rawPrompt}\n\nTemplate baseline:\n${templatePrompt || (region === "cn" ? template.promptZh : template.promptEn)}\n\nKeep the generated result stylistically close to the selected template while fulfilling the user's request.\n\nGeneration tier: ${planTierForGeneration}.`
+    const shouldInjectTemplateBaseline = Boolean(template && requestedTemplateId && inferredKind !== "code_platform")
+    const resolvedTemplateBaseline =
+      template && shouldInjectTemplateBaseline ? templatePrompt || (region === "cn" ? template.promptZh : template.promptEn) : ""
+    const prompt = shouldInjectTemplateBaseline
+      ? `${rawPrompt}\n\nTemplate baseline:\n${resolvedTemplateBaseline}\n\nKeep the generated result stylistically close to the selected template while fulfilling the user's request.\n\nGeneration tier: ${planTierForGeneration}.`
       : rawPrompt
     if (!prompt) {
       return NextResponse.json({ error: "prompt is required" }, { status: 400 })
@@ -1355,6 +1669,10 @@ export async function POST(req: Request) {
         status: "stopped",
         port: 3001,
         url: buildProjectPreviewPath(projectId),
+      },
+      previewMode: getDefaultPreviewMode(),
+      sandboxRuntime: {
+        status: "stopped",
       },
       history: [],
     } as Parameters<typeof upsertProject>[0])
@@ -1442,7 +1760,7 @@ export async function GET(req: Request) {
         `cd ${outDir ?? getWorkspacePath(currentTask.projectId)}`,
         "npm install",
         "npx prisma migrate dev --name init",
-        "npx next dev --webpack -p 3001",
+        "npx next dev -p 3001",
       ],
     })
   }
@@ -1497,7 +1815,7 @@ export async function GET(req: Request) {
       `cd ${outDir}`,
       "npm install",
       "npx prisma migrate dev --name init",
-      "npx next dev --webpack -p 3001",
+      "npx next dev -p 3001",
     ],
   })
 }
