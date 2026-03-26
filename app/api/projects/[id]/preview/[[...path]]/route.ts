@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
+import { buildCanonicalPreviewUrl, isRuntimePreviewRootSegment } from "@/lib/preview-url"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
 import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
@@ -13,7 +13,13 @@ function buildTargetUrl(req: Request, projectId: string, port: number) {
   const suffix = incoming.pathname.startsWith(previewBase)
     ? incoming.pathname.slice(previewBase.length) || "/"
     : "/"
-  const pathname = suffix.startsWith("/") ? suffix : `/${suffix}`
+  const normalizedSuffix = suffix.startsWith("/") ? suffix.slice(1) : suffix
+  const pathname =
+    isRuntimePreviewRootSegment(normalizedSuffix)
+      ? "/"
+      : suffix.startsWith("/")
+        ? suffix
+        : `/${suffix}`
   const target = new URL(`http://127.0.0.1:${port}${pathname}`)
   target.search = incoming.search
   return target
@@ -175,7 +181,9 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   const project = await getProject(projectId)
   const runtimeState = project?.runtime
   const wantsHtml = isHtmlLikeRequest(req, pathSegments)
-  const fallbackUrl = buildCanonicalPreviewUrl(projectId, pathSegments.join("/"))
+  const normalizedPathSegments =
+    pathSegments.length === 1 && isRuntimePreviewRootSegment(pathSegments[0]) ? [] : pathSegments
+  const fallbackUrl = buildCanonicalPreviewUrl(projectId, normalizedPathSegments.join("/"))
 
   if (!project || !runtimeState?.port) {
     return wantsHtml

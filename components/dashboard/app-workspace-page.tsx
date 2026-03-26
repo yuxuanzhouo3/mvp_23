@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
+import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl } from "@/lib/preview-url"
 
 type RuntimeState = {
   status: "stopped" | "starting" | "running" | "error"
@@ -153,6 +153,18 @@ type FileTreeNode = {
   path: string
   children: Map<string, FileTreeNode>
   isFile: boolean
+}
+
+type PreviewProbeState = {
+  projectSlug: string
+  previewMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  canonicalPreviewUrl: string
+  runtimePreviewUrl: string
+  resolvedPreviewUrl: string
+  fallbackUsed: boolean
+  responseStatus: number | null
+  renderStrategy: "iframe" | "structured_fallback"
+  responseUrl?: string
 }
 
 function normalizePreviewUrl(projectId: string, url?: string) {
@@ -292,6 +304,73 @@ function renderSelectableFileTree(
   ))
 }
 
+function StructuredPreviewFallback({
+  projectName,
+  projectSubtitle,
+  isCn,
+}: {
+  projectName: string
+  projectSubtitle: string
+  isCn: boolean
+}) {
+  const pages = isCn
+    ? [
+        { key: "dashboard", label: "总览", desc: "项目概览、状态与路径摘要" },
+        { key: "editor", label: "编辑器", desc: "文件树、多标签编辑器与 AI 助手" },
+        { key: "runs", label: "运行", desc: "构建状态、运行记录与交付流程" },
+        { key: "templates", label: "模板库", desc: "场景模板、模块能力与复用入口" },
+        { key: "pricing", label: "升级", desc: "免费版、专业版、精英版分层方案" },
+      ]
+    : [
+        { key: "dashboard", label: "Dashboard", desc: "Project overview, state, and path summary" },
+        { key: "editor", label: "Editor", desc: "File tree, tabs, and AI assistant" },
+        { key: "runs", label: "Runs", desc: "Build state, runtime history, and delivery flow" },
+        { key: "templates", label: "Templates", desc: "Scenario templates and reusable modules" },
+        { key: "pricing", label: "Pricing", desc: "Free, Pro, and Elite plan structure" },
+      ]
+
+  return (
+    <div className="rounded-3xl border border-border bg-background/90 p-6 shadow-sm">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        {isCn
+          ? "动态预览暂时不可用，已自动切换为结构化 fallback preview。"
+          : "Dynamic preview is unavailable, so the structured fallback preview is shown."}
+      </div>
+      <div className="mt-4 rounded-3xl border border-border bg-[linear-gradient(180deg,#0d0f15_0%,#151927_100%)] p-5 text-white">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="text-lg font-semibold">{projectName}</div>
+            <div className="mt-1 text-sm text-white/60">{projectSubtitle}</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pages.map((page, index) => (
+              <span
+                key={page.key}
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  index === 0
+                    ? "border-violet-400/40 bg-violet-500/20 text-violet-100"
+                    : "border-white/10 bg-white/5 text-white/70"
+                }`}
+              >
+                {page.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {pages.map((page) => (
+            <div key={page.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm font-semibold text-white">{page.label}</div>
+              <div className="mt-2 text-sm text-white/60">{page.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const searchParams = useSearchParams()
   const jobId = searchParams.get("jobId") || projectId
@@ -325,6 +404,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [workspaceRegion, setWorkspaceRegion] = useState<"cn" | "intl">("intl")
   const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "cloudbase_document" | "mysql">("supabase_postgres")
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
+  const [previewProbe, setPreviewProbe] = useState<PreviewProbeState | null>(null)
 
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
@@ -723,18 +803,24 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     initialRequest: isCn ? "初始需求" : "Initial prompt",
     noConversation: isCn ? "生成完成后，这里会记录你和 AI 的持续修改过程。" : "Once generation finishes, this rail will capture your ongoing edits with AI.",
   } as const
-  const previewUrl = normalizePreviewUrl(projectId, project?.preview?.canonicalUrl)
-  const previewTabUrl = previewUrl
-  const runtimePreviewUrl = normalizePreviewUrl(projectId, project?.preview?.runtimeUrl || runtime?.url)
-  const sandboxPreviewUrl = normalizePreviewUrl(projectId, project?.preview?.sandboxUrl || undefined)
-  const activePreviewUrl =
-    project?.preview?.activeMode === "sandbox_runtime" && sandboxPreviewUrl
-      ? sandboxPreviewUrl
-      : previewTabUrl
+  const projectSlug = project?.projectId || projectId
+  const canonicalPreviewUrl = normalizePreviewUrl(
+    projectSlug,
+    project?.preview?.canonicalUrl || buildCanonicalPreviewUrl(projectSlug)
+  )
+  const runtimePreviewUrl = normalizePreviewUrl(
+    projectSlug,
+    project?.preview?.runtimeUrl || runtime?.url || buildRuntimePreviewUrl(projectSlug)
+  )
+  const sandboxPreviewUrl = normalizePreviewUrl(
+    projectSlug,
+    project?.preview?.sandboxUrl || buildSandboxPreviewUrl(projectSlug)
+  )
   const refreshPreview = () => {
     setPreviewRefreshKey((current) => current + 1)
   }
-  const canRenderPreview = Boolean(previewUrl)
+  const resolvedPreviewUrl = previewProbe?.resolvedPreviewUrl || canonicalPreviewUrl
+  const canRenderPreview = Boolean(resolvedPreviewUrl)
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
     generateTask?.status !== "error" &&
@@ -780,7 +866,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       {
         id: "tab:preview",
         label: "Open Preview",
-        description: "Switch to live app preview",
+        description: "Switch to the resolved preview",
         action: "switch-tab",
         target: "preview",
       },
@@ -800,7 +886,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       {
         id: "action:open-preview",
         label: "Open Preview In New Tab",
-        description: previewUrl || "Preview URL unavailable",
+        description: resolvedPreviewUrl || "Preview URL unavailable",
         action: "open-preview",
       },
     ]
@@ -826,7 +912,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       if (!query) return true
       return `${item.label} ${item.description}`.toLowerCase().includes(query)
     }).slice(0, 24)
-  }, [codeFiles, commandQuery, previewUrl, searchResults])
+  }, [codeFiles, commandQuery, resolvedPreviewUrl, searchResults])
   const handleWorkspaceCommand = async (command: WorkspaceCommand) => {
     if (command.action === "open-file" && command.target) {
       setSelectedCodeFile(command.target)
@@ -842,8 +928,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       await runAction("restart")
       return
     }
-    if (command.action === "open-preview" && previewUrl) {
-      window.open(previewUrl, "_blank", "noopener,noreferrer")
+    if (command.action === "open-preview" && resolvedPreviewUrl) {
+      window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer")
     }
   }
   const aiInterpretation = useMemo(() => {
@@ -899,13 +985,13 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }, [copy.backendApiHandler, copy.routeEntryFile, draftCodeContent, isCn, selectedCodeFile, selectedCodeSymbols.length])
   const dashboardActions = useMemo(
     () => [
-      { label: "Open App", onClick: () => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer") },
+      { label: "Open App", onClick: () => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer") },
       { label: "Open Files", onClick: () => window.open(`/api/projects/${encodeURIComponent(projectId)}/files`, "_blank", "noopener,noreferrer") },
       { label: "Open Docs", onClick: () => window.open("/api-docs", "_blank", "noopener,noreferrer") },
       ...(project?.preview?.supportsDynamicRuntime && runtimePreviewUrl ? [{ label: "Open Runtime", onClick: () => window.open(runtimePreviewUrl, "_blank", "noopener,noreferrer") }] : []),
       ...(project?.preview?.supportsSandboxRuntime && sandboxPreviewUrl ? [{ label: "Open Sandbox", onClick: () => window.open(sandboxPreviewUrl, "_blank", "noopener,noreferrer") }] : []),
     ],
-    [previewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
+    [resolvedPreviewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
   )
   const latestHistoryItem = project?.history?.length ? project.history[project.history.length - 1] : null
   const projectName =
@@ -991,6 +1077,104 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
         })),
     [project?.history]
   )
+
+  useEffect(() => {
+    if (!project) return
+
+    const previewMode = project.preview?.activeMode ?? "static_ssr"
+    const preferredRuntimeUrl =
+      previewMode === "sandbox_runtime" && project.preview?.sandboxStatus === "running"
+        ? sandboxPreviewUrl
+        : runtime?.status === "running"
+          ? runtimePreviewUrl
+          : ""
+    const candidates = Array.from(new Set([preferredRuntimeUrl, canonicalPreviewUrl].filter(Boolean)))
+    let cancelled = false
+
+    async function resolvePreviewTarget() {
+      let nextState: PreviewProbeState = {
+        projectSlug,
+        previewMode,
+        canonicalPreviewUrl,
+        runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
+        resolvedPreviewUrl: canonicalPreviewUrl,
+        fallbackUsed: true,
+        responseStatus: null,
+        renderStrategy: "structured_fallback",
+      }
+
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(candidate, {
+            method: "GET",
+            cache: "no-store",
+            headers: {
+              accept: "text/html",
+              "x-mornstack-preview-probe": "1",
+            },
+          })
+
+          const responsePath = response.url
+            ? (() => {
+                try {
+                  const parsed = new URL(response.url)
+                  return `${parsed.pathname}${parsed.search}`
+                } catch {
+                  return candidate
+                }
+              })()
+            : candidate
+
+          nextState = {
+            projectSlug,
+            previewMode,
+            canonicalPreviewUrl,
+            runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
+            resolvedPreviewUrl: response.ok ? responsePath : canonicalPreviewUrl,
+            fallbackUsed: candidate !== responsePath || responsePath === canonicalPreviewUrl,
+            responseStatus: response.status,
+            renderStrategy: response.ok ? "iframe" : "structured_fallback",
+            responseUrl: response.url,
+          }
+
+          if (response.ok) {
+            break
+          }
+        } catch {
+          nextState = {
+            projectSlug,
+            previewMode,
+            canonicalPreviewUrl,
+            runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
+            resolvedPreviewUrl: canonicalPreviewUrl,
+            fallbackUsed: true,
+            responseStatus: 0,
+            renderStrategy: "structured_fallback",
+          }
+        }
+      }
+
+      if (!cancelled) {
+        setPreviewProbe(nextState)
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[preview]", nextState)
+        }
+      }
+    }
+
+    void resolvePreviewTarget()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    canonicalPreviewUrl,
+    previewRefreshKey,
+    project,
+    projectSlug,
+    runtime?.status,
+    runtimePreviewUrl,
+    sandboxPreviewUrl,
+  ])
 
   if (loading) {
     return <div className="text-sm text-muted-foreground">Loading project...</div>
@@ -1098,7 +1282,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   )
                 ) : null}
                 <a
-                  href={activePreviewUrl}
+                  href={resolvedPreviewUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-sm font-medium"
@@ -1120,6 +1304,17 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             {previewStarting && !runtime?.lastError && !runStatus ? (
               <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
                 {copy.previewStarting}
+              </div>
+            ) : null}
+            {process.env.NODE_ENV !== "production" && previewTab === "preview" ? (
+              <div className="mb-3 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
+                <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
+                <div>previewMode: {previewProbe?.previewMode ?? (project.preview?.activeMode || "static_ssr")}</div>
+                <div>canonicalPreviewUrl: {previewProbe?.canonicalPreviewUrl ?? canonicalPreviewUrl}</div>
+                <div>runtimePreviewUrl: {previewProbe?.runtimePreviewUrl ?? runtimePreviewUrl}</div>
+                <div>resolvedPreviewUrl: {previewProbe?.resolvedPreviewUrl ?? resolvedPreviewUrl}</div>
+                <div>fallbackUsed: {String(previewProbe?.fallbackUsed ?? true)}</div>
+                <div>responseStatus: {String(previewProbe?.responseStatus ?? "pending")}</div>
               </div>
             ) : null}
 
@@ -1166,7 +1361,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-border bg-secondary/20 p-3">
                         <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
-                        <div className="mt-2 break-all text-sm">{previewUrl || "Not running"}</div>
+                        <div className="mt-2 break-all text-sm">{resolvedPreviewUrl || "Not running"}</div>
                       </div>
                       <div className="rounded-xl border border-border bg-secondary/20 p-3">
                         <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
@@ -1345,7 +1540,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       {copy.refreshPreview}
                     </button>
                     <a
-                      href={previewUrl || "#"}
+                      href={resolvedPreviewUrl || "#"}
                       target="_blank"
                       rel="noreferrer"
                       className="underline"
@@ -1428,12 +1623,14 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 </div>
               </div>
             </div>
+          ) : previewProbe?.renderStrategy === "structured_fallback" ? (
+            <StructuredPreviewFallback projectName={projectName} projectSubtitle={projectSubtitle} isCn={isCn} />
           ) : canRenderPreview ? (
             <div className="space-y-2">
               <iframe
-                key={`${activePreviewUrl}:${previewRefreshKey}`}
+                key={`${resolvedPreviewUrl}:${previewRefreshKey}`}
                 title="app-preview"
-                src={activePreviewUrl}
+                src={resolvedPreviewUrl}
                 className="w-full min-h-[65vh] rounded-md border border-border bg-white md:min-h-[78vh]"
               />
             </div>

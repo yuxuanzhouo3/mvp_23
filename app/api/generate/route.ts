@@ -1629,7 +1629,10 @@ export async function POST(req: Request) {
     const rawPrompt = String(body?.prompt ?? "").trim()
     const requestedTemplateId = String(body?.templateId ?? "").trim()
     const inferredKind = inferAppKind(rawPrompt)
-    const templateId = requestedTemplateId || inferTemplateIdFromPrompt(rawPrompt) || ""
+    const templateId =
+      inferredKind === "code_platform"
+        ? ""
+        : requestedTemplateId || inferTemplateIdFromPrompt(rawPrompt) || ""
     const template = getTemplateById(templateId)
     const templatePrompt = String(body?.templatePrompt ?? "").trim()
     const current = await getCurrentSession()

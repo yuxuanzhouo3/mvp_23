@@ -1,5 +1,7 @@
 export type PreviewMode = "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
 
+const RUNTIME_PREVIEW_ROOT_SEGMENT = "__preview_root__"
+
 type BuildPreviewUrlArgs = {
   projectId: string
   page?: string | null
@@ -27,7 +29,9 @@ export function buildCanonicalPreviewUrl(projectId: string, page?: string | null
 export function buildRuntimePreviewUrl(projectId: string, page?: string | null) {
   const safeId = encodeURIComponent(normalizeProjectId(projectId))
   const safePage = normalizePage(page)
-  return safePage ? `/api/projects/${safeId}/preview/${safePage}` : `/api/projects/${safeId}/preview/`
+  return safePage
+    ? `/api/projects/${safeId}/preview/${safePage}`
+    : `/api/projects/${safeId}/preview/${RUNTIME_PREVIEW_ROOT_SEGMENT}`
 }
 
 export function buildSandboxPreviewUrl(projectId: string, page?: string | null) {
@@ -44,4 +48,8 @@ export function buildPreviewUrl({ projectId, page, mode = "static_ssr" }: BuildP
     return buildSandboxPreviewUrl(projectId, page)
   }
   return buildCanonicalPreviewUrl(projectId, page)
+}
+
+export function isRuntimePreviewRootSegment(segment?: string | null) {
+  return String(segment ?? "") === RUNTIME_PREVIEW_ROOT_SEGMENT
 }

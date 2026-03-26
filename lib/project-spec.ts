@@ -3845,8 +3845,8 @@ function renderDashboardPage(spec: AppSpec) {
     const isCn = spec.region === "cn"
     const brand = spec.title
     const sidebar = isCn
-      ? ["总览", "项目", "运行", "模板", "团队", "安全", "Agents", "自动化", "日志", "API", "设置"]
-      : ["Overview", "Projects", "Runs", "Templates", "Team", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
+      ? ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
+      : ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
     return `// @ts-nocheck
 "use client";
 import Link from "next/link";
@@ -3859,31 +3859,54 @@ export default function DashboardPage() {
   const metrics = ${JSON.stringify(
     isCn
       ? [
-          { label: "活跃项目", value: "12", tone: "#8b5cf6" },
-          { label: "今日运行", value: "47", tone: "#22c55e" },
-          { label: "AI 辅助", value: "1,284", tone: "#38bdf8" },
-          { label: "升级用户", value: "36", tone: "#f59e0b" },
+          { label: "活跃工作区", value: "12", tone: "#8b5cf6", delta: "+3" },
+          { label: "今日运行", value: "47", tone: "#22c55e", delta: "+12%" },
+          { label: "AI 动作", value: "1,284", tone: "#38bdf8", delta: "+218" },
+          { label: "演示通过率", value: "96%", tone: "#f59e0b", delta: "+4%" },
         ]
       : [
-          { label: "Active projects", value: "12", tone: "#8b5cf6" },
-          { label: "Runs today", value: "47", tone: "#22c55e" },
-          { label: "AI assists", value: "1,284", tone: "#38bdf8" },
-          { label: "Upgraded users", value: "36", tone: "#f59e0b" },
+          { label: "Active workspaces", value: "12", tone: "#8b5cf6", delta: "+3" },
+          { label: "Runs today", value: "47", tone: "#22c55e", delta: "+12%" },
+          { label: "AI actions", value: "1,284", tone: "#38bdf8", delta: "+218" },
+          { label: "Demo pass rate", value: "96%", tone: "#f59e0b", delta: "+4%" },
         ],
     null,
     2
   )} as const;
-  const rails = ${JSON.stringify(
+  const controlCards = ${JSON.stringify(
     isCn
       ? [
-          { title: "morncursor 主编辑器", note: "文件树、编辑器、终端、右侧 AI 面板", href: "/editor" },
-          { title: "运行与演示链路", note: "预览、构建日志、宣传文件夹、视频页、PPT 页", href: "/runs" },
-          { title: "模板验收轨道", note: "官网、销售后台、数据平台、社区反馈", href: "/templates" },
+          { title: "工作区入口", note: "Editor / Dashboard / Code 三块联动查看", href: "/editor", badge: "Open editor" },
+          { title: "访问与分享", note: "Share link、可见性、邀请成员、公开演示", href: "/settings", badge: "Share" },
+          { title: "运行链路", note: "Generate -> Build -> Preview -> Deploy 的状态可追踪", href: "/runs", badge: "Runtime" },
+          { title: "模板与升级", note: "Templates + Pricing 一起决定生成结果深度", href: "/templates", badge: "Growth" },
         ]
       : [
-          { title: "morncursor editor", note: "file tree, editor, terminal, and AI side panel", href: "/editor" },
-          { title: "Runtime and demo chain", note: "preview, build logs, promo bundle, storyboard, and PPT pages", href: "/runs" },
-          { title: "Acceptance rails", note: "website, sales admin, data platform, and community", href: "/templates" },
+          { title: "Workspace entry", note: "Open the linked Preview / Dashboard / Code workspace", href: "/editor", badge: "Open editor" },
+          { title: "Access and sharing", note: "Share links, visibility, invites, and public demo controls", href: "/settings", badge: "Share" },
+          { title: "Runtime chain", note: "Track Generate -> Build -> Preview -> Deploy in one place", href: "/runs", badge: "Runtime" },
+          { title: "Templates and plans", note: "Templates plus pricing determine the product depth", href: "/templates", badge: "Growth" },
+        ],
+    null,
+    2
+  )} as const;
+  const workspaceModules = ${JSON.stringify(
+    isCn
+      ? [
+          { label: "产品类型", value: "AI 代码编辑平台" },
+          { label: "目标市场", value: "中国团队 / 中文工作流 / 项目交付" },
+          { label: "已生成页面", value: "dashboard / editor / runs / templates / pricing" },
+          { label: "AI 工具", value: "explain / fix / generate / refactor" },
+          { label: "当前路径", value: (isCn ? "国内" : "海外") + " · " + (isCn ? "CloudBase" : "Vercel") + " · " + (isCn ? "云文档" : "Supabase") },
+          { label: "最近修改", value: "强化编辑器工作区与运行链路展示" },
+        ]
+      : [
+          { label: "Product type", value: "AI coding platform" },
+          { label: "Target market", value: "China-ready teams / localized workflow / delivery" },
+          { label: "Generated pages", value: "dashboard / editor / runs / templates / pricing" },
+          { label: "AI tools", value: "explain / fix / generate / refactor" },
+          { label: "Current path", value: (isCn ? "CN" : "Global") + " · " + (isCn ? "CloudBase" : "Vercel") + " · " + (isCn ? "Cloud docs" : "Supabase") },
+          { label: "Latest change", value: "Strengthened editor workspace and runtime presentation" },
         ],
     null,
     2
@@ -3891,14 +3914,31 @@ export default function DashboardPage() {
   const activity = ${JSON.stringify(
     isCn
       ? [
-          { title: "AI 完成 IDE 主壳增强", meta: "editor 页面  ·  6 分钟前" },
-          { title: "宣传文件夹 latest 输出已刷新", meta: "admin 资产  ·  12 分钟前" },
-          { title: "登录与工作区访问链路状态正常", meta: "auth / workspace  ·  19 分钟前" },
+          { title: "AI 完成 editor 工作台增强", meta: "Explain / Fix / Generate / Refactor 轨道已联动", status: "已落地" },
+          { title: "Preview 与运行态联动刷新", meta: "runtime -> preview -> dashboard 摘要已同步", status: "稳定" },
+          { title: "模板库已补齐验收轨道", meta: "官网、销售、API、社区四类模板已可切换", status: "可演示" },
         ]
       : [
-          { title: "AI completed the IDE shell pass", meta: "editor page  ·  6 min ago" },
-          { title: "Latest promo bundle refreshed", meta: "admin assets  ·  12 min ago" },
-          { title: "Auth and workspace access flow healthy", meta: "auth / workspace  ·  19 min ago" },
+          { title: "AI finished the editor workspace pass", meta: "Explain / Fix / Generate / Refactor now drive the workspace", status: "shipped" },
+          { title: "Preview now syncs with runtime state", meta: "runtime -> preview -> dashboard summary stays in sync", status: "stable" },
+          { title: "Template acceptance rails were expanded", meta: "Website, sales, API, and community tracks are switchable", status: "demo-ready" },
+        ],
+    null,
+    2
+  )} as const;
+  const managementCards = ${JSON.stringify(
+    isCn
+      ? [
+          { title: "权限与可见性", value: "团队可见 · 邀请 12 人 · Link sharing 开启" },
+          { title: "域名与发布", value: "preview.mornstack.local · staging 可切 production" },
+          { title: "集成与 API", value: "GitHub / 支付 / CloudBase / Supabase / Webhook" },
+          { title: "Agent 自动化", value: "3 个 agents 正在监控 editor、preview、deploy" },
+        ]
+      : [
+          { title: "Access and visibility", value: "Team visible · 12 invites · link sharing on" },
+          { title: "Domains and release", value: "preview.mornstack.local · staging can promote to prod" },
+          { title: "Integrations and API", value: "GitHub / payments / CloudBase / Supabase / webhooks" },
+          { title: "Agent automation", value: "3 agents are watching editor, preview, and deploy" },
         ],
     null,
     2
@@ -3949,7 +3989,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0,1fr)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)" }}>
           <aside style={{ borderRight: "1px solid rgba(255,255,255,0.08)", padding: 18, display: "grid", gap: 10, alignContent: "start", background: "#14151c" }}>
             <div style={{ borderRadius: 14, background: "#1c1e29", padding: "12px 14px", color: "rgba(255,255,255,0.42)" }}>{isCn ? "搜索..." : "Search..."}</div>
             {items.map((item, index) => (
@@ -3958,12 +3998,12 @@ export default function DashboardPage() {
               </div>
             ))}
             <div style={{ marginTop: 10, borderRadius: 18, background: "#1b1c24", border: "1px solid rgba(255,255,255,0.06)", padding: 16 }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)" }}>{isCn ? "交付焦点" : "Delivery focus"}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)" }}>{isCn ? "控制台焦点" : "Console focus"}</div>
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                 {[
-                  isCn ? "老板演示 URL 稳定" : "Stable stakeholder URLs",
-                  isCn ? "admin 宣传资产输出" : "Admin promo asset export",
-                  isCn ? "market 销售闭环联动" : "Market sales loop",
+                  isCn ? "Open App / Share App / Open Files / Open Docs" : "Open App / Share App / Open Files / Open Docs",
+                  isCn ? "用户邀请、权限、域名、Agent 自动化放到一个控制台里" : "Invites, permissions, domains, and agent automation in one console",
+                  isCn ? "更像产品后台，而不是生成摘要卡片" : "Feel like a product console, not a generation summary",
                 ].map((item) => (
                   <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
                     {item}
@@ -3988,11 +4028,13 @@ export default function DashboardPage() {
                   </p>
                   <div style={{ marginTop: 8, color: "rgba(255,255,255,0.42)" }}>{isCn ? "创建于 14 分钟前" : "Created 14 minutes ago"}</div>
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
                   <Link href="/editor" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>{isCn ? "进入编辑器" : "Open editor"}</Link>
-                  <Link href="/runs" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "查看运行链路" : "Open runs"}</Link>
-                  <Link href="/settings" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "打开环境设置" : "Open settings"}</Link>
-                  <Link href="/pricing" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(124,58,237,0.35)", color: "#d8b4fe", fontWeight: 700 }}>{isCn ? "打开套餐与升级" : "View plans"}</Link>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <Link href="/runs" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "查看运行链路" : "Open runs"}</Link>
+                    <Link href="/templates" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "打开模板轨道" : "Open templates"}</Link>
+                    <Link href="/pricing" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(124,58,237,0.35)", color: "#d8b4fe", fontWeight: 700 }}>{isCn ? "打开套餐与升级" : "View plans"}</Link>
+                  </div>
                 </div>
               </div>
             </section>
@@ -4002,42 +4044,52 @@ export default function DashboardPage() {
                 <div key={item.label} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 20 }}>
                   <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 13 }}>{item.label}</div>
                   <div style={{ marginTop: 12, fontSize: 30, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                  <div style={{ marginTop: 8, color: "rgba(255,255,255,0.4)", fontSize: 12 }}>{item.delta}</div>
                 </div>
               ))}
             </section>
 
             <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
               <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前环境策略" : "Current environment profile"}</div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "项目概览" : "Project overview"}</div>
                 <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                  {[
-                    { label: isCn ? "部署目标" : "Deployment", value: workspaceConfig.deploymentTarget },
-                    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
-                    { label: isCn ? "可见性" : "Visibility", value: workspaceConfig.visibility },
-                    { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel },
-                  ].map((item) => (
+                  {workspaceModules.map((item) => (
                     <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px" }}>
                       <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
-                      <div style={{ marginTop: 8, fontWeight: 800 }}>{item.value}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
                     </div>
                   ))}
                 </div>
               </div>
               <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "联动说明" : "Shared-state note"}</div>
-                <p style={{ marginTop: 12, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
-                  {isCn ? "这里读取 settings 页保存的部署、数据库、权限和发布通道，用来让总览、编辑器、运行、模板页共享同一套工作区配置。" : "This panel reads the deployment, database, access, and publish choices saved from the settings page so the workspace behaves like one connected product."}
-                </p>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前环境策略" : "Current environment profile"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {[
+                    { label: isCn ? "部署目标" : "Deployment", value: workspaceConfig.deploymentTarget },
+                    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
+                    { label: isCn ? "可见性" : "Visibility", value: workspaceConfig.visibility },
+                    { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel },
+                    { label: isCn ? "登录策略" : "Login policy", value: workspaceConfig.loginPolicy },
+                  ].map((item) => (
+                    <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ fontWeight: 800 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </section>
 
-            <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
+            <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
               <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "主执行轨道" : "Primary execution rails"}</div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "主操作轨道" : "Primary operation rails"}</div>
                 <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                  {rails.map((item, index) => (
+                  {controlCards.map((item, index) => (
                     <Link key={item.title} href={item.href} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: "#f8fafc", display: "block" }}>
-                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.72)", fontSize: 11 }}>{item.badge}</div>
+                      </div>
                       <div style={{ marginTop: 6, color: "rgba(255,255,255,0.54)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
                     </Link>
                   ))}
@@ -4045,26 +4097,25 @@ export default function DashboardPage() {
               </div>
               <div style={{ display: "grid", gap: 16 }}>
                 <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "产品权限" : "Product access"}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "管理面板" : "Management panel"}</div>
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                    {[
-                    { label: isCn ? "登录入口" : "Login entry", href: "/login?redirect=/editor" },
-                      { label: isCn ? "访问控制" : "Access control", href: "/editor" },
-                      { label: isCn ? "环境与权限" : "Environment and access", href: "/settings" },
-                      { label: isCn ? "模板升级" : "Template upgrade", href: "/pricing" },
-                    ].map((item, index) => (
-                      <Link key={item.label} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, display: "block" }}>
-                        {item.label}
-                      </Link>
+                    {managementCards.map((item, index) => (
+                      <div key={item.title} style={{ textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, display: "block" }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ marginTop: 6, lineHeight: 1.7 }}>{item.value}</div>
+                      </div>
                     ))}
                   </div>
                 </div>
                 <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "最近动态" : "Recent activity"}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "创作记录" : "Creation log"}</div>
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                     {activity.map((item, index) => (
                       <div key={item.title} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533" }}>
-                        <div style={{ fontWeight: 700 }}>{item.title}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                          <div style={{ fontWeight: 700 }}>{item.title}</div>
+                          <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{item.status}</div>
+                        </div>
                         <div style={{ marginTop: 6, color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{item.meta}</div>
                       </div>
                     ))}
@@ -4364,6 +4415,23 @@ export default function EditorPage() {
     isCn ? "生成" : "Generate",
     isCn ? "重构" : "Refactor",
   ] as const;
+  const activityBarItems = isCn
+    ? [
+        { icon: "📄", label: "资源管理器" },
+        { icon: "⌕", label: "全局搜索" },
+        { icon: "⑂", label: "Git 变更" },
+        { icon: "▶", label: "运行与调试" },
+        { icon: "✦", label: "AI 助手" },
+        { icon: "⚙", label: "工作区设置" },
+      ]
+    : [
+        { icon: "📄", label: "Explorer" },
+        { icon: "⌕", label: "Global search" },
+        { icon: "⑂", label: "Git changes" },
+        { icon: "▶", label: "Run and debug" },
+        { icon: "✦", label: "AI assistant" },
+        { icon: "⚙", label: "Workspace settings" },
+      ];
 
   const templates = isCn
     ? [
@@ -4377,6 +4445,43 @@ export default function EditorPage() {
         { id: "sales", name: "Sales admin", summary: "customers / deals / contracts / delivery", focus: "dashboard" },
         { id: "api", name: "API platform", summary: "routes / trends / monitors / alerts", focus: "runs" },
         { id: "community", name: "Community hub", summary: "tickets / feedback / announcements / kb", focus: "templates" },
+      ];
+  const workspaceRail = isCn
+    ? [
+        { title: "活动栏", value: "Explorer / Search / Git / Run / AI / Settings" },
+        { title: "文件结构", value: "app / components / lib 三层文件树" },
+        { title: "运行状态", value: "dev server / preview / terminal output 同步" },
+      ]
+    : [
+        { title: "Activity bar", value: "Explorer / Search / Git / Run / AI / Settings" },
+        { title: "File structure", value: "app / components / lib with clear hierarchy" },
+        { title: "Runtime state", value: "dev server / preview / terminal output stay in sync" },
+      ];
+  const assistantActions = isCn
+    ? [
+        { mode: aiModes[0], title: "Explain 当前文件", note: "解释职责、依赖边界和可拆分模块" },
+        { mode: aiModes[1], title: "Fix 当前报错", note: "优先处理 preview guard、lint、类型问题" },
+        { mode: aiModes[2], title: "Generate 新能力", note: "补页面、补组件、补交互和数据骨架" },
+        { mode: aiModes[3], title: "Refactor 主壳", note: "整理 editor、terminal、assistant 的模块边界" },
+      ]
+    : [
+        { mode: aiModes[0], title: "Explain current file", note: "Describe responsibilities, boundaries, and split points" },
+        { mode: aiModes[1], title: "Fix current errors", note: "Prioritize preview guards, lint, and type issues" },
+        { mode: aiModes[2], title: "Generate new capability", note: "Add pages, components, interactions, and data rails" },
+        { mode: aiModes[3], title: "Refactor the shell", note: "Clean the editor, terminal, and assistant module boundaries" },
+      ];
+  const assistantHistory = isCn
+    ? [
+        "用户：把终端区做得更像真实 IDE",
+        "AI：已补 Terminal / Problems / Output 三段式切换",
+        "用户：把销售后台模板加入同一工作区",
+        "AI：已同步模板轨道与当前文件焦点",
+      ]
+    : [
+        "User: Make the terminal feel more like a real IDE",
+        "AI: Added Terminal / Problems / Output switching",
+        "User: Bring the sales admin template into the same workspace",
+        "AI: Synced template rails with the current file focus",
       ];
 
   const quickCommands = isCn
@@ -4431,6 +4536,7 @@ export default function EditorPage() {
   const activeTabs = openTabs
     .map((id) => allFiles.find((file) => file.id === id))
     .filter(Boolean);
+  const currentGroup = fileGroups.find((group) => group.files.some((file) => file.id === selectedFile)) ?? fileGroups[0];
 
   const commandResults = useMemo(() => {
     const query = commandQuery.trim().toLowerCase();
@@ -4575,15 +4681,15 @@ export default function EditorPage() {
 
   const previewNotes = isCn
     ? [
-        "Dashboard: 交付总览、项目轨道、验收模板",
-        "Editor: 文件树、多标签、终端、AI 联动",
-        "Runs: 生成、构建、预览、部署链路",
+        "Dashboard: 交付总览、项目轨道、验收模板、权限与集成",
+        "Editor: 文件树、多标签、终端、AI 联动、选区动作",
+        "Runs: 生成、构建、预览、部署链路与历史记录",
         "Settings: 部署、数据库、权限与发布通道",
       ]
     : [
-        "Dashboard: delivery overview, project rails, acceptance templates",
-        "Editor: file tree, tabs, terminal, AI linkage",
-        "Runs: generation, build, preview, deploy flow",
+        "Dashboard: delivery overview, project rails, acceptance templates, access, and integrations",
+        "Editor: file tree, tabs, terminal, AI linkage, and selection-aware actions",
+        "Runs: generation, build, preview, deploy flow with history",
         "Settings: deployment, database, access, and publish lane",
       ];
 
@@ -4671,9 +4777,9 @@ export default function EditorPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "56px 320px minmax(0,1fr) 360px", minHeight: "calc(100vh - 150px)" }}>
             <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
-              {["📄", "⌕", "⑂", "▶", "✦", "⚙"].map((icon, index) => (
-                <div key={icon} style={{ width: 38, height: 38, borderRadius: 12, background: index === 0 ? "rgba(124,58,237,0.22)" : "transparent", color: index === 0 ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 16 }}>
-                  {icon}
+              {activityBarItems.map((item, index) => (
+                <div key={item.label} title={item.label} style={{ width: 38, height: 38, borderRadius: 12, background: index === 0 ? "rgba(124,58,237,0.22)" : "transparent", color: index === 0 ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 16 }}>
+                  {item.icon}
                 </div>
               ))}
             </div>
@@ -4681,6 +4787,14 @@ export default function EditorPage() {
             <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 16, display: "grid", alignContent: "start", gap: 14 }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>{isCn ? "资源管理器" : "Explorer"}</div>
               <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} placeholder={isCn ? "搜索命令、文件、符号..." : "Search commands, files, symbols..."} style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#11131a", color: "#f8fafc", padding: "10px 12px", outline: "none" }} />
+              <div style={{ display: "grid", gap: 8 }}>
+                {workspaceRail.map((item) => (
+                  <div key={item.title} style={{ borderRadius: 12, background: "#1b1c24", padding: "10px 12px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{item.title}</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.72)", lineHeight: 1.7 }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
 
               <div style={{ display: "grid", gap: 8 }}>
                 {commandResults.map((command) => (
@@ -4698,10 +4812,16 @@ export default function EditorPage() {
               <div style={{ display: "grid", gap: 12 }}>
                 {visibleGroups.map((group) => (
                   <div key={group.id} style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: "rgba(255,255,255,0.54)", fontSize: 13, fontWeight: 700 }}>{group.name}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                      <div style={{ color: "rgba(255,255,255,0.54)", fontSize: 13, fontWeight: 700 }}>{group.name}</div>
+                      <div style={{ color: "rgba(255,255,255,0.36)", fontSize: 11 }}>{group.files.length}</div>
+                    </div>
                     {group.files.map((file) => (
                       <button key={file.id} onClick={() => openFile(file.id)} style={{ borderRadius: 12, padding: "10px 12px", background: selectedFile === file.id ? "rgba(124,58,237,0.18)" : "transparent", color: selectedFile === file.id ? "#e9d5ff" : "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.05)", textAlign: "left", cursor: "pointer" }}>
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{file.name}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{file.name}</div>
+                          <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{file.fullPath.split("/")[0]}</div>
+                        </div>
                         <div style={{ marginTop: 4, fontSize: 12, color: selectedFile === file.id ? "rgba(233,213,255,0.78)" : "rgba(255,255,255,0.42)" }}>{file.symbols.join(" · ")}</div>
                       </button>
                     ))}
@@ -4736,6 +4856,14 @@ export default function EditorPage() {
                       <button onClick={saveCurrentFile} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
                         {isCn ? "保存草稿" : "Save draft"}
                       </button>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#12131a", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                    <div>{isCn ? "当前目录" : "Current folder"}: {currentGroup.name}</div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <span>{isCn ? "选区 AI" : "Selection AI"}: {activeMode}</span>
+                      <span>{isCn ? "模板轨道" : "Template rail"}: {activeTemplate.name}</span>
+                      <span>{isCn ? "运行态" : "Runtime"}: {runtimeState}</span>
                     </div>
                   </div>
                   <div style={{ overflow: "auto" }}>
@@ -4786,6 +4914,17 @@ export default function EditorPage() {
                     <div style={{ marginTop: 8, fontWeight: 800 }}>{activeTemplate.name}</div>
                     <div style={{ marginTop: 4, color: "rgba(255,255,255,0.56)", fontSize: 12, lineHeight: 1.7 }}>{activeTemplate.summary}</div>
                   </div>
+                  <div style={{ borderRadius: 14, background: "#1b1c24", border: "1px solid rgba(255,255,255,0.08)", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前文件动作" : "Current file actions"}</div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {assistantActions.map((item) => (
+                        <button key={item.mode} onClick={() => setActiveMode(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", border: "none", textAlign: "left", cursor: "pointer", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.72)" }}>
+                          <div style={{ fontWeight: 800, fontSize: 12 }}>{item.title}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6 }}>{item.note}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -4825,6 +4964,18 @@ export default function EditorPage() {
                 ))}
               </div>
 
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "代码动作" : "Code actions"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {assistantActions.map((item) => (
+                    <button key={item.title} onClick={() => setActiveMode(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.note}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
                 <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{${JSON.stringify(brand)}} AI</div>
                 <div style={{ color: "rgba(255,255,255,0.74)", fontSize: 13, lineHeight: 1.8 }}>{aiMessages[activeMode]}</div>
@@ -4836,6 +4987,17 @@ export default function EditorPage() {
                   <button onClick={() => openFile("assistant")} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#f8fafc", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
                     {isCn ? "插入到代码" : "Insert into code"}
                   </button>
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "创作记录" : "Creation history"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {assistantHistory.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -4865,10 +5027,10 @@ function renderCodeRunsPage(spec: AppSpec) {
   const brand = spec.title
   const rows = isCn
     ? [
-        { name: "MornCursor 官网", id: "#281", branch: "main", status: "部署", detail: "AI 自动修复", duration: "1m 23s", time: "2 分钟前", tone: "#10b981" },
-        { name: "销售管理后台", id: "#280", branch: "develop", status: "构建", detail: "Git Push", duration: "进行中", time: "5 分钟前", tone: "#3b82f6" },
-        { name: "API 数据平台", id: "#279", branch: "feature/auth", status: "测试", detail: "PR 检查", duration: "3m 47s", time: "18 分钟前", tone: "#ef4444" },
-        { name: "社区反馈中心", id: "#278", branch: "main", status: "部署", detail: "Git Push", duration: "2m 11s", time: "1 小时前", tone: "#10b981" },
+        { name: "MornCursor 官网", id: "#281", branch: "main", status: "部署成功", detail: "AI 自动修复 + 发布", duration: "1m 23s", time: "2 分钟前", tone: "#10b981" },
+        { name: "销售管理后台", id: "#280", branch: "develop", status: "构建中", detail: "Git Push", duration: "进行中", time: "5 分钟前", tone: "#3b82f6" },
+        { name: "API 数据平台", id: "#279", branch: "feature/auth", status: "测试失败", detail: "PR 检查", duration: "3m 47s", time: "18 分钟前", tone: "#ef4444" },
+        { name: "社区反馈中心", id: "#278", branch: "main", status: "已部署", detail: "Git Push", duration: "2m 11s", time: "1 小时前", tone: "#10b981" },
       ]
     : [
         { name: "MornCursor website", id: "#281", branch: "main", status: "deploy", detail: "AI repair", duration: "1m 23s", time: "2 min ago", tone: "#10b981" },
@@ -4891,11 +5053,28 @@ export default function RunsPage() {
           { label: "代码生成", value: "queued -> running -> done" },
           { label: "构建验证", value: "lint / type / preview" },
           { label: "访问链路", value: "login -> workspace -> preview" },
+          { label: "交付闭环", value: "share -> review -> deploy -> report" },
         ]
       : [
           { label: "Code generation", value: "queued -> running -> done" },
           { label: "Build validation", value: "lint / type / preview" },
           { label: "Access flow", value: "login -> workspace -> preview" },
+          { label: "Delivery loop", value: "share -> review -> deploy -> report" },
+        ],
+    null,
+    2
+  )} as const;
+  const pipelines = ${JSON.stringify(
+    isCn
+      ? [
+          { title: "生成任务", note: "Planner -> Builder -> Fixer", status: "稳定", color: "#8b5cf6" },
+          { title: "预览发布", note: "Canonical preview / runtime fallback", status: "运行中", color: "#22c55e" },
+          { title: "验收材料", note: "截图、宣传资产、PPT、演示路径", status: "已同步", color: "#38bdf8" },
+        ]
+      : [
+          { title: "Generation jobs", note: "Planner -> Builder -> Fixer", status: "stable", color: "#8b5cf6" },
+          { title: "Preview release", note: "Canonical preview / runtime fallback", status: "running", color: "#22c55e" },
+          { title: "Acceptance assets", note: "screens, promo assets, PPT, and demo paths", status: "synced", color: "#38bdf8" },
         ],
     null,
     2
@@ -4970,6 +5149,17 @@ export default function RunsPage() {
               ))}
             </div>
           </section>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14, marginBottom: 18 }}>
+            {pipelines.map((item) => (
+              <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontWeight: 800 }}>{item.title}</div>
+                  <div style={{ color: item.color, fontSize: 12, fontWeight: 800 }}>{item.status}</div>
+                </div>
+                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
           <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14, marginBottom: 18 }}>
             {[
               { label: isCn ? "部署环境" : "Deploy target", value: workspaceConfig.deploymentTarget, tone: "#8b5cf6" },
@@ -5003,7 +5193,7 @@ export default function RunsPage() {
           </div>
           <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#17181f", overflow: "hidden" }}>
             {rows.map((row) => (
-              <div key={row.name + row.id} style={{ display: "grid", gridTemplateColumns: "48px 1fr 280px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <div key={row.name + row.id} style={{ display: "grid", gridTemplateColumns: "48px 1fr 320px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 14, background: row.tone + "22", display: "grid", placeItems: "center", color: row.tone }}>◉</div>
                 <div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -5013,7 +5203,7 @@ export default function RunsPage() {
                   </div>
                   <div style={{ marginTop: 8, color: "rgba(255,255,255,0.45)", fontSize: 13 }}>⎇ {row.branch} · {row.detail}</div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", color: "rgba(255,255,255,0.46)", fontSize: 13 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, color: "rgba(255,255,255,0.46)", fontSize: 13 }}>
                   <span>{row.detail}</span>
                   <span>{row.duration}</span>
                   <span>{row.time}</span>
@@ -5095,6 +5285,21 @@ export default function TemplatesPage() {
     2
   )} as const;
   const groups = isCn ? ["全部模板", "官网与落地页", "管理后台", "数据平台", "社区与运营", "营销工具"] : ["All", "Sites", "Admin", "Data", "Community", "Marketing"];
+  const featuredBundles = ${JSON.stringify(
+    isCn
+      ? [
+          { title: "代码平台套件", note: "Dashboard / Editor / Runs / Templates / Pricing 五页骨架", color: "#8b5cf6" },
+          { title: "交付验收套件", note: "Preview、分享、运行历史、汇报材料打包展示", color: "#22c55e" },
+          { title: "增长联动套件", note: "admin 宣传资产 + market 销售闭环联动", color: "#38bdf8" },
+        ]
+      : [
+          { title: "Code platform suite", note: "Dashboard / Editor / Runs / Templates / Pricing scaffold", color: "#8b5cf6" },
+          { title: "Acceptance suite", note: "Preview, share, run history, and reporting materials", color: "#22c55e" },
+          { title: "Growth suite", note: "Admin promo assets plus market sales loop", color: "#38bdf8" },
+        ],
+    null,
+    2
+  )} as const;
   const [activeGroup, setActiveGroup] = useState(groups[0]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [workspaceConfig, setWorkspaceConfig] = useState({
@@ -5187,6 +5392,17 @@ export default function TemplatesPage() {
               </div>
             </div>
           </section>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {featuredBundles.map((item) => (
+              <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 800 }}>{item.title}</div>
+                  <div style={{ color: item.color, fontSize: 12 }}>●</div>
+                </div>
+                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {groups.map((item) => (
               <button key={item} onClick={() => setActiveGroup(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeGroup === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeGroup === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>{item}</button>
@@ -5251,6 +5467,23 @@ export default function PricingPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
   const plans = ${JSON.stringify(plans, null, 2)} as const;
+  const comparisons = ${JSON.stringify(
+    isCn
+      ? [
+          { label: "AI 生成次数", free: "50 / 天", pro: "无限", elite: "无限 + 团队队列" },
+          { label: "工作区数量", free: "3", pro: "20", elite: "无限" },
+          { label: "验收项目", free: "1 类", pro: "4 类", elite: "5 类全量" },
+          { label: "汇报与宣传", free: "无", pro: "基础", elite: "完整联动" },
+        ]
+      : [
+          { label: "AI generations", free: "50 / day", pro: "Unlimited", elite: "Unlimited + team queues" },
+          { label: "Workspaces", free: "3", pro: "20", elite: "Unlimited" },
+          { label: "Acceptance tracks", free: "1 type", pro: "4 types", elite: "5 full types" },
+          { label: "Reporting and promo", free: "None", pro: "Basic", elite: "Full linkage" },
+        ],
+    null,
+    2
+  )} as const;
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
@@ -5356,6 +5589,19 @@ export default function PricingPage() {
                 </div>
               </div>
             ))}
+          </section>
+          <section style={{ marginTop: 18, borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "能力对比" : "Capability comparison"}</div>
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {comparisons.map((row) => (
+                <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(3,minmax(0,1fr))", gap: 10, alignItems: "center", borderRadius: 14, background: "#232533", padding: "12px 14px", fontSize: 13 }}>
+                  <div style={{ fontWeight: 800 }}>{row.label}</div>
+                  <div style={{ color: "rgba(255,255,255,0.7)" }}>{row.free}</div>
+                  <div style={{ color: "#e9d5ff" }}>{row.pro}</div>
+                  <div style={{ color: "#c4f5d1" }}>{row.elite}</div>
+                </div>
+              ))}
+            </div>
           </section>
         </div>
       </div>
