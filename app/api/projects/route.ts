@@ -12,6 +12,16 @@ function buildPreviewUrl(projectId: string) {
   return buildCanonicalPreviewUrl(projectId)
 }
 
+function resolveActivePreviewMode(args: {
+  previewMode?: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  sandboxStatus?: "stopped" | "starting" | "running" | "error"
+}) {
+  if (args.previewMode === "sandbox_runtime" && args.sandboxStatus === "running") {
+    return "sandbox_runtime" as const
+  }
+  return "static_ssr" as const
+}
+
 function normalizeRuntimeUrl(projectId: string, url?: string) {
   const normalized = String(url ?? "").trim()
   if (!normalized) return buildRuntimePreviewUrl(projectId)
@@ -105,7 +115,10 @@ export async function GET(req: Request) {
         presentation,
         preview: {
           defaultMode: "static_ssr",
-          activeMode: project.previewMode ?? getDefaultPreviewMode(),
+          activeMode: resolveActivePreviewMode({
+            previewMode: project.previewMode ?? getDefaultPreviewMode(),
+            sandboxStatus: project.sandboxRuntime?.status,
+          }),
           canonicalUrl: buildPreviewUrl(projectId),
           runtimeUrl: normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url),
           sandboxUrl: project.sandboxRuntime?.url || null,
@@ -178,7 +191,10 @@ export async function GET(req: Request) {
       }),
       preview: {
         defaultMode: "static_ssr",
-        activeMode: p.previewMode ?? getDefaultPreviewMode(),
+        activeMode: resolveActivePreviewMode({
+          previewMode: p.previewMode ?? getDefaultPreviewMode(),
+          sandboxStatus: p.sandboxRuntime?.status,
+        }),
         canonicalUrl: buildPreviewUrl(p.projectId),
         runtimeUrl: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url),
         sandboxUrl: p.sandboxRuntime?.url || null,

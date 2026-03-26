@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
 
 type RuntimeState = {
   status: "stopped" | "starting" | "running" | "error"
@@ -155,11 +156,33 @@ type FileTreeNode = {
 }
 
 function normalizePreviewUrl(projectId: string, url?: string) {
-  const fallback = `/preview/${encodeURIComponent(projectId)}`
+  const fallback = buildCanonicalPreviewUrl(projectId)
   const normalized = String(url ?? "").trim()
   if (!normalized) return fallback
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) return fallback
+  if (normalized.startsWith("/api/projects/")) return fallback
+  if (!normalized.startsWith("/") && !/^https?:\/\//i.test(normalized)) return fallback
   return normalized
+}
+
+function looksLikeInternalProjectId(input?: string | null) {
+  return /^project_[a-zA-Z0-9_-]+$/.test(String(input ?? "").trim())
+}
+
+function inferDisplayNameFromPrompt(prompt?: string | null, isCn?: boolean) {
+  const text = String(prompt ?? "").trim()
+  if (!text) return isCn ? "AI App Studio" : "AI App Studio"
+  const explicit =
+    text.match(/名字叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
+    text.match(/叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
+    text.match(/named\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1]
+  if (explicit) return /morncursor/i.test(explicit) ? "MornCursor" : explicit.charAt(0).toUpperCase() + explicit.slice(1)
+  if (/cursor|代码编辑|ide|coding/i.test(text)) return "MornCursor"
+  if (/api|接口|数据平台/i.test(text)) return "API Studio"
+  if (/crm|销售|客户/i.test(text)) return "CRM Pilot"
+  if (/site|website|官网|landing/i.test(text)) return "AI Site Generator"
+  if (/task|任务|流程/i.test(text)) return "TaskFlow"
+  return isCn ? "AI App Studio" : "AI App Studio"
 }
 
 function prioritizeCodeFiles(files: string[]) {
@@ -301,6 +324,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [focusedLine, setFocusedLine] = useState<number | null>(null)
   const [workspaceRegion, setWorkspaceRegion] = useState<"cn" | "intl">("intl")
   const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "cloudbase_document" | "mysql">("supabase_postgres")
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
 
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
@@ -627,7 +651,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     save: isCn ? "保存" : "Save",
     saving: isCn ? "保存中..." : "Saving...",
     refreshPreview: isCn ? "刷新预览" : "Refresh Preview",
-    openRaw: isCn ? "打开动态预览" : "Open Runtime Preview",
+    openRaw: isCn ? "打开预览入口" : "Open Preview Route",
     routeEntryFile: isCn ? "路由入口文件" : "Route entry file",
     backendApiHandler: isCn ? "后端 API 处理器" : "Backend API handler",
     noSymbols: isCn ? "当前文件未检测到符号" : "No symbols detected in current file",
@@ -707,6 +731,9 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     project?.preview?.activeMode === "sandbox_runtime" && sandboxPreviewUrl
       ? sandboxPreviewUrl
       : previewTabUrl
+  const refreshPreview = () => {
+    setPreviewRefreshKey((current) => current + 1)
+  }
   const canRenderPreview = Boolean(previewUrl)
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
@@ -881,10 +908,29 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     [previewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
   )
   const latestHistoryItem = project?.history?.length ? project.history[project.history.length - 1] : null
-  const projectName = project?.presentation?.displayName || project?.spec?.title || project?.projectId || "Project"
+  const projectName =
+    (project?.presentation?.displayName && !looksLikeInternalProjectId(project.presentation.displayName) ? project.presentation.displayName : "") ||
+    (project?.spec?.title && !looksLikeInternalProjectId(project.spec.title) ? project.spec.title : "") ||
+    inferDisplayNameFromPrompt(latestHistoryItem?.prompt || generateTask?.summary, isCn)
   const projectSubtitle = project?.presentation?.subtitle || (isCn ? "AI 生成应用工作区" : "AI generated app workspace")
   const projectSummary = project?.presentation?.summary || latestHistoryItem?.summary || aiInterpretation || copy.applyHint
   const projectIcon = project?.presentation?.icon
+  const buildBadgeLabel =
+    generateTask?.status === "running"
+      ? isCn
+        ? "构建中"
+        : "Building"
+      : generateTask?.status === "queued"
+        ? isCn
+          ? "已排队"
+          : "Queued"
+        : generateTask?.status === "error"
+          ? isCn
+            ? "构建异常"
+            : "Build error"
+          : isCn
+            ? "最新生成"
+            : "Latest build"
   const overviewPoints = useMemo(() => {
     const rows: string[] = []
     const kindLabel =
@@ -967,7 +1013,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">job: {jobId}</Badge>
+                <Badge variant="outline">{buildBadgeLabel}</Badge>
                 {runtimeBadge}
                 {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
                 {generateTask?.templateTitle ? <Badge variant="outline">{generateTask.templateTitle}</Badge> : null}
@@ -992,16 +1038,16 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               </div>
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-3 lg:w-[320px]">
-              <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy} className="w-full">
+            <div className="flex flex-wrap items-center justify-start gap-2 lg:w-[352px] lg:justify-end">
+              <Button variant="outline" size="sm" onClick={() => runAction("start")} disabled={runBusy} className="h-9 min-w-[104px] justify-center">
                 <Play className="mr-1.5 h-4 w-4" />
                 Start
               </Button>
-              <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy} className="w-full">
+              <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy} className="h-9 min-w-[104px] justify-center">
                 <RotateCcw className="mr-1.5 h-4 w-4" />
                 Restart
               </Button>
-              <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy} className="w-full">
+              <Button variant="outline" size="sm" onClick={() => runAction("stop")} disabled={runBusy} className="h-9 min-w-[104px] justify-center">
                 <Square className="mr-1.5 h-4 w-4" />
                 Stop
               </Button>
@@ -1034,7 +1080,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => runAction("restart")} disabled={runBusy}>
+                <Button variant="outline" size="sm" onClick={refreshPreview} disabled={runBusy && !canRenderPreview}>
                   <RefreshCw className="mr-1.5 h-4 w-4" />
                   {copy.refresh}
                 </Button>
@@ -1120,7 +1166,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       <div className="rounded-xl border border-border bg-secondary/20 p-3">
                         <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
-                        <div className="mt-2 break-all text-sm">{activePreviewUrl || "Not running"}</div>
+                        <div className="mt-2 break-all text-sm">{previewUrl || "Not running"}</div>
                       </div>
                       <div className="rounded-xl border border-border bg-secondary/20 p-3">
                         <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
@@ -1173,8 +1219,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                         {project?.preview?.activeMode === "sandbox_runtime"
                           ? project?.preview?.sandboxStatus === "running"
                             ? (isCn ? "当前正在使用 Sandbox 高级预览。" : "Sandbox preview is active.")
-                            : runStatus || (isCn ? "Sandbox 尚未就绪。" : "Sandbox preview is not ready.")
-                          : runtime?.lastError || runStatus || (previewStarting ? copy.previewStarting : isCn ? "当前默认使用站内 canonical preview，动态 runtime 作为增强模式。" : "Canonical preview is active by default, with runtime preview as an enhancement.")}
+                            : (isCn ? "Sandbox 尚未就绪，已自动回退到 canonical preview。" : "Sandbox is not ready, so canonical preview is active.")
+                          : runtime?.lastError || runStatus || (previewStarting ? copy.previewStarting : isCn ? "当前默认使用站内 canonical preview，runtime 仅作为增强模式。" : "Canonical preview is active by default, with runtime only as an enhancement.")}
                       </div>
                     </div>
                     {project?.preview?.supportsSandboxRuntime || project?.preview?.sandboxReadiness ? (
@@ -1292,14 +1338,14 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => runAction("restart")}
+                      onClick={refreshPreview}
                       disabled={runBusy}
                       className="rounded-md border border-white/15 px-3 py-1.5 text-white disabled:opacity-50"
                     >
                       {copy.refreshPreview}
                     </button>
                     <a
-                      href={runtimePreviewUrl || "#"}
+                      href={previewUrl || "#"}
                       target="_blank"
                       rel="noreferrer"
                       className="underline"
@@ -1385,6 +1431,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           ) : canRenderPreview ? (
             <div className="space-y-2">
               <iframe
+                key={`${activePreviewUrl}:${previewRefreshKey}`}
                 title="app-preview"
                 src={activePreviewUrl}
                 className="w-full min-h-[65vh] rounded-md border border-border bg-white md:min-h-[78vh]"

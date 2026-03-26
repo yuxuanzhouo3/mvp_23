@@ -20,6 +20,40 @@ function sanitizeText(input?: string | null) {
   return String(input ?? "").replace(/\s+/g, " ").trim()
 }
 
+function looksLikeInternalProjectId(input?: string | null) {
+  return /^project_[a-zA-Z0-9_-]+$/.test(sanitizeText(input))
+}
+
+function toDisplayCase(input: string) {
+  const normalized = sanitizeText(input).replace(/["'`]/g, "")
+  if (!normalized) return ""
+  if (/^[a-z0-9_-]+$/i.test(normalized) && !/\s/.test(normalized)) {
+    if (/morncursor/i.test(normalized)) return "MornCursor"
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+  }
+  return normalized
+}
+
+function inferNameFromPrompt(prompt?: string | null, region?: Region, spec?: Partial<AppSpec> | null) {
+  const text = sanitizeText(prompt)
+  if (!text) return ""
+
+  const explicit =
+    text.match(/名字叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
+    text.match(/叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
+    text.match(/named\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
+    text.match(/name\s+is\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1]
+  if (explicit) return toDisplayCase(explicit)
+
+  if (spec?.kind === "code_platform" || /cursor|代码编辑|ide|coding/i.test(text)) return "MornCursor"
+  if (spec?.kind === "crm" || /crm|销售|客户/i.test(text)) return "CRM Pilot"
+  if (spec?.kind === "community" || /community|社区|反馈/i.test(text)) return "Community Hub"
+  if (/api|接口|数据平台/i.test(text)) return "API Studio"
+  if (/site|website|官网|landing/i.test(text)) return "AI Site Generator"
+  if (/task|任务|流程/i.test(text)) return "TaskFlow"
+  return region === "cn" ? "AI App Studio" : "AI App Studio"
+}
+
 function inferRoutesFromSpec(spec?: Partial<AppSpec> | null) {
   const routes = new Set<string>()
   if (spec?.kind === "code_platform") {
@@ -95,7 +129,11 @@ export function buildProjectPresentation(args: {
   latestHistory?: ProjectHistoryItem | null
 }) {
   const { projectId, region, spec, latestHistory } = args
-  const displayName = sanitizeText(spec?.title) || projectId
+  const explicitTitle = sanitizeText(spec?.title)
+  const displayName =
+    (explicitTitle && !looksLikeInternalProjectId(explicitTitle) ? toDisplayCase(explicitTitle) : "") ||
+    inferNameFromPrompt(latestHistory?.prompt, region, spec) ||
+    (looksLikeInternalProjectId(projectId) ? "AI App Studio" : projectId)
   return {
     displayName,
     subtitle: buildSubtitle(spec, region),

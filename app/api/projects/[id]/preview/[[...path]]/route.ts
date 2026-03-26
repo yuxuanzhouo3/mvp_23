@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
+import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
 import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 
@@ -44,7 +45,14 @@ async function renderFallbackPreview(projectId: string) {
   const projectDir = await resolveProjectPath(projectId)
   const spec = projectDir ? await readProjectSpec(projectDir) : null
   const isCn = (project?.region ?? spec?.region) === "cn"
-  const title = String(spec?.title ?? projectId)
+  const latestHistory = project?.history?.slice(-3).reverse() ?? []
+  const presentation = buildProjectPresentation({
+    projectId,
+    region: (project?.region ?? spec?.region ?? "intl") as "cn" | "intl",
+    spec,
+    latestHistory: latestHistory[0] ?? null,
+  })
+  const title = String(presentation.displayName)
   const subtitle = String(
     (spec as any)?.subtitle ??
       (isCn
@@ -53,7 +61,6 @@ async function renderFallbackPreview(projectId: string) {
   )
   const modules = Array.isArray((spec as any)?.modules) ? ((spec as any)?.modules as string[]) : []
   const features = Array.isArray((spec as any)?.features) ? ((spec as any)?.features as string[]) : []
-  const latestHistory = project?.history?.slice(-3).reverse() ?? []
   const errorText = project?.runtime?.lastError ? String(project.runtime.lastError).slice(0, 600) : ""
 
   const html = `<!doctype html>
