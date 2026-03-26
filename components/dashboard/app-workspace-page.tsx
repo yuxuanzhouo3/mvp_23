@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl } from "@/lib/preview-url"
+import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl, getResolvedPreviewUrl } from "@/lib/preview-url"
 
 type RuntimeState = {
   status: "stopped" | "starting" | "running" | "error"
@@ -74,9 +74,11 @@ type ProjectDetail = {
   preview?: {
     defaultMode: "static_ssr"
     activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+    status: "idle" | "building" | "ready" | "failed"
     canonicalUrl: string
     runtimeUrl: string
     sandboxUrl: string | null
+    sandboxExternalUrl?: string | null
     sandboxStatus: "stopped" | "starting" | "running" | "error"
     supportsDynamicRuntime: boolean
     supportsSandboxRuntime: boolean
@@ -158,8 +160,10 @@ type FileTreeNode = {
 type PreviewProbeState = {
   projectSlug: string
   previewMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  previewStatus: "idle" | "building" | "ready" | "failed"
   canonicalPreviewUrl: string
   runtimePreviewUrl: string
+  sandboxPreviewUrl: string
   resolvedPreviewUrl: string
   fallbackUsed: boolean
   responseStatus: number | null
@@ -819,7 +823,15 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const refreshPreview = () => {
     setPreviewRefreshKey((current) => current + 1)
   }
-  const resolvedPreviewUrl = previewProbe?.resolvedPreviewUrl || canonicalPreviewUrl
+  const resolvedPreviewUrl =
+    previewProbe?.resolvedPreviewUrl ||
+    getResolvedPreviewUrl({
+      projectId: projectSlug,
+      mode: project?.preview?.activeMode ?? "static_ssr",
+      canonicalUrl: canonicalPreviewUrl,
+      runtimeUrl: runtimePreviewUrl,
+      sandboxUrl: sandboxPreviewUrl,
+    })
   const canRenderPreview = Boolean(resolvedPreviewUrl)
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
@@ -1082,22 +1094,30 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     if (!project) return
 
     const previewMode = project.preview?.activeMode ?? "static_ssr"
-    const preferredRuntimeUrl =
+    const preferredPreviewUrl =
       previewMode === "sandbox_runtime" && project.preview?.sandboxStatus === "running"
         ? sandboxPreviewUrl
         : runtime?.status === "running"
           ? runtimePreviewUrl
           : ""
-    const candidates = Array.from(new Set([preferredRuntimeUrl, canonicalPreviewUrl].filter(Boolean)))
+    const candidates = Array.from(new Set([preferredPreviewUrl, canonicalPreviewUrl].filter(Boolean)))
     let cancelled = false
 
     async function resolvePreviewTarget() {
       let nextState: PreviewProbeState = {
         projectSlug,
         previewMode,
+        previewStatus: project.preview?.status ?? "idle",
         canonicalPreviewUrl,
-        runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
-        resolvedPreviewUrl: canonicalPreviewUrl,
+        runtimePreviewUrl,
+        sandboxPreviewUrl,
+        resolvedPreviewUrl: getResolvedPreviewUrl({
+          projectId: projectSlug,
+          mode: previewMode,
+          canonicalUrl: canonicalPreviewUrl,
+          runtimeUrl: runtimePreviewUrl,
+          sandboxUrl: sandboxPreviewUrl,
+        }),
         fallbackUsed: true,
         responseStatus: null,
         renderStrategy: "structured_fallback",
@@ -1128,8 +1148,10 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           nextState = {
             projectSlug,
             previewMode,
+            previewStatus: response.ok ? "ready" : project.preview?.status ?? "failed",
             canonicalPreviewUrl,
-            runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
+            runtimePreviewUrl,
+            sandboxPreviewUrl,
             resolvedPreviewUrl: response.ok ? responsePath : canonicalPreviewUrl,
             fallbackUsed: candidate !== responsePath || responsePath === canonicalPreviewUrl,
             responseStatus: response.status,
@@ -1144,8 +1166,10 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           nextState = {
             projectSlug,
             previewMode,
+            previewStatus: project.preview?.status ?? "failed",
             canonicalPreviewUrl,
-            runtimePreviewUrl: preferredRuntimeUrl || runtimePreviewUrl,
+            runtimePreviewUrl,
+            sandboxPreviewUrl,
             resolvedPreviewUrl: canonicalPreviewUrl,
             fallbackUsed: true,
             responseStatus: 0,
@@ -1171,6 +1195,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     previewRefreshKey,
     project,
     projectSlug,
+    project?.preview?.status,
     runtime?.status,
     runtimePreviewUrl,
     sandboxPreviewUrl,
@@ -1310,8 +1335,11 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               <div className="mb-3 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
                 <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
                 <div>previewMode: {previewProbe?.previewMode ?? (project.preview?.activeMode || "static_ssr")}</div>
+                <div>previewStatus: {previewProbe?.previewStatus ?? (project.preview?.status || "idle")}</div>
                 <div>canonicalPreviewUrl: {previewProbe?.canonicalPreviewUrl ?? canonicalPreviewUrl}</div>
                 <div>runtimePreviewUrl: {previewProbe?.runtimePreviewUrl ?? runtimePreviewUrl}</div>
+                <div>sandboxPreviewUrl: {previewProbe?.sandboxPreviewUrl ?? sandboxPreviewUrl}</div>
+                <div>sandboxExternalUrl: {project.preview?.sandboxExternalUrl ?? "n/a"}</div>
                 <div>resolvedPreviewUrl: {previewProbe?.resolvedPreviewUrl ?? resolvedPreviewUrl}</div>
                 <div>fallbackUsed: {String(previewProbe?.fallbackUsed ?? true)}</div>
                 <div>responseStatus: {String(previewProbe?.responseStatus ?? "pending")}</div>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import net from "net"
-import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl } from "@/lib/preview-url"
+import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl } from "@/lib/preview-url"
 import { readProjectSpec } from "@/lib/project-spec"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { getProject, isPidAlive, listProjects, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
@@ -15,11 +15,35 @@ function buildPreviewUrl(projectId: string) {
 function resolveActivePreviewMode(args: {
   previewMode?: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
   sandboxStatus?: "stopped" | "starting" | "running" | "error"
+  runtimeStatus?: "stopped" | "starting" | "running" | "error"
 }) {
   if (args.previewMode === "sandbox_runtime" && args.sandboxStatus === "running") {
     return "sandbox_runtime" as const
   }
+  if (args.previewMode === "dynamic_runtime" && args.runtimeStatus === "running") {
+    return "dynamic_runtime" as const
+  }
   return "static_ssr" as const
+}
+
+function resolvePreviewStatus(args: {
+  activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  runtimeStatus?: "stopped" | "starting" | "running" | "error"
+  sandboxStatus?: "stopped" | "starting" | "running" | "error"
+}) {
+  if (args.activeMode === "sandbox_runtime") {
+    if (args.sandboxStatus === "running") return "ready" as const
+    if (args.sandboxStatus === "starting") return "building" as const
+    if (args.sandboxStatus === "error") return "failed" as const
+    return "idle" as const
+  }
+  if (args.activeMode === "dynamic_runtime") {
+    if (args.runtimeStatus === "running") return "ready" as const
+    if (args.runtimeStatus === "starting") return "building" as const
+    if (args.runtimeStatus === "error") return "failed" as const
+    return "idle" as const
+  }
+  return "ready" as const
 }
 
 function normalizeRuntimeUrl(projectId: string, url?: string) {
@@ -108,6 +132,11 @@ export async function GET(req: Request) {
       spec,
       latestHistory,
     })
+    const activeMode = resolveActivePreviewMode({
+      previewMode: project.previewMode ?? getDefaultPreviewMode(),
+      sandboxStatus: project.sandboxRuntime?.status,
+      runtimeStatus: runtime?.status,
+    })
     return NextResponse.json({
       project: {
         ...project,
@@ -115,13 +144,16 @@ export async function GET(req: Request) {
         presentation,
         preview: {
           defaultMode: "static_ssr",
-          activeMode: resolveActivePreviewMode({
-            previewMode: project.previewMode ?? getDefaultPreviewMode(),
+          activeMode,
+          status: resolvePreviewStatus({
+            activeMode,
+            runtimeStatus: runtime?.status,
             sandboxStatus: project.sandboxRuntime?.status,
           }),
           canonicalUrl: buildPreviewUrl(projectId),
           runtimeUrl: normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url),
-          sandboxUrl: project.sandboxRuntime?.url || null,
+          sandboxUrl: buildSandboxPreviewUrl(projectId),
+          sandboxExternalUrl: project.sandboxRuntime?.url || null,
           sandboxStatus: project.sandboxRuntime?.status ?? "stopped",
           supportsDynamicRuntime: !Boolean(process.env.VERCEL),
           supportsSandboxRuntime: supportsSandboxRuntime(),
@@ -159,9 +191,11 @@ export async function GET(req: Request) {
     preview: {
       defaultMode: "static_ssr"
       activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+      status: "idle" | "building" | "ready" | "failed"
       canonicalUrl: string
       runtimeUrl: string
       sandboxUrl: string | null
+      sandboxExternalUrl: string | null
       sandboxStatus: "stopped" | "starting" | "running" | "error"
       supportsDynamicRuntime: boolean
       supportsSandboxRuntime: boolean
@@ -174,6 +208,11 @@ export async function GET(req: Request) {
     const projectDir = await resolveProjectPath(p.projectId)
     const spec = projectDir ? await readProjectSpec(projectDir) : null
     const latestHistory = p.history?.length ? p.history[p.history.length - 1] : null
+    const activeMode = resolveActivePreviewMode({
+      previewMode: p.previewMode ?? getDefaultPreviewMode(),
+      sandboxStatus: p.sandboxRuntime?.status,
+      runtimeStatus: runtime?.status,
+    })
     normalized.push({
       projectId: p.projectId,
       region: p.region,
@@ -191,13 +230,16 @@ export async function GET(req: Request) {
       }),
       preview: {
         defaultMode: "static_ssr",
-        activeMode: resolveActivePreviewMode({
-          previewMode: p.previewMode ?? getDefaultPreviewMode(),
+        activeMode,
+        status: resolvePreviewStatus({
+          activeMode,
+          runtimeStatus: runtime?.status,
           sandboxStatus: p.sandboxRuntime?.status,
         }),
         canonicalUrl: buildPreviewUrl(p.projectId),
         runtimeUrl: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url),
-        sandboxUrl: p.sandboxRuntime?.url || null,
+        sandboxUrl: buildSandboxPreviewUrl(p.projectId),
+        sandboxExternalUrl: p.sandboxRuntime?.url || null,
         sandboxStatus: p.sandboxRuntime?.status ?? "stopped",
         supportsDynamicRuntime: !Boolean(process.env.VERCEL),
         supportsSandboxRuntime: supportsSandboxRuntime(),

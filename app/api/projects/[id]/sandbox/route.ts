@@ -20,7 +20,8 @@ export async function GET(
     previewMode: project.previewMode ?? "static_ssr",
     sandboxRuntime: {
       status: project.sandboxRuntime?.status ?? "stopped",
-      url: project.sandboxRuntime?.url ?? buildSandboxPreviewUrl(projectId),
+      url: buildSandboxPreviewUrl(projectId),
+      externalUrl: project.sandboxRuntime?.url ?? null,
       lastError: project.sandboxRuntime?.lastError,
       sandboxId: project.sandboxRuntime?.sandboxId,
       supported: supportsSandboxRuntime(),
@@ -56,6 +57,7 @@ export async function POST(
       sandboxRuntime: {
         status: "stopped",
         url: buildSandboxPreviewUrl(projectId),
+        externalUrl: null,
       },
     })
   }
@@ -110,7 +112,8 @@ export async function POST(
       sandboxRuntime: {
         status: "running",
         sandboxId: sandbox.sandboxId,
-        url: sandbox.externalUrl,
+        url: sandbox.proxyUrl,
+        externalUrl: sandbox.externalUrl,
         proxyUrl: sandbox.proxyUrl,
       },
     })
@@ -134,6 +137,7 @@ export async function POST(
         sandboxRuntime: {
           status: "error",
           url: buildSandboxPreviewUrl(projectId),
+          externalUrl: null,
           lastError: message,
         },
       },

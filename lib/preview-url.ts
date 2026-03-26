@@ -8,6 +8,12 @@ type BuildPreviewUrlArgs = {
   mode?: PreviewMode
 }
 
+type ResolvedPreviewUrlArgs = BuildPreviewUrlArgs & {
+  canonicalUrl?: string | null
+  runtimeUrl?: string | null
+  sandboxUrl?: string | null
+}
+
 function normalizeProjectId(projectId: string) {
   return String(projectId).replace(/[^a-zA-Z0-9_-]/g, "")
 }
@@ -52,4 +58,32 @@ export function buildPreviewUrl({ projectId, page, mode = "static_ssr" }: BuildP
 
 export function isRuntimePreviewRootSegment(segment?: string | null) {
   return String(segment ?? "") === RUNTIME_PREVIEW_ROOT_SEGMENT
+}
+
+function isSafeResolvedUrl(url?: string | null) {
+  const value = String(url ?? "").trim()
+  if (!value) return false
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(value)) return false
+  return value.startsWith("/") || /^https?:\/\//i.test(value)
+}
+
+export function getResolvedPreviewUrl({
+  projectId,
+  page,
+  mode = "static_ssr",
+  canonicalUrl,
+  runtimeUrl,
+  sandboxUrl,
+}: ResolvedPreviewUrlArgs) {
+  const fallback = isSafeResolvedUrl(canonicalUrl) ? String(canonicalUrl).trim() : buildCanonicalPreviewUrl(projectId, page)
+
+  if (mode === "sandbox_runtime" && isSafeResolvedUrl(sandboxUrl)) {
+    return String(sandboxUrl).trim()
+  }
+
+  if (mode === "dynamic_runtime" && isSafeResolvedUrl(runtimeUrl)) {
+    return String(runtimeUrl).trim()
+  }
+
+  return fallback
 }
