@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
+import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
 import { buildCanonicalPreviewUrl, isRuntimePreviewRootSegment } from "@/lib/preview-url"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
-import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
+import { resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -47,13 +48,18 @@ function escapeHtml(value: string) {
 }
 
 async function renderFallbackPreview(projectId: string) {
-  const project = await getProject(projectId)
-  const projectDir = await resolveProjectPath(projectId)
+  const lookup = await resolveProjectLookup(projectId)
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[preview:fallback-lookup]", buildProjectLookupLogPayload(lookup))
+  }
+  const project = lookup.project
+  const resolvedProjectId = lookup.projectId ?? safeProjectId(projectId)
+  const projectDir = await resolveProjectPath(resolvedProjectId)
   const spec = projectDir ? await readProjectSpec(projectDir) : null
   const isCn = (project?.region ?? spec?.region) === "cn"
   const latestHistory = project?.history?.slice(-3).reverse() ?? []
   const presentation = buildProjectPresentation({
-    projectId,
+    projectId: resolvedProjectId,
     region: (project?.region ?? spec?.region ?? "intl") as "cn" | "intl",
     spec,
     latestHistory: latestHistory[0] ?? null,
@@ -130,6 +136,11 @@ async function renderFallbackPreview(projectId: string) {
             <span class="pill">${escapeHtml(project?.databaseTarget ?? "default-db")}</span>
           </div>
           ${errorText ? `<div class="mono" style="margin-top:16px;">${escapeHtml(errorText)}</div>` : ""}
+          ${
+            !project
+              ? `<div class="mono" style="margin-top:16px;">lookupKey=${escapeHtml(lookup.lookupKey)}\nrouteParam=${escapeHtml(lookup.routeParam)}\nmanifestKeys=${escapeHtml(lookup.manifestKeys.join(", ") || "none")}\nstorePath=${escapeHtml(lookup.storePath)}</div>`
+              : ""
+          }
         </aside>
         <article class="card">
           <h2>${isCn ? "最近生成记录" : "Recent generation history"}</h2>
@@ -183,7 +194,8 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   const wantsHtml = isHtmlLikeRequest(req, pathSegments)
   const normalizedPathSegments =
     pathSegments.length === 1 && isRuntimePreviewRootSegment(pathSegments[0]) ? [] : pathSegments
-  const fallbackUrl = buildCanonicalPreviewUrl(projectId, normalizedPathSegments.join("/"))
+  const publicProjectKey = project?.projectSlug || projectId
+  const fallbackUrl = buildCanonicalPreviewUrl(publicProjectKey, normalizedPathSegments.join("/"))
 
   if (!project || !runtimeState?.port) {
     return wantsHtml

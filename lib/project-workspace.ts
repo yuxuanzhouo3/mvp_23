@@ -25,6 +25,7 @@ export type ProjectHistoryItem = {
 
 export type ProjectRecord = {
   projectId: string
+  projectSlug?: string
   region: Region
   deploymentTarget?: DeploymentTarget
   databaseTarget?: DatabaseTarget
@@ -74,6 +75,10 @@ export function getPromoAssetsDir() {
 
 const WORKSPACES_DIR = getWorkspacesDir()
 const STORE_FILE = path.join(WORKSPACES_DIR, "_projects.json")
+
+export function getProjectsStorePath() {
+  return STORE_FILE
+}
 
 export function safeProjectId(id: string) {
   return id.replace(/[^a-zA-Z0-9_-]/g, "")

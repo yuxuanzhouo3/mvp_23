@@ -35,6 +35,7 @@ type PreviewHistoryItem = {
 
 type CanonicalPreviewPageProps = {
   projectId: string
+  projectKey: string
   region: "cn" | "intl"
   page: string
   spec: PreviewSpec
@@ -258,6 +259,7 @@ function buildWorkbenchFiles({
 
 export function CanonicalPreviewPage({
   projectId,
+  projectKey,
   region,
   page,
   spec,
@@ -446,7 +448,7 @@ export function CanonicalPreviewPage({
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <Link href={`/preview/${encodeURIComponent(projectId)}/editor`} style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#fff", fontWeight: 800 }}>
+              <Link href={`/preview/${encodeURIComponent(projectKey)}/editor`} style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#fff", fontWeight: 800 }}>
                 {isCn ? "Open App" : "Open App"}
               </Link>
               <button type="button" onClick={() => setDashboardSection(isCn ? "设置" : "Settings")} style={{ borderRadius: 14, padding: "12px 16px", background: "#1d2130", color: "#f8fafc", fontWeight: 700, border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}>
@@ -871,7 +873,7 @@ export function CanonicalPreviewPage({
               return (
                 <Link
                   key={route}
-                  href={routeKey === "dashboard" ? `/preview/${encodeURIComponent(projectId)}` : `/preview/${encodeURIComponent(projectId)}/${routeKey}`}
+                  href={routeKey === "dashboard" ? `/preview/${encodeURIComponent(projectKey)}` : `/preview/${encodeURIComponent(projectKey)}/${routeKey}`}
                   style={{
                     textDecoration: "none",
                     borderRadius: 12,

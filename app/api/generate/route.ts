@@ -57,6 +57,14 @@ function buildProjectPreviewPath(projectId: string) {
   return buildCanonicalPreviewUrl(projectId)
 }
 
+function slugifyProjectName(input?: string | null) {
+  return String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
 type GeneratedFile = {
   path: string
   content: string
@@ -1513,6 +1521,11 @@ async function runGenerateTaskWorker(jobId: string) {
       databaseTarget,
     })
     await writeProjectSpec(outDir, plannedSpec)
+    await updateProject(current.projectId, (record) => ({
+      ...record,
+      projectSlug: slugifyProjectName(planner.productName) || record.projectSlug || record.projectId,
+      updatedAt: new Date().toISOString(),
+    }))
     const scaffoldFiles = await buildSpecDrivenWorkspaceFiles(outDir, plannedSpec)
     const scaffoldChanged = await applyGeneratedFiles(
       outDir,
@@ -1662,6 +1675,7 @@ export async function POST(req: Request) {
 
     await upsertProject({
       projectId,
+      projectSlug: projectId,
       region,
       deploymentTarget,
       databaseTarget,

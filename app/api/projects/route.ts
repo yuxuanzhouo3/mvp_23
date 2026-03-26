@@ -8,8 +8,8 @@ import { getDefaultPreviewMode, getSandboxReadiness, supportsSandboxRuntime } fr
 
 export const runtime = "nodejs"
 
-function buildPreviewUrl(projectId: string) {
-  return buildCanonicalPreviewUrl(projectId)
+function buildPreviewUrl(projectKey: string) {
+  return buildCanonicalPreviewUrl(projectKey)
 }
 
 function resolveActivePreviewMode(args: {
@@ -137,6 +137,7 @@ export async function GET(req: Request) {
       sandboxStatus: project.sandboxRuntime?.status,
       runtimeStatus: runtime?.status,
     })
+    const publicProjectKey = project.projectSlug || projectId
     return NextResponse.json({
       project: {
         ...project,
@@ -150,7 +151,7 @@ export async function GET(req: Request) {
             runtimeStatus: runtime?.status,
             sandboxStatus: project.sandboxRuntime?.status,
           }),
-          canonicalUrl: buildPreviewUrl(projectId),
+          canonicalUrl: buildPreviewUrl(publicProjectKey),
           runtimeUrl: normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url),
           sandboxUrl: buildSandboxPreviewUrl(projectId),
           sandboxExternalUrl: project.sandboxRuntime?.url || null,
@@ -213,6 +214,7 @@ export async function GET(req: Request) {
       sandboxStatus: p.sandboxRuntime?.status,
       runtimeStatus: runtime?.status,
     })
+    const publicProjectKey = p.projectSlug || p.projectId
     normalized.push({
       projectId: p.projectId,
       region: p.region,
@@ -236,7 +238,7 @@ export async function GET(req: Request) {
           runtimeStatus: runtime?.status,
           sandboxStatus: p.sandboxRuntime?.status,
         }),
-        canonicalUrl: buildPreviewUrl(p.projectId),
+        canonicalUrl: buildPreviewUrl(publicProjectKey),
         runtimeUrl: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url),
         sandboxUrl: buildSandboxPreviewUrl(p.projectId),
         sandboxExternalUrl: p.sandboxRuntime?.url || null,

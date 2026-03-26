@@ -22,7 +22,7 @@ function rewriteHtmlForSandboxPreview(html: string, projectId: string) {
 async function proxy(req: Request, projectIdRaw: string, pathSegments: string[]) {
   const projectId = safeProjectId(projectIdRaw)
   const project = await getProject(projectId)
-  const fallback = buildCanonicalPreviewUrl(projectId, pathSegments.join("/"))
+  const fallback = buildCanonicalPreviewUrl(project?.projectSlug || projectId, pathSegments.join("/"))
   const sandboxUrl = String(project?.sandboxRuntime?.url ?? "").trim()
 
   if (!project || project.sandboxRuntime?.status !== "running" || !sandboxUrl) {

@@ -45,6 +45,7 @@ type HistoryItem = {
 
 type ProjectDetail = {
   projectId: string
+  projectSlug?: string
   createdAt: string
   updatedAt: string
   region: "cn" | "intl"
@@ -1334,6 +1335,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             {process.env.NODE_ENV !== "production" && previewTab === "preview" ? (
               <div className="mb-3 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
                 <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
+                <div>storedProjectSlug: {project.projectSlug ?? "n/a"}</div>
+                <div>routeProjectId: {projectId}</div>
                 <div>previewMode: {previewProbe?.previewMode ?? (project.preview?.activeMode || "static_ssr")}</div>
                 <div>previewStatus: {previewProbe?.previewStatus ?? (project.preview?.status || "idle")}</div>
                 <div>canonicalPreviewUrl: {previewProbe?.canonicalPreviewUrl ?? canonicalPreviewUrl}</div>
