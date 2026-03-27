@@ -21,6 +21,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl, getResolvedPreviewUrl } from "@/lib/preview-url"
+import {
+  PREVIEW_SNAPSHOT_STORAGE_KEY,
+  buildPreviewSnapshotAliases,
+  type PreviewSnapshot,
+} from "@/lib/preview-snapshot"
 
 type RuntimeState = {
   status: "stopped" | "starting" | "running" | "error"
@@ -411,6 +416,26 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [previewProbe, setPreviewProbe] = useState<PreviewProbeState | null>(null)
 
+  function persistPreviewSnapshot(snapshot: PreviewSnapshot) {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem(PREVIEW_SNAPSHOT_STORAGE_KEY)
+      const parsed = raw ? (JSON.parse(raw) as PreviewSnapshot[]) : []
+      const list = Array.isArray(parsed) ? parsed : []
+      const aliases = buildPreviewSnapshotAliases(snapshot)
+      const filtered = list.filter((item) => {
+        const itemAliases = buildPreviewSnapshotAliases(item)
+        return !itemAliases.some((alias) => aliases.includes(alias))
+      })
+      window.localStorage.setItem(
+        PREVIEW_SNAPSHOT_STORAGE_KEY,
+        JSON.stringify([snapshot, ...filtered].slice(0, 24))
+      )
+    } catch {
+      // local preview cache is best-effort only
+    }
+  }
+
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
     if (!res.ok) {
@@ -642,6 +667,25 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
           ? "cloudbase_document"
           : "supabase_postgres"
     )
+  }, [project])
+
+  useEffect(() => {
+    if (!project?.presentation) return
+    persistPreviewSnapshot({
+      projectId: project.projectId,
+      projectSlug: project.projectSlug || project.projectId,
+      region: project.region,
+      spec: project.spec ?? null,
+      presentation: project.presentation,
+      history: [...(project.history ?? [])].reverse().slice(0, 5).map((item) => ({
+        createdAt: item.createdAt,
+        summary: item.summary,
+        status: item.status,
+        type: item.type,
+      })),
+      updatedAt: project.updatedAt,
+      source: "workspace",
+    })
   }, [project])
 
   useEffect(() => {
