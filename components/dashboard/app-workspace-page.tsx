@@ -1441,6 +1441,9 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
                 <div>storedProjectSlug: {project.projectSlug ?? "n/a"}</div>
                 <div>routeProjectId: {projectId}</div>
+                <div>projectId: {project.projectId}</div>
+                <div>projectName: {projectName}</div>
+                <div>projectFound: {String(Boolean(project?.projectId))}</div>
                 <div>previewMode: {previewProbe?.previewMode ?? (project.preview?.activeMode || "static_ssr")}</div>
                 <div>previewStatus: {previewProbe?.previewStatus ?? (project.preview?.status || "idle")}</div>
                 <div>canonicalPreviewUrl: {previewProbe?.canonicalPreviewUrl ?? canonicalPreviewUrl}</div>
