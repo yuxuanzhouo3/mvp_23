@@ -1056,24 +1056,78 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     (project?.spec?.title && !looksLikeInternalProjectId(project.spec.title) ? project.spec.title : "") ||
     inferDisplayNameFromPrompt(latestHistoryItem?.prompt || generateTask?.summary, isCn)
   const projectSubtitle = project?.presentation?.subtitle || (isCn ? "AI 生成应用工作区" : "AI generated app workspace")
-  const projectSummary = project?.presentation?.summary || latestHistoryItem?.summary || aiInterpretation || copy.applyHint
+  const projectSummary =
+    project?.presentation?.summary ||
+    (latestHistoryItem?.status === "done" ? latestHistoryItem.summary : "") ||
+    (generateTask?.status === "done" ? generateTask.summary : "") ||
+    aiInterpretation ||
+    copy.applyHint
   const projectIcon = project?.presentation?.icon
+  const hasUsableProjectSurface = Boolean(project?.presentation?.displayName || project?.spec?.title || codeFiles.length || pageManifest.length)
+  const workspaceStatus = useMemo(() => {
+    if (iterating) return { key: "applying", label: isCn ? "修改中" : "Applying", tone: "outline" as const }
+    if (generateTask?.status === "running" || generateTask?.status === "queued") {
+      return {
+        key: generateTask.status,
+        label: generateTask.status === "running" ? (isCn ? "生成中" : "Generating") : (isCn ? "排队中" : "Queued"),
+        tone: "outline" as const,
+      }
+    }
+    if (project?.preview?.status === "building" || previewStarting || runtime?.status === "starting") {
+      return { key: "building", label: isCn ? "预览启动中" : "Preview starting", tone: "outline" as const }
+    }
+    if (hasUsableProjectSurface) {
+      if (project?.preview?.activeMode === "sandbox_runtime" && project?.preview?.sandboxStatus === "running") {
+        return { key: "sandbox", label: isCn ? "高级预览就绪" : "Sandbox ready", tone: "success" as const }
+      }
+      if (previewProbe?.renderStrategy === "structured_fallback") {
+        return { key: "fallback", label: isCn ? "Fallback 预览" : "Fallback preview", tone: "warning" as const }
+      }
+      if (project?.preview?.status === "ready" || previewProbe?.responseStatus === 200 || resolvedPreviewUrl) {
+        return { key: "ready", label: isCn ? "可预览" : "Preview ready", tone: "success" as const }
+      }
+      return { key: "workspace", label: isCn ? "工作区就绪" : "Workspace ready", tone: "success" as const }
+    }
+    if (generateTask?.status === "error") {
+      return { key: "error", label: isCn ? "任务异常" : "Task error", tone: "destructive" as const }
+    }
+    return { key: "idle", label: isCn ? "等待生成" : "Waiting", tone: "outline" as const }
+  }, [
+    codeFiles.length,
+    generateTask?.status,
+    hasUsableProjectSurface,
+    isCn,
+    iterating,
+    pageManifest.length,
+    previewProbe?.renderStrategy,
+    previewProbe?.responseStatus,
+    previewStarting,
+    project?.preview?.activeMode,
+    project?.preview?.sandboxStatus,
+    project?.preview?.status,
+    resolvedPreviewUrl,
+    runtime?.status,
+  ])
   const buildBadgeLabel =
-    generateTask?.status === "running"
+    workspaceStatus.key === "error"
       ? isCn
-        ? "构建中"
-        : "Building"
-      : generateTask?.status === "queued"
+        ? "任务异常"
+        : "Task error"
+      : workspaceStatus.key === "building"
         ? isCn
-          ? "已排队"
-          : "Queued"
-        : generateTask?.status === "error"
+          ? "预览准备中"
+          : "Preview building"
+        : workspaceStatus.key === "sandbox"
           ? isCn
-            ? "构建异常"
-            : "Build error"
-          : isCn
-            ? "最新生成"
-            : "Latest build"
+            ? "高级预览"
+            : "Sandbox preview"
+          : workspaceStatus.key === "fallback"
+            ? isCn
+              ? "结构化预览"
+              : "Structured preview"
+            : isCn
+              ? "工作区就绪"
+              : "Workspace ready"
   const overviewPoints = useMemo(() => {
     const rows: string[] = []
     const kindLabel =
@@ -1268,6 +1322,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline">{buildBadgeLabel}</Badge>
+                <Badge
+                  variant={workspaceStatus.tone === "destructive" ? "destructive" : workspaceStatus.tone === "warning" ? "secondary" : "outline"}
+                  className={workspaceStatus.tone === "success" ? "bg-emerald-500/15 text-emerald-600" : undefined}
+                >
+                  {workspaceStatus.label}
+                </Badge>
                 {runtimeBadge}
                 {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
                 {generateTask?.templateTitle ? <Badge variant="outline">{generateTask.templateTitle}</Badge> : null}
@@ -1403,7 +1463,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   </div>
                   <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
                     <div className="text-xs text-muted-foreground">{copy.generationStatus}</div>
-                    <div className="mt-2 text-lg font-semibold">{generateTask?.status ?? runtime?.status ?? "ready"}</div>
+                    <div className="mt-2 text-lg font-semibold">{workspaceStatus.label}</div>
                     <div className="mt-2 text-sm text-muted-foreground">
                       {latestHistoryItem ? new Date(latestHistoryItem.createdAt).toLocaleString() : copy.generationStatusDesc}
                     </div>
@@ -1484,7 +1544,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     </div>
                     <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
                       <div className="text-xs text-muted-foreground">{isCn ? "预览状态" : "Preview status"}</div>
-                      <div className="mt-2 text-sm text-foreground">{runtime?.status ?? generateTask?.status ?? "ready"}</div>
+                      <div className="mt-2 text-sm text-foreground">{workspaceStatus.label}</div>
                       <div className="mt-2 text-xs text-muted-foreground">
                         {project?.preview?.activeMode === "sandbox_runtime"
                           ? project?.preview?.sandboxStatus === "running"
@@ -1734,7 +1794,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   </CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">{copy.applyHint}</p>
                 </div>
-                <Badge variant="outline">{iterating ? copy.applying : generateTask?.status ?? runtime?.status ?? "ready"}</Badge>
+                <Badge
+                  variant={workspaceStatus.tone === "destructive" ? "destructive" : workspaceStatus.tone === "warning" ? "secondary" : "outline"}
+                  className={workspaceStatus.tone === "success" ? "bg-emerald-500/15 text-emerald-600" : undefined}
+                >
+                  {workspaceStatus.label}
+                </Badge>
               </div>
 
               <div className="grid gap-3 rounded-2xl border border-border bg-secondary/20 p-3">
