@@ -26,10 +26,28 @@ type ModelFileEdit = {
   reason?: string
 }
 
+type IterateMode = "explain" | "fix" | "generate" | "refactor"
+
+type EditorRequestContext = {
+  currentFilePath?: string
+  currentFileContent?: string
+  currentFileSymbols?: Array<{ kind: string; name: string; line: number }>
+  focusedLine?: number
+  currentRoute?: string
+  relatedPaths?: string[]
+}
+
 type ModelOutput = {
   summary: string
-  files: ModelFileEdit[]
+  analysis?: string
+  files?: ModelFileEdit[]
   reasoning?: string
+}
+
+function normalizeIterateMode(input: unknown): IterateMode {
+  const value = String(input ?? "").trim().toLowerCase()
+  if (value === "explain" || value === "fix" || value === "refactor") return value
+  return "generate"
 }
 
 function sanitizeUiText(input: string) {
@@ -158,6 +176,86 @@ async function collectContextFiles(rootDir: string) {
   return out
 }
 
+function normalizeContextPath(value?: string | null) {
+  const normalized = normalizePath(String(value ?? ""))
+  return isAllowedFile(normalized) ? normalized : ""
+}
+
+function uniqueContextPaths(input: Array<string | undefined | null>) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of input) {
+    const normalized = normalizeContextPath(item)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  return out
+}
+
+function prioritizeContextFiles(files: string[], context: EditorRequestContext) {
+  const priority = uniqueContextPaths([context.currentFilePath, ...(context.relatedPaths ?? [])])
+  const remainder = files.filter((file) => !priority.includes(file))
+  return [...priority, ...remainder]
+}
+
+function buildExplainFallback(prompt: string, context: EditorRequestContext, region: Region): ModelOutput {
+  const filePath = normalizeContextPath(context.currentFilePath)
+  const symbols = Array.isArray(context.currentFileSymbols) ? context.currentFileSymbols : []
+  const focusedLine =
+    typeof context.focusedLine === "number" && Number.isFinite(context.focusedLine) && context.focusedLine > 0
+      ? context.focusedLine
+      : null
+  const route = String(context.currentRoute ?? "").trim()
+  const summary = filePath
+    ? region === "cn"
+      ? `已解释当前文件 ${filePath} 的职责与修改方向。`
+      : `Explained the current file ${filePath} and the best next changes.`
+    : region === "cn"
+      ? "已解释当前页面/模块的职责与修改方向。"
+      : "Explained the current page/module and the best next changes."
+
+  const analysisLines = [
+    filePath
+      ? region === "cn"
+        ? `当前文件：${filePath}`
+        : `Current file: ${filePath}`
+      : region === "cn"
+        ? "当前文件：未提供，已回退为页面级解释。"
+        : "Current file: not provided, so the explanation falls back to page level.",
+    route
+      ? region === "cn"
+        ? `当前路由：${route}`
+        : `Current route: ${route}`
+      : "",
+    focusedLine
+      ? region === "cn"
+        ? `当前焦点行：第 ${focusedLine} 行`
+        : `Focused line: ${focusedLine}`
+      : "",
+    symbols.length
+      ? region === "cn"
+        ? `当前文件识别到 ${symbols.length} 个符号，可优先围绕这些结构解释与拆分。`
+        : `Detected ${symbols.length} symbols in the current file, which are good anchors for explanation and refactoring.`
+      : region === "cn"
+        ? "当前文件没有识别到显式符号，说明它可能更偏页面布局或配置入口。"
+        : "No explicit symbols were detected, which usually means this file is more layout- or config-oriented.",
+    region === "cn"
+      ? `用户当前意图：${prompt}`
+      : `Current user intent: ${prompt}`,
+    region === "cn"
+      ? "下一步建议：如果你想要我继续改代码，请切换到 fix / generate / refactor 任一模式，我会基于当前文件继续执行。"
+      : "Suggested next step: switch to fix, generate, or refactor to keep working directly against this file.",
+  ].filter(Boolean)
+
+  return {
+    summary,
+    analysis: analysisLines.join("\n"),
+    reasoning: analysisLines.join("\n"),
+    files: [],
+  }
+}
+
 function extractJsonObject(raw: string) {
   const fenced = raw.match(/```json\s*([\s\S]*?)```/i)
   const payload = fenced?.[1] ?? raw
@@ -235,7 +333,13 @@ async function readStreamToModelOutput(res: Response): Promise<{ content: string
   return { content: content.trim(), reasoning: reasoning.trim() }
 }
 
-async function callEditorModel(projectDir: string, prompt: string, region: Region, body: any): Promise<ModelOutput> {
+async function callEditorModel(
+  projectDir: string,
+  prompt: string,
+  region: Region,
+  body: any,
+  mode: IterateMode
+): Promise<ModelOutput> {
   const config = resolveAiConfig({
     apiKey: String(body?.apiKey ?? "").trim() || undefined,
     baseUrl: String(body?.baseUrl ?? "").trim() || undefined,
@@ -244,11 +348,23 @@ async function callEditorModel(projectDir: string, prompt: string, region: Regio
     mode: "fixer",
   })
 
-  const files = await collectContextFiles(projectDir)
+  const context: EditorRequestContext = {
+    currentFilePath: normalizeContextPath(body?.currentFilePath),
+    currentFileContent: typeof body?.currentFileContent === "string" ? body.currentFileContent : undefined,
+    currentFileSymbols: Array.isArray(body?.currentFileSymbols) ? body.currentFileSymbols : undefined,
+    focusedLine: typeof body?.focusedLine === "number" ? body.focusedLine : undefined,
+    currentRoute: typeof body?.currentRoute === "string" ? body.currentRoute : undefined,
+    relatedPaths: Array.isArray(body?.relatedPaths) ? body.relatedPaths.map((item: unknown) => String(item)) : undefined,
+  }
+
+  const files = prioritizeContextFiles(await collectContextFiles(projectDir), context)
   const snapshots: string[] = []
   for (const relativePath of files.slice(0, 20)) {
     const fullPath = path.join(projectDir, relativePath)
-    const content = await fs.readFile(fullPath, "utf8")
+    const content =
+      context.currentFilePath === relativePath && typeof context.currentFileContent === "string"
+        ? context.currentFileContent
+        : await fs.readFile(fullPath, "utf8")
     snapshots.push(
       `FILE: ${relativePath}\n` +
         "```text\n" +
@@ -260,16 +376,54 @@ async function callEditorModel(projectDir: string, prompt: string, region: Regio
   const system = [
     "You are a code editor for an existing Next.js workspace.",
     "Return strict JSON only with this schema:",
-    '{"summary":"...","files":[{"path":"relative/path","content":"full file content","reason":"..."}]}',
+    '{"summary":"...","analysis":"","files":[{"path":"relative/path","content":"full file content","reason":"..."}]}',
     "Rules:",
     "- Use relative paths only.",
     "- Do not modify node_modules, .next, or .git.",
     "- Keep changes minimal and executable.",
+    "- Always anchor your reasoning in the provided current file/page/module context when it exists.",
+    "- If the requested mode is explain, prefer returning analysis with an empty files array unless the user explicitly asks for code edits.",
   ].join("\n")
+
+  const modeDirective =
+    mode === "explain"
+      ? region === "cn"
+        ? "当前模式：explain。请重点解释当前文件、当前页面、当前模块的职责、依赖边界、风险点和下一步修改建议；除非用户明确要求改代码，否则 files 返回空数组。"
+        : "Mode: explain. Focus on explaining the current file, page, and module responsibilities, boundaries, risks, and the best next changes. Unless the user explicitly asks for edits, return an empty files array."
+      : mode === "fix"
+        ? region === "cn"
+          ? "当前模式：fix。请优先修复当前文件和当前页面相关的问题，避免大面积重写整个项目。"
+          : "Mode: fix. Prioritize repairs tied to the current file and current page instead of rewriting the whole project."
+        : mode === "refactor"
+          ? region === "cn"
+            ? "当前模式：refactor。请围绕当前文件和相关模块重构结构、拆分边界、提升可维护性。"
+            : "Mode: refactor. Refactor around the current file and related modules to improve structure and maintainability."
+          : region === "cn"
+            ? "当前模式：generate。请基于当前文件和页面继续补能力，而不是回到全局空泛修改。"
+            : "Mode: generate. Extend capability from the current file and page context instead of drifting back into global edits."
+
+  const currentFileMeta = context.currentFilePath
+    ? [
+        `Current file: ${context.currentFilePath}`,
+        context.currentRoute ? `Current route: ${context.currentRoute}` : "",
+        typeof context.focusedLine === "number" ? `Focused line: ${context.focusedLine}` : "",
+        context.currentFileSymbols?.length
+          ? `Current symbols: ${context.currentFileSymbols.map((item) => `${item.kind}:${item.name}@${item.line}`).join(", ")}`
+          : "Current symbols: none detected",
+        typeof context.currentFileContent === "string"
+          ? `Current unsaved draft for ${context.currentFilePath}:\n\`\`\`text\n${context.currentFileContent.slice(0, 12000)}\n\`\`\``
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "Current file context: not provided"
 
   const user = [
     `Project region: ${region}`,
+    `Requested mode: ${mode}`,
     `User request: ${prompt}`,
+    modeDirective,
+    currentFileMeta,
     "Current file snapshots:",
     snapshots.join("\n"),
   ].join("\n\n")
@@ -297,7 +451,10 @@ async function callEditorModel(projectDir: string, prompt: string, region: Regio
   }
 
   if (reasoning) parsed.reasoning = reasoning
-  if (!Array.isArray(parsed.files) || parsed.files.length === 0) {
+  if (!Array.isArray(parsed.files)) {
+    parsed.files = []
+  }
+  if (mode !== "explain" && parsed.files.length === 0) {
     throw new Error("Model returned no file edits")
   }
   return parsed
@@ -593,6 +750,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const projectId = safeProjectId(String(body?.projectId ?? body?.jobId ?? ""))
   const prompt = String(body?.prompt ?? "").trim()
+  const mode = normalizeIterateMode(body?.mode)
   const region = (body?.region === "cn" ? "cn" : "intl") as Region
 
   if (!projectId || !prompt) {
@@ -613,18 +771,55 @@ export async function POST(req: Request) {
     let modelResult: ModelOutput
 
     try {
-      modelResult = await callEditorModel(projectDir, prompt, effectiveRegion, body)
+      modelResult = await callEditorModel(projectDir, prompt, effectiveRegion, body, mode)
     } catch (modelErr: any) {
-      const specDriven = await tryGenericFallbackEdits(projectDir, prompt, effectiveRegion)
-      modelResult = {
-        ...specDriven,
-        reasoning: `${specDriven.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+      if (mode === "explain") {
+        const explained = buildExplainFallback(prompt, body as EditorRequestContext, effectiveRegion)
+        modelResult = {
+          ...explained,
+          reasoning: `${explained.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+        }
+      } else {
+        const specDriven = await tryGenericFallbackEdits(projectDir, prompt, effectiveRegion)
+        modelResult = {
+          ...specDriven,
+          reasoning: `${specDriven.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+        }
       }
+    }
+
+    const requestedFiles = Array.isArray(modelResult.files) ? modelResult.files : []
+    const appliedEdits = mode === "explain" ? [] : requestedFiles
+
+    if (mode === "explain") {
+      await appendProjectHistory(projectId, {
+        id: `evt_${Date.now()}`,
+        type: "iterate",
+        prompt,
+        createdAt: now,
+        status: "done",
+        summary: modelResult.summary,
+        changedFiles: [],
+        buildStatus: "skipped",
+        buildLogs: ["Skipped: explain mode does not apply file edits"],
+      })
+
+      return NextResponse.json({
+        projectId,
+        status: "done",
+        summary: modelResult.summary,
+        thinking: modelResult.reasoning ?? modelResult.analysis ?? "",
+        changedFiles: [],
+        build: {
+          status: "skipped",
+          logs: ["Skipped: explain mode does not apply file edits"],
+        },
+      })
     }
 
     const changedFiles: string[] = []
     const fileBackups: Array<{ path: string; previousContent: string | null }> = []
-    for (const edit of modelResult.files) {
+    for (const edit of appliedEdits) {
       if (!isAllowedFile(edit.path)) {
         throw new Error(`Blocked path from model: ${edit.path}`)
       }

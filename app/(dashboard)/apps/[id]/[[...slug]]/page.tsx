@@ -1,4 +1,3 @@
-import { AppSectionPlaceholder } from "@/components/dashboard/app-section-placeholder"
 import { AppWorkspacePage } from "@/components/dashboard/app-workspace-page"
 
 export default async function AppSectionPage({
@@ -13,6 +12,5 @@ export default async function AppSectionPage({
   }
 
   const section = slug[0]
-  return <AppSectionPlaceholder section={section} />
+  return <AppWorkspacePage projectId={id} initialSection={section} />
 }
-

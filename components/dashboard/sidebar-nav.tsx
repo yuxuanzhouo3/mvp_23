@@ -18,6 +18,12 @@ type SidebarNavProps = {
 type RecentProject = {
   projectId: string
   updatedAt: string
+  generation?: {
+    buildStatus: "ok" | "failed" | "skipped" | null
+  }
+  preview?: {
+    status?: "idle" | "building" | "ready" | "failed"
+  }
   presentation: {
     displayName: string
     subtitle: string
@@ -209,7 +215,19 @@ export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
                           {icon.glyph}
                         </span>
                         {!collapsed && (
-                          <span className="min-w-0 truncate">{project.presentation.displayName}</span>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="min-w-0 truncate">{project.presentation.displayName}</span>
+                            <span
+                              className={cn(
+                                "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+                                project.preview?.status === "ready"
+                                  ? "bg-emerald-500"
+                                  : project.preview?.status === "failed"
+                                    ? "bg-red-500"
+                                    : "bg-amber-400"
+                              )}
+                            />
+                          </span>
                         )}
                       </Link>
                     </li>

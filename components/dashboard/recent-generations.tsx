@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { Eye, Rocket, Share2, MoreHorizontal } from "lucide-react"
 import { useLocale } from "@/lib/i18n"
 import { Badge } from "@/components/ui/badge"
@@ -14,38 +15,29 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-const generations = [
-  {
-    name: "kanban-ai",
-    prompt: "Kanban board with AI suggestions",
-    status: "ready" as const,
-    generatedAt: "2h ago",
-  },
-  {
-    name: "social-bookclub",
-    prompt: "Social network for book clubs",
-    status: "ready" as const,
-    generatedAt: "5h ago",
-  },
-  {
-    name: "invoice-tracker",
-    prompt: "Invoice management dashboard",
-    status: "building" as const,
-    generatedAt: "12h ago",
-  },
-  {
-    name: "fitness-log",
-    prompt: "Workout tracker with progress charts",
-    status: "ready" as const,
-    generatedAt: "1d ago",
-  },
-  {
-    name: "recipe-finder",
-    prompt: "Recipe search with dietary filters",
-    status: "error" as const,
-    generatedAt: "2d ago",
-  },
-]
+type RecentGeneration = {
+  projectId: string
+  updatedAt: string
+  historyCount: number
+  presentation: {
+    displayName: string
+    summary: string
+  }
+  generation?: {
+    buildStatus: "ok" | "failed" | "skipped" | null
+  }
+  preview?: {
+    status?: "idle" | "building" | "ready" | "failed"
+    resolvedUrl?: string
+  }
+}
+
+function getGenerationStatus(item: RecentGeneration) {
+  if (item.preview?.status === "failed" || item.generation?.buildStatus === "failed") return "error" as const
+  if (item.preview?.status === "building") return "building" as const
+  if (item.preview?.status === "ready" || item.generation?.buildStatus === "ok") return "ready" as const
+  return "building" as const
+}
 
 const statusConfig = {
   ready: {
@@ -62,16 +54,17 @@ const statusConfig = {
   },
 }
 
-const timeZh: Record<string, string> = {
-  "2h ago": "2 小时前",
-  "5h ago": "5 小时前",
-  "12h ago": "12 小时前",
-  "1d ago": "1 天前",
-  "2d ago": "2 天前",
-}
-
 export function RecentGenerations() {
   const { t, locale } = useLocale()
+  const isZh = locale === "zh"
+  const [items, setItems] = useState<RecentGeneration[]>([])
+
+  useEffect(() => {
+    fetch("/api/projects")
+      .then((res) => res.json())
+      .then((json) => setItems((json.projects ?? []).slice(0, 5)))
+      .catch(() => setItems([]))
+  }, [])
 
   return (
     <section className="rounded-lg border border-border bg-card">
@@ -79,8 +72,8 @@ export function RecentGenerations() {
         <h3 className="text-sm font-semibold text-card-foreground">
           {t("recentGenerations")}
         </h3>
-        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs">
-          {t("viewAll")}
+        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground text-xs" asChild>
+          <Link href="/projects">{t("viewAll")}</Link>
         </Button>
       </div>
 
@@ -96,28 +89,46 @@ export function RecentGenerations() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {generations.map((gen) => {
-              const status = statusConfig[gen.status]
+            {items.map((item) => {
+              const derivedStatus = getGenerationStatus(item)
+              const status = statusConfig[derivedStatus]
               return (
-                <TableRow key={gen.name} className="border-border hover:bg-accent/50">
+                <TableRow key={item.projectId} className="border-border hover:bg-accent/50">
                   <TableCell className="font-medium text-sm text-card-foreground">
-                    {gen.name}
+                    {item.presentation.displayName}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground hidden sm:table-cell max-w-[200px] truncate">
-                    {gen.prompt}
+                  <TableCell className="text-sm text-muted-foreground hidden sm:table-cell max-w-[260px] truncate">
+                    {item.presentation.summary}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      className={`${status.className} hover:${status.className} text-xs`}
-                    >
-                      {gen.status === "building" && (
-                        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))] inline-block animate-pulse-dot" />
-                      )}
-                      {t(status.labelKey)}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className={`${status.className} hover:${status.className} text-xs`}>
+                        {derivedStatus === "building" && (
+                          <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-[hsl(var(--warning))] inline-block animate-pulse-dot" />
+                        )}
+                        {t(status.labelKey)}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {item.generation?.buildStatus === "ok"
+                          ? isZh
+                            ? "Build 通过"
+                            : "Build ok"
+                          : item.generation?.buildStatus === "failed"
+                            ? isZh
+                              ? "Build 失败"
+                              : "Build failed"
+                            : item.generation?.buildStatus === "skipped"
+                              ? isZh
+                                ? "Build 跳过"
+                                : "Build skipped"
+                              : isZh
+                                ? "Build 待验证"
+                                : "Build pending"}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground hidden md:table-cell">
-                    {locale === "zh" ? timeZh[gen.generatedAt] ?? gen.generatedAt : gen.generatedAt}
+                    {new Date(item.updatedAt).toLocaleString(locale === "zh" ? "zh-CN" : "en-US")}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -125,10 +136,10 @@ export function RecentGenerations() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        aria-label={`View ${gen.name}`}
+                        aria-label={`View ${item.presentation.displayName}`}
                         asChild
                       >
-                        <Link href={`/apps/${gen.name}`}>
+                        <Link href={`/apps/${item.projectId}`}>
                           <Eye className="h-3.5 w-3.5" />
                         </Link>
                       </Button>
@@ -136,29 +147,32 @@ export function RecentGenerations() {
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                        aria-label={`Deploy ${gen.name}`}
-                      >
-                        <Rocket className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground hidden sm:inline-flex"
-                        aria-label={`Share ${gen.name}`}
+                        aria-label={`Deploy ${item.presentation.displayName}`}
                         asChild
                       >
-                        <Link href={`/apps/${gen.name}`}>
-                          <Share2 className="h-3.5 w-3.5" />
+                        <Link href={`/apps/${item.projectId}/runs`}>
+                          <Rocket className="h-3.5 w-3.5" />
                         </Link>
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground sm:hidden"
-                        aria-label={`More actions for ${gen.name}`}
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground hidden sm:inline-flex"
+                        aria-label={`Share ${item.presentation.displayName}`}
                         asChild
                       >
-                        <Link href={`/apps/${gen.name}`}>
+                        <a href={item.preview?.resolvedUrl || `/apps/${item.projectId}`} target="_blank" rel="noreferrer">
+                          <Share2 className="h-3.5 w-3.5" />
+                        </a>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground sm:hidden"
+                        aria-label={`More actions for ${item.presentation.displayName}`}
+                        asChild
+                      >
+                        <Link href={`/apps/${item.projectId}`}>
                           <MoreHorizontal className="h-3.5 w-3.5" />
                         </Link>
                       </Button>

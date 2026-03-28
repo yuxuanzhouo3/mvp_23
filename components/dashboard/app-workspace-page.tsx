@@ -77,6 +77,13 @@ type ProjectDetail = {
       ring: string
     }
   }
+  generation?: {
+    status: "done" | "error" | "idle"
+    summary: string
+    buildStatus: "ok" | "failed" | "skipped" | null
+    buildLogs?: string[]
+    createdAt?: string | null
+  }
   preview?: {
     defaultMode: "static_ssr"
     activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
@@ -84,6 +91,8 @@ type ProjectDetail = {
     canonicalUrl: string
     runtimeUrl: string
     sandboxUrl: string | null
+    resolvedUrl?: string
+    fallbackReason?: string
     sandboxExternalUrl?: string | null
     sandboxStatus: "stopped" | "starting" | "running" | "error"
     supportsDynamicRuntime: boolean
@@ -115,6 +124,8 @@ type GenerateTaskResp = {
   logs?: string[]
   summary?: string
   changedFiles?: string[]
+  buildStatus?: "ok" | "failed" | "skipped"
+  buildLogs?: string[]
   templateTitle?: string
   error?: string
 }
@@ -177,6 +188,8 @@ type PreviewProbeState = {
   responseUrl?: string
 }
 
+type AiMode = "explain" | "fix" | "generate" | "refactor"
+
 function normalizePreviewUrl(projectId: string, url?: string) {
   const fallback = buildCanonicalPreviewUrl(projectId)
   const normalized = String(url ?? "").trim()
@@ -236,6 +249,35 @@ function prioritizeCodeFiles(files: string[]) {
     if (diff !== 0) return diff
     return a.localeCompare(b)
   })
+}
+
+function inferRouteFromFilePath(filePath: string) {
+  if (!filePath) return ""
+  if (filePath === "app/page.tsx") return "/"
+  const match = filePath.match(/^app\/(.+)\/page\.(tsx|jsx)$/)
+  if (!match?.[1]) return ""
+  return `/${match[1]}`
+}
+
+function resolveInitialWorkspaceTab(section?: string | null) {
+  const normalized = String(section ?? "").trim().toLowerCase()
+  if (["code", "logs", "api"].includes(normalized)) return "code" as const
+  if (["analytics", "domains", "integrations", "security", "agents", "automations", "settings"].includes(normalized)) {
+    return "dashboard" as const
+  }
+  return "preview" as const
+}
+
+function resolveSectionPreferredFile(section?: string | null) {
+  const normalized = String(section ?? "").trim().toLowerCase()
+  if (normalized === "api") return "app/api/items/route.ts"
+  if (normalized === "logs") return "app/runs/page.tsx"
+  if (normalized === "code") return "app/editor/page.tsx"
+  if (normalized === "settings") return "app/settings/page.tsx"
+  if (normalized === "analytics") return "app/analytics/page.tsx"
+  if (normalized === "integrations") return "app/templates/page.tsx"
+  if (normalized === "security") return "app/settings/page.tsx"
+  return ""
 }
 
 function buildFileTree(paths: string[]) {
@@ -317,27 +359,64 @@ function renderSelectableFileTree(
 function StructuredPreviewFallback({
   projectName,
   projectSubtitle,
+  routes,
+  modules,
+  features,
+  fallbackReason,
+  buildStatus,
   isCn,
 }: {
   projectName: string
   projectSubtitle: string
+  routes: string[]
+  modules: string[]
+  features: string[]
+  fallbackReason: string
+  buildStatus: "ok" | "failed" | "skipped" | null
   isCn: boolean
 }) {
-  const pages = isCn
-    ? [
-        { key: "dashboard", label: "总览", desc: "项目概览、状态与路径摘要" },
-        { key: "editor", label: "编辑器", desc: "文件树、多标签编辑器与 AI 助手" },
-        { key: "runs", label: "运行", desc: "构建状态、运行记录与交付流程" },
-        { key: "templates", label: "模板库", desc: "场景模板、模块能力与复用入口" },
-        { key: "pricing", label: "升级", desc: "免费版、专业版、精英版分层方案" },
-      ]
-    : [
-        { key: "dashboard", label: "Dashboard", desc: "Project overview, state, and path summary" },
-        { key: "editor", label: "Editor", desc: "File tree, tabs, and AI assistant" },
-        { key: "runs", label: "Runs", desc: "Build state, runtime history, and delivery flow" },
-        { key: "templates", label: "Templates", desc: "Scenario templates and reusable modules" },
-        { key: "pricing", label: "Pricing", desc: "Free, Pro, and Elite plan structure" },
-      ]
+  const pages = (routes.length ? routes : ["/dashboard", "/editor", "/runs", "/templates", "/pricing"]).map((route) => {
+    const key = route.replace(/^\//, "") || "dashboard"
+    const labelMap = isCn
+      ? {
+          dashboard: "总览",
+          editor: "编辑器",
+          runs: "运行",
+          templates: "模板库",
+          pricing: "升级",
+          settings: "设置",
+        }
+      : {
+          dashboard: "Dashboard",
+          editor: "Editor",
+          runs: "Runs",
+          templates: "Templates",
+          pricing: "Pricing",
+          settings: "Settings",
+        }
+    const fallbackMap = isCn
+      ? {
+          dashboard: "项目概览、状态与路径摘要",
+          editor: "文件树、多标签编辑器与 AI 助手",
+          runs: "构建状态、运行记录与交付流程",
+          templates: "场景模板、模块能力与复用入口",
+          pricing: "免费版、专业版、精英版分层方案",
+          settings: "部署、数据库、权限与分享设置",
+        }
+      : {
+          dashboard: "Project overview, state, and path summary",
+          editor: "File tree, tabs, and AI assistant",
+          runs: "Build state, runtime history, and delivery flow",
+          templates: "Scenario templates and reusable modules",
+          pricing: "Free, Pro, and Elite plan structure",
+          settings: "Deployment, data, access, and sharing settings",
+        }
+    return {
+      key,
+      label: labelMap[key as keyof typeof labelMap] ?? (key.charAt(0).toUpperCase() + key.slice(1)),
+      desc: fallbackMap[key as keyof typeof fallbackMap] ?? (isCn ? "当前项目的可演示入口" : "A demoable route in the current project"),
+    }
+  })
 
   return (
     <div className="rounded-3xl border border-border bg-background/90 p-6 shadow-sm">
@@ -345,6 +424,9 @@ function StructuredPreviewFallback({
         {isCn
           ? "动态预览暂时不可用，已自动切换为结构化 fallback preview。"
           : "Dynamic preview is unavailable, so the structured fallback preview is shown."}
+      </div>
+      <div className="mt-3 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+        {fallbackReason || (isCn ? "当前项目正在使用自身 fallback，而不是通用壳。" : "This project is using its own fallback instead of a generic shell.")}
       </div>
       <div className="mt-4 rounded-3xl border border-border bg-[linear-gradient(180deg,#0d0f15_0%,#151927_100%)] p-5 text-white">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -368,6 +450,37 @@ function StructuredPreviewFallback({
           </div>
         </div>
 
+        <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">{isCn ? "Build 验收" : "Build acceptance"}</div>
+            <div className="mt-2 text-sm text-white/70">
+              {buildStatus === "ok"
+                ? isCn
+                  ? "已通过"
+                  : "passed"
+                : buildStatus === "failed"
+                  ? isCn
+                    ? "失败"
+                    : "failed"
+                  : isCn
+                    ? "未完成"
+                    : "pending"}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">{isCn ? "模块" : "Modules"}</div>
+            <div className="mt-2 text-sm text-white/70">{modules.length || 0}</div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">{isCn ? "能力" : "Features"}</div>
+            <div className="mt-2 text-sm text-white/70">{features.length || 0}</div>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">{isCn ? "可回退页面" : "Fallback routes"}</div>
+            <div className="mt-2 text-sm text-white/70">{pages.length}</div>
+          </div>
+        </div>
+
         <div className="mt-5 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {pages.map((page) => (
             <div key={page.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -376,12 +489,24 @@ function StructuredPreviewFallback({
             </div>
           ))}
         </div>
+        {modules.length ? (
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">{isCn ? "当前项目模块" : "Current project modules"}</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {modules.slice(0, 10).map((item) => (
+                <span key={item} className="rounded-full border border-white/10 px-3 py-1 text-xs text-white/70">
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
 
-export function AppWorkspacePage({ projectId }: { projectId: string }) {
+export function AppWorkspacePage({ projectId, initialSection }: { projectId: string; initialSection?: string }) {
   const searchParams = useSearchParams()
   const jobId = searchParams.get("jobId") || projectId
   const [project, setProject] = useState<ProjectDetail | null>(null)
@@ -398,7 +523,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [generatePanelOpen, setGeneratePanelOpen] = useState(true)
   const [previewBooting, setPreviewBooting] = useState(false)
   const [sandboxBusy, setSandboxBusy] = useState(false)
-  const [previewTab, setPreviewTab] = useState<"preview" | "dashboard" | "code">("preview")
+  const [previewTab, setPreviewTab] = useState<"preview" | "dashboard" | "code">(resolveInitialWorkspaceTab(initialSection))
   const [codeFiles, setCodeFiles] = useState<string[]>([])
   const [codeQuery, setCodeQuery] = useState("")
   const [selectedCodeFile, setSelectedCodeFile] = useState("")
@@ -415,6 +540,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "cloudbase_document" | "mysql">("supabase_postgres")
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [previewProbe, setPreviewProbe] = useState<PreviewProbeState | null>(null)
+  const [aiMode, setAiMode] = useState<AiMode>("generate")
 
   function persistPreviewSnapshot(snapshot: PreviewSnapshot) {
     if (typeof window === "undefined") return
@@ -584,7 +710,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     const text = prompt.trim()
     if (!text) return
     setIterating(true)
-    setIterateStatus("Applying change...")
+    setIterateStatus(aiMode === "explain" ? "Inspecting current context..." : "Applying change...")
     setIterateResult(null)
     try {
       const iterateCtrl = new AbortController()
@@ -592,7 +718,17 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       const res = await fetch("/api/iterate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, prompt: text }),
+        body: JSON.stringify({
+          projectId,
+          prompt: text,
+          mode: aiMode,
+          currentFilePath: selectedCodeFile || undefined,
+          currentFileContent: selectedCodeFile ? draftCodeContent : undefined,
+          currentFileSymbols: selectedCodeSymbols,
+          focusedLine,
+          currentRoute: inferRouteFromFilePath(selectedCodeFile) || undefined,
+          relatedPaths: Array.from(new Set([selectedCodeFile, ...codeTabs].filter(Boolean))).slice(0, 8),
+        }),
         signal: iterateCtrl.signal,
       })
       clearTimeout(iterateTimer)
@@ -601,21 +737,23 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       if (!res.ok || json.status === "error") {
         setIterateStatus(json.error || "Iteration failed")
       } else {
-        setIterateStatus("Iteration completed")
-        setPrompt("")
-        // Do not block UI on restart: trigger in background with timeout.
-        const restartCtrl = new AbortController()
-        const restartTimer = setTimeout(() => restartCtrl.abort(), 12_000)
-        fetch(`/api/projects/${encodeURIComponent(projectId)}/run`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "restart" }),
-          signal: restartCtrl.signal,
-        })
-          .catch(() => {
-            // ignore restart errors, user can click Restart manually
+        setIterateStatus(aiMode === "explain" ? "Context explanation ready" : "Iteration completed")
+        if (aiMode !== "explain") {
+          setPrompt("")
+          // Do not block UI on restart: trigger in background with timeout.
+          const restartCtrl = new AbortController()
+          const restartTimer = setTimeout(() => restartCtrl.abort(), 12_000)
+          fetch(`/api/projects/${encodeURIComponent(projectId)}/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "restart" }),
+            signal: restartCtrl.signal,
           })
-          .finally(() => clearTimeout(restartTimer))
+            .catch(() => {
+              // ignore restart errors, user can click Restart manually
+            })
+            .finally(() => clearTimeout(restartTimer))
+        }
       }
       await loadProject()
     } catch (e: any) {
@@ -656,6 +794,22 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
+
+  useEffect(() => {
+    if (!initialSection) return
+    setPreviewTab(resolveInitialWorkspaceTab(initialSection))
+  }, [initialSection])
+
+  useEffect(() => {
+    const preferredFile = resolveSectionPreferredFile(initialSection)
+    if (!preferredFile || !codeFiles.length) return
+    const match = codeFiles.find((item) => item === preferredFile) || codeFiles.find((item) => item.endsWith(preferredFile.split("/").slice(-1)[0]))
+    if (!match) return
+    setSelectedCodeFile(match)
+    if (resolveInitialWorkspaceTab(initialSection) === "code") {
+      setPreviewTab("code")
+    }
+  }, [codeFiles, initialSection])
 
   useEffect(() => {
     if (!project) return
@@ -847,12 +1001,25 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
     deploymentTarget: isCn ? "部署环境" : "Deployment target",
     dataTarget: isCn ? "数据 / 文档方案" : "Data / document path",
     latestAiUpdate: isCn ? "最近一次 AI 更新" : "Latest AI update",
+    buildAcceptance: isCn ? "Build 验收" : "Build Acceptance",
+    fallbackReason: isCn ? "Fallback 原因" : "Fallback Reason",
+    currentContext: isCn ? "当前上下文" : "Current Context",
+    currentRoute: isCn ? "当前路由" : "Current Route",
+    assistantMode: isCn ? "助手模式" : "Assistant Mode",
+    modelOutput: isCn ? "AI 输出" : "AI Output",
+    buildPassed: isCn ? "已通过" : "passed",
+    buildFailed: isCn ? "失败" : "failed",
+    buildPending: isCn ? "未完成" : "pending",
+    explainMode: isCn ? "解释" : "Explain",
+    fixMode: isCn ? "修复" : "Fix",
+    generateMode: isCn ? "生成" : "Generate",
+    refactorMode: isCn ? "重构" : "Refactor",
     openPreview: isCn ? "打开预览" : "Open Preview",
     refresh: isCn ? "刷新" : "Refresh",
     initialRequest: isCn ? "初始需求" : "Initial prompt",
     noConversation: isCn ? "生成完成后，这里会记录你和 AI 的持续修改过程。" : "Once generation finishes, this rail will capture your ongoing edits with AI.",
   } as const
-  const projectSlug = project?.projectId || projectId
+  const projectSlug = project?.projectSlug || project?.projectId || projectId
   const canonicalPreviewUrl = normalizePreviewUrl(
     projectSlug,
     project?.preview?.canonicalUrl || buildCanonicalPreviewUrl(projectSlug)
@@ -870,6 +1037,7 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
   }
   const resolvedPreviewUrl =
     previewProbe?.resolvedPreviewUrl ||
+    project?.preview?.resolvedUrl ||
     getResolvedPreviewUrl({
       projectId: projectSlug,
       mode: project?.preview?.activeMode ?? "static_ssr",
@@ -877,6 +1045,11 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
       runtimeUrl: runtimePreviewUrl,
       sandboxUrl: sandboxPreviewUrl,
     })
+  const fallbackReason =
+    project?.preview?.fallbackReason ||
+    (previewProbe?.renderStrategy === "structured_fallback"
+      ? (isCn ? "动态预览不可用，已回退到当前项目自己的结构化 fallback。" : "Dynamic preview is unavailable, so the current project fallback is active.")
+      : "")
   const canRenderPreview = Boolean(resolvedPreviewUrl)
   const previewStarting = runtime?.status === "starting" || previewBooting
   const recoveringGenerateTask =
@@ -1040,6 +1213,22 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 : "Project file"
     return `${typeLabel} · ${selectedCodeSymbols.length} ${isCn ? "个符号" : "symbols"} · ${draftCodeContent.split(/\r?\n/).length} ${isCn ? "行" : "lines"}`
   }, [copy.backendApiHandler, copy.routeEntryFile, draftCodeContent, isCn, selectedCodeFile, selectedCodeSymbols.length])
+  const currentCodeRoute = useMemo(() => inferRouteFromFilePath(selectedCodeFile), [selectedCodeFile])
+  const focusedSectionLabel = initialSection ? initialSection.replace(/[-_]+/g, " ") : ""
+  const aiModeLabel =
+    aiMode === "explain"
+      ? copy.explainMode
+      : aiMode === "fix"
+        ? copy.fixMode
+        : aiMode === "refactor"
+          ? copy.refactorMode
+          : copy.generateMode
+  const buildAcceptanceLabel =
+    project?.generation?.buildStatus === "ok"
+      ? copy.buildPassed
+      : project?.generation?.buildStatus === "failed"
+        ? copy.buildFailed
+        : copy.buildPending
   const dashboardActions = useMemo(
     () => [
       { label: "Open App", onClick: () => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer") },
@@ -1194,11 +1383,12 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
 
     const previewMode = project.preview?.activeMode ?? "static_ssr"
     const preferredPreviewUrl =
-      previewMode === "sandbox_runtime" && project.preview?.sandboxStatus === "running"
+      project.preview?.resolvedUrl ||
+      (previewMode === "sandbox_runtime" && project.preview?.sandboxStatus === "running"
         ? sandboxPreviewUrl
         : runtime?.status === "running"
           ? runtimePreviewUrl
-          : ""
+          : canonicalPreviewUrl)
     const candidates = Array.from(new Set([preferredPreviewUrl, canonicalPreviewUrl].filter(Boolean)))
     let cancelled = false
 
@@ -1329,6 +1519,8 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                   {workspaceStatus.label}
                 </Badge>
                 {runtimeBadge}
+                <Badge variant="outline">{copy.buildAcceptance}: {buildAcceptanceLabel}</Badge>
+                {project?.preview?.activeMode ? <Badge variant="outline">{project.preview.activeMode}</Badge> : null}
                 {runtime?.mode ? <Badge variant="outline">{runtime.mode}</Badge> : null}
                 {generateTask?.templateTitle ? <Badge variant="outline">{generateTask.templateTitle}</Badge> : null}
               </div>
@@ -1436,6 +1628,22 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 {copy.previewStarting}
               </div>
             ) : null}
+            {fallbackReason ? (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                {copy.fallbackReason}: {fallbackReason}
+              </div>
+            ) : null}
+            {project?.generation?.buildStatus ? (
+              <div className="mb-3 rounded-md border border-border bg-secondary/20 p-3 text-xs text-muted-foreground">
+                <div>{copy.buildAcceptance}: {buildAcceptanceLabel}</div>
+                {project.generation.summary ? <div className="mt-1">{project.generation.summary}</div> : null}
+              </div>
+            ) : null}
+            {focusedSectionLabel ? (
+              <div className="mb-3 rounded-md border border-border bg-background p-3 text-xs text-muted-foreground">
+                {isCn ? "当前聚焦控制区：" : "Focused control area: "} {focusedSectionLabel}
+              </div>
+            ) : null}
             {process.env.NODE_ENV !== "production" && previewTab === "preview" ? (
               <div className="mb-3 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
                 <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
@@ -1468,7 +1676,20 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                     <div className="text-xs text-muted-foreground">{copy.generationStatus}</div>
                     <div className="mt-2 text-lg font-semibold">{workspaceStatus.label}</div>
                     <div className="mt-2 text-sm text-muted-foreground">
-                      {latestHistoryItem ? new Date(latestHistoryItem.createdAt).toLocaleString() : copy.generationStatusDesc}
+                      {project.generation?.createdAt
+                        ? new Date(project.generation.createdAt).toLocaleString()
+                        : latestHistoryItem
+                          ? new Date(latestHistoryItem.createdAt).toLocaleString()
+                          : copy.generationStatusDesc}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                    <div className="text-xs text-muted-foreground">{copy.buildAcceptance}</div>
+                    <div className="mt-2 text-lg font-semibold">{buildAcceptanceLabel}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      {project.generation?.buildStatus === "failed"
+                        ? fallbackReason || (isCn ? "当前项目已回退到自己的 fallback。" : "The project is currently using its own fallback.")
+                        : project.generation?.summary || copy.generationStatusDesc}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
@@ -1504,6 +1725,14 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                       <div className="rounded-xl border border-border bg-secondary/20 p-3">
                         <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
                         <div className="mt-2 text-sm">{latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}</div>
+                      </div>
+                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                        <div className="text-xs text-muted-foreground">{copy.fallbackReason}</div>
+                        <div className="mt-2 text-sm">{fallbackReason || (isCn ? "当前预览没有触发 fallback。" : "No preview fallback is active right now.")}</div>
+                      </div>
+                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                        <div className="text-xs text-muted-foreground">{copy.buildAcceptance}</div>
+                        <div className="mt-2 text-sm">{buildAcceptanceLabel}</div>
                       </div>
                     </div>
                     <div className="mt-4 grid gap-3 lg:grid-cols-2">
@@ -1762,7 +1991,16 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
               </div>
             </div>
           ) : previewProbe?.renderStrategy === "structured_fallback" ? (
-            <StructuredPreviewFallback projectName={projectName} projectSubtitle={projectSubtitle} isCn={isCn} />
+            <StructuredPreviewFallback
+              projectName={projectName}
+              projectSubtitle={projectSubtitle}
+              routes={project?.presentation?.routes ?? pageManifest.map((item) => item.route)}
+              modules={project?.spec?.modules ?? []}
+              features={project?.spec?.features ?? []}
+              fallbackReason={fallbackReason}
+              buildStatus={project?.generation?.buildStatus ?? null}
+              isCn={isCn}
+            />
           ) : canRenderPreview ? (
             <div className="space-y-2">
               <iframe
@@ -1819,6 +2057,46 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
             </CardHeader>
 
             <CardContent className="space-y-5 p-4">
+              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-medium">{copy.assistantMode}</div>
+                  <Badge variant="outline">{aiModeLabel}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: "explain", label: copy.explainMode },
+                    { key: "fix", label: copy.fixMode },
+                    { key: "generate", label: copy.generateMode },
+                    { key: "refactor", label: copy.refactorMode },
+                  ] as Array<{ key: AiMode; label: string }>).map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setAiMode(item.key)}
+                      className={`rounded-xl border px-3 py-2 text-sm ${
+                        aiMode === item.key
+                          ? "border-primary/40 bg-primary/10 text-foreground"
+                          : "border-border bg-background text-muted-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                  <div className="text-xs text-muted-foreground">{copy.currentContext}</div>
+                  <div className="mt-2 text-sm font-medium text-foreground">{selectedCodeFile || (isCn ? "当前未选择文件" : "No active file selected")}</div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {copy.currentRoute}: {currentCodeRoute || (isCn ? "未命中页面路由" : "No page route inferred")}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {selectedCodeSymbols.length
+                      ? `${copy.symbols}: ${selectedCodeSymbols.map((item) => item.name).slice(0, 4).join(", ")}`
+                      : copy.noSymbols}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <div className="mb-3 flex items-center justify-between">
                   <div className="text-sm font-medium">{copy.conversationHistory}</div>
@@ -1893,16 +2171,37 @@ export function AppWorkspacePage({ projectId }: { projectId: string }) {
                 />
                 {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
                 {iterateResult?.summary ? <p className="text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
+                {iterateResult?.thinking ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.modelOutput}</div>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{iterateResult.thinking}</pre>
+                  </div>
+                ) : null}
                 {iterateResult?.changedFiles?.length ? (
                   <div className="rounded-xl border border-border bg-secondary/20 p-3">
                     <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
                     <div className="max-h-32 overflow-auto">{renderFileTree(iterateTree)}</div>
                   </div>
                 ) : null}
+                {iterateResult?.build?.logs?.length ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.buildAcceptance}</div>
+                    <div className="mb-2 text-xs text-muted-foreground">
+                      {iterateResult.build.status === "ok"
+                        ? copy.buildPassed
+                        : iterateResult.build.status === "failed"
+                          ? copy.buildFailed
+                          : copy.buildPending}
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                      {iterateResult.build.logs.join("\n")}
+                    </pre>
+                  </div>
+                ) : null}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <Button onClick={iterate} disabled={iterating} className="w-full">
                     <Wand2 className="mr-2 h-4 w-4" />
-                    {iterating ? copy.applying : copy.applyChange}
+                    {iterating ? copy.applying : aiMode === "explain" ? copy.explainMode : copy.applyChange}
                   </Button>
                   <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
                     <Undo2 className="mr-2 h-4 w-4" />

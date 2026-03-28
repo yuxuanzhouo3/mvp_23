@@ -13,6 +13,14 @@ import {
 } from "@/lib/fullstack-targets"
 
 export type AppKind = "task" | "crm" | "blog" | "community" | "code_platform"
+export type ScaffoldArchetype =
+  | "task"
+  | "crm"
+  | "api_platform"
+  | "marketing_admin"
+  | "community"
+  | "content"
+  | "code_platform"
 
 export type SpecFeature =
   | "description_field"
@@ -253,6 +261,39 @@ function uniqueStrings(input: string[]) {
   return Array.from(new Set(input.map((item) => sanitizeUiText(item)).filter(Boolean)))
 }
 
+function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
+  const text = String(prompt ?? "").toLowerCase()
+  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
+    return "code_platform"
+  }
+  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+    return "crm"
+  }
+  if (/api|sdk|developer portal|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
+    return "api_platform"
+  }
+  if (/website|landing|homepage|download|docs|documentation|marketing|brand|官网|落地页|下载页|文档|品牌|增长/.test(text)) {
+    return "marketing_admin"
+  }
+  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
+    return "community"
+  }
+  if (/blog|article|post|博客|文章|内容/.test(text)) {
+    return "content"
+  }
+  return "task"
+}
+
+function getScaffoldArchetype(spec: Pick<AppSpec, "kind" | "templateId" | "prompt">): ScaffoldArchetype {
+  if (spec.kind === "code_platform") return "code_platform"
+  if (spec.kind === "crm" || spec.templateId === "opsdesk") return "crm"
+  if (spec.kind === "community" || spec.templateId === "orbital") return "community"
+  if (spec.kind === "blog") return "content"
+  if (spec.templateId === "taskflow") return "api_platform"
+  if (spec.templateId === "launchpad") return "marketing_admin"
+  return inferScaffoldArchetypeFromPrompt(spec.prompt)
+}
+
 function pushFeature(features: SpecFeature[], feature: SpecFeature) {
   if (!features.includes(feature)) features.push(feature)
 }
@@ -319,6 +360,30 @@ function getKindModules(kind: AppKind, region: Region) {
   return region === "cn"
     ? ["任务看板", "优先级管理", "负责人协同"]
     : ["Task board", "Priority management", "Assignee collaboration"]
+}
+
+function getArchetypeModules(archetype: ScaffoldArchetype, region: Region) {
+  if (archetype === "api_platform") {
+    return region === "cn"
+      ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
+      : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switching"]
+  }
+  if (archetype === "marketing_admin") {
+    return region === "cn"
+      ? ["官网入口", "下载分发", "文档中心", "后台控制台"]
+      : ["Website entry", "Download distribution", "Docs center", "Admin console"]
+  }
+  if (archetype === "community") {
+    return region === "cn"
+      ? ["活动编排", "成员分层", "公告与反馈", "内容运营"]
+      : ["Event orchestration", "Member segments", "Announcements and feedback", "Content ops"]
+  }
+  if (archetype === "content") {
+    return region === "cn"
+      ? ["内容日历", "栏目管理", "作者协作", "发布节奏"]
+      : ["Content calendar", "Section management", "Author collaboration", "Publishing cadence"]
+  }
+  return []
 }
 
 function getPlanModules(planTier: PlanTier, region: Region) {
@@ -503,6 +568,7 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
       : existing?.kind && existing.kind !== "task"
         ? existing.kind
         : templateKind ?? "task"
+  const archetype = getScaffoldArchetype({ kind, templateId: inferredTemplateId, prompt })
   const planTier = existing?.planTier ?? "free"
   const features = uniqueStrings([
     ...(existing?.features ?? []),
@@ -515,6 +581,7 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
   const modules = uniqueStrings([
     ...(existing?.modules ?? []),
     ...getKindModules(kind, region),
+    ...getArchetypeModules(archetype, region),
     ...getPlanModules(planTier, region),
     ...getTemplateModules(inferredTemplateId, region),
   ])
@@ -589,7 +656,9 @@ export function applyPromptToSpec(spec: AppSpec, prompt: string) {
   next.templateId = inferredTemplateId
   next.templateStyle = next.templateStyle ?? getTemplateById(inferredTemplateId)?.previewStyle
   const features = [...spec.features, ...getTemplateFeatures(inferredTemplateId, spec.planTier)]
-  const modules = [...spec.modules, ...getTemplateModules(inferredTemplateId, spec.region)]
+  const nextKind = spec.kind === "task" ? inferAppKind(prompt) : spec.kind
+  const nextArchetype = getScaffoldArchetype({ kind: nextKind, templateId: inferredTemplateId, prompt })
+  const modules = [...spec.modules, ...getTemplateModules(inferredTemplateId, spec.region), ...getArchetypeModules(nextArchetype, spec.region)]
   const promptSafe = sanitizeUiText(prompt)
   const lower = prompt.toLowerCase()
   const title = extractTitleFromPrompt(prompt)
@@ -946,6 +1015,776 @@ function getTemplateHero(spec: AppSpec) {
           : "Bring project navigation, tabbed editing, terminal feedback, and AI-assisted generation into a single surface so the first pass already feels like a code platform."
         : getCopy(spec).header,
   }
+}
+
+type ArchetypePageDefinition = {
+  route: string
+  label: string
+  headline: string
+  subheadline: string
+  summary: string
+  metricLabel: string
+  metricValue: string
+  insightLabel: string
+  insightValue: string
+  records: Array<{ title: string; meta: string; status: string }>
+  focusAreas: string[]
+}
+
+function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
+  const isCn = spec.region === "cn"
+  const archetype = getScaffoldArchetype(spec)
+
+  if (archetype === "crm") {
+    return isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "销售与交付控制台",
+            subheadline: "把线索、成交、升级与交付并到一个运营后台里。",
+            summary: "更像 CRM 控制台，而不是普通任务页。",
+            metricLabel: "当月 pipeline",
+            metricValue: "¥842k",
+            insightLabel: "成交预测",
+            insightValue: "68%",
+            records: [
+              { title: "华星科技年度续约", meta: "负责人 张伟 · 等待预算确认", status: "Proposal" },
+              { title: "景曜智能升级包", meta: "负责人 王芳 · 演示已完成", status: "Qualified" },
+              { title: "浩川制造复购机会", meta: "负责人 陈晨 · 交付侧已同步", status: "Expansion" },
+            ],
+            focusAreas: ["Leads", "Pipeline", "Customers", "Automations"],
+          },
+          {
+            route: "leads",
+            label: "Leads",
+            headline: "线索池",
+            subheadline: "按来源、意向和负责人拆开线索，而不是都堆在首页。",
+            summary: "用于承接入站咨询、销售跟进和演示安排。",
+            metricLabel: "高意向线索",
+            metricValue: "19",
+            insightLabel: "待首联",
+            insightValue: "7",
+            records: [
+              { title: "官网咨询 · AI 代码平台", meta: "来源 官网表单 · 预算 18w", status: "New" },
+              { title: "渠道推荐 · 销售后台", meta: "来源 合作伙伴 · 预算 9w", status: "Review" },
+              { title: "老客户扩容 · API 平台", meta: "来源 CSM · 预算 6w", status: "Hot" },
+            ],
+            focusAreas: ["Inbound", "Owner queue", "Qualification", "Demo slots"],
+          },
+          {
+            route: "pipeline",
+            label: "Pipeline",
+            headline: "成交推进面板",
+            subheadline: "清楚看见每个商机在哪个阶段卡住。",
+            summary: "重点是阶段推进、风险识别和负责人节奏。",
+            metricLabel: "本周推进",
+            metricValue: "14",
+            insightLabel: "风险单",
+            insightValue: "3",
+            records: [
+              { title: "首次沟通 -> 方案确认", meta: "3 个机会本周跨阶段", status: "Moving" },
+              { title: "报价 -> 采购", meta: "2 个项目等待法务", status: "Blocked" },
+              { title: "成交 -> 交付", meta: "4 个项目进入 onboarding", status: "Won" },
+            ],
+            focusAreas: ["Stage health", "Risk flags", "Forecast", "Handoff"],
+          },
+          {
+            route: "customers",
+            label: "Customers",
+            headline: "客户与账户视图",
+            subheadline: "把签约客户、续约、扩容和交付健康度放到同一层。",
+            summary: "这页更像账户运营控制台。",
+            metricLabel: "活跃客户",
+            metricValue: "42",
+            insightLabel: "续约窗口",
+            insightValue: "11",
+            records: [
+              { title: "合一供应链", meta: "下月续约 · 需确认席位扩容", status: "Renewal" },
+              { title: "景曜智能", meta: "本周上线 · 已开通管理员", status: "Onboarding" },
+              { title: "远航数据", meta: "成功团队推进复购", status: "Expansion" },
+            ],
+            focusAreas: ["Renewals", "Success notes", "Seat growth", "Account health"],
+          },
+          {
+            route: "automations",
+            label: "Automations",
+            headline: "销售自动化与提醒",
+            subheadline: "把催跟进、提醒、报价审批和交付同步做成规则。",
+            summary: "体现 CRM 的自动化能力，不是只靠人工记忆。",
+            metricLabel: "自动化规则",
+            metricValue: "12",
+            insightLabel: "命中率",
+            insightValue: "91%",
+            records: [
+              { title: "3 天未跟进自动提醒", meta: "触达销售与负责人", status: "Active" },
+              { title: "成交后开通交付群", meta: "同步 CSM 与交付 PM", status: "Active" },
+              { title: "报价审批超时提醒", meta: "财务与销售主管双通知", status: "Testing" },
+            ],
+            focusAreas: ["Reminders", "Approval flow", "Customer handoff", "Agent tasks"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "Sales and delivery console",
+            subheadline: "Keep leads, closes, expansions, and onboarding in one workspace.",
+            summary: "This should read like a CRM control room, not a task board.",
+            metricLabel: "Monthly pipeline",
+            metricValue: "$118k",
+            insightLabel: "Win forecast",
+            insightValue: "68%",
+            records: [
+              { title: "Huaxing renewal", meta: "Owner Liam · budget confirmation pending", status: "Proposal" },
+              { title: "Jingyao expansion", meta: "Owner Emma · demo complete", status: "Qualified" },
+              { title: "Northstar follow-up", meta: "Owner Mason · delivery sync complete", status: "Expansion" },
+            ],
+            focusAreas: ["Leads", "Pipeline", "Customers", "Automations"],
+          },
+          {
+            route: "leads",
+            label: "Leads",
+            headline: "Lead pool",
+            subheadline: "Separate inbound, intent, and owners instead of overloading the home page.",
+            summary: "This is where website leads and sales follow-up live.",
+            metricLabel: "High-intent leads",
+            metricValue: "19",
+            insightLabel: "Awaiting first touch",
+            insightValue: "7",
+            records: [
+              { title: "Inbound · AI coding platform", meta: "Source website · budget $26k", status: "New" },
+              { title: "Partner referral · CRM workspace", meta: "Source partner network · budget $14k", status: "Review" },
+              { title: "Expansion · API platform", meta: "Source CSM · budget $8k", status: "Hot" },
+            ],
+            focusAreas: ["Inbound", "Owner queue", "Qualification", "Demo slots"],
+          },
+          {
+            route: "pipeline",
+            label: "Pipeline",
+            headline: "Deal progression board",
+            subheadline: "See exactly which stage each opportunity is stuck in.",
+            summary: "The focus here is stage movement, risk, and cadence.",
+            metricLabel: "Advances this week",
+            metricValue: "14",
+            insightLabel: "At-risk deals",
+            insightValue: "3",
+            records: [
+              { title: "First touch -> proposal", meta: "3 opportunities moved stages", status: "Moving" },
+              { title: "Proposal -> procurement", meta: "2 accounts waiting on legal", status: "Blocked" },
+              { title: "Close -> onboarding", meta: "4 customers entered onboarding", status: "Won" },
+            ],
+            focusAreas: ["Stage health", "Risk flags", "Forecast", "Handoff"],
+          },
+          {
+            route: "customers",
+            label: "Customers",
+            headline: "Customer account view",
+            subheadline: "Put renewals, onboarding, expansions, and account health in one place.",
+            summary: "This page should feel like account operations.",
+            metricLabel: "Active customers",
+            metricValue: "42",
+            insightLabel: "Renewal windows",
+            insightValue: "11",
+            records: [
+              { title: "Heyi Supply", meta: "Renews next month · seats may expand", status: "Renewal" },
+              { title: "Jingyao AI", meta: "Live this week · admin provisioned", status: "Onboarding" },
+              { title: "Farway Data", meta: "CS team is driving an upsell", status: "Expansion" },
+            ],
+            focusAreas: ["Renewals", "Success notes", "Seat growth", "Account health"],
+          },
+          {
+            route: "automations",
+            label: "Automations",
+            headline: "Sales automations",
+            subheadline: "Turn reminders, quote approvals, and handoff rules into workflows.",
+            summary: "This is how the CRM stops relying on memory alone.",
+            metricLabel: "Active automations",
+            metricValue: "12",
+            insightLabel: "Hit rate",
+            insightValue: "91%",
+            records: [
+              { title: "3-day no-follow-up reminder", meta: "Messages sales and the owner", status: "Active" },
+              { title: "Create onboarding lane after close", meta: "Syncs CSM and PM", status: "Active" },
+              { title: "Quote approval timeout notice", meta: "Alerts finance and sales lead", status: "Testing" },
+            ],
+            focusAreas: ["Reminders", "Approval flow", "Customer handoff", "Agent tasks"],
+          },
+        ]
+  }
+
+  if (archetype === "api_platform") {
+    return isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "接口与运行态控制台",
+            subheadline: "把 endpoints、日志、鉴权和环境切换放进一个开发者平台里。",
+            summary: "重点是开发者运营与运行诊断，不是普通后台。",
+            metricLabel: "本周请求量",
+            metricValue: "18.2M",
+            insightLabel: "错误率",
+            insightValue: "0.12%",
+            records: [
+              { title: "支付接口集群", meta: "99.97% SLA · 峰值稳定", status: "Healthy" },
+              { title: "Webhook 通知链路", meta: "平均延迟 182ms", status: "Monitored" },
+              { title: "Agent runtime API", meta: "今日新增 4 个 consumers", status: "Growing" },
+            ],
+            focusAreas: ["Endpoints", "Logs", "Auth", "Environments"],
+          },
+          {
+            route: "endpoints",
+            label: "Endpoints",
+            headline: "接口目录",
+            subheadline: "按服务、版本和消费量组织 API，而不是只给一份文档。",
+            summary: "更像 API catalog 与控制台。",
+            metricLabel: "在线接口",
+            metricValue: "64",
+            insightLabel: "新版本",
+            insightValue: "5",
+            records: [
+              { title: "POST /v1/projects/generate", meta: "生成应用主入口", status: "v1" },
+              { title: "GET /v1/runs", meta: "返回运行链路与日志摘要", status: "stable" },
+              { title: "POST /v1/auth/issue-token", meta: "发放 workspace 访问令牌", status: "beta" },
+            ],
+            focusAreas: ["Versioning", "Owners", "Usage", "SDK mapping"],
+          },
+          {
+            route: "logs",
+            label: "Logs",
+            headline: "日志与诊断检索",
+            subheadline: "把异常、延迟、trace 和最近发布一起拉通。",
+            summary: "这一页要看起来像 observability 工作区。",
+            metricLabel: "异常日志",
+            metricValue: "24",
+            insightLabel: "平均延迟",
+            insightValue: "182ms",
+            records: [
+              { title: "preview-runtime WARN", meta: "Sandbox boot took 2.3s", status: "Notice" },
+              { title: "auth-service ERROR", meta: "2 OAuth callbacks timed out", status: "Error" },
+              { title: "billing-webhook INFO", meta: "Retries recovered all failed events", status: "Recovered" },
+            ],
+            focusAreas: ["Search", "Trace", "Latency", "Recovery"],
+          },
+          {
+            route: "auth",
+            label: "Auth",
+            headline: "鉴权与令牌策略",
+            subheadline: "把 keys、scopes、成员访问和环境权限放到同一处。",
+            summary: "更像开发者权限中心。",
+            metricLabel: "活跃 keys",
+            metricValue: "128",
+            insightLabel: "高权限 scope",
+            insightValue: "17",
+            records: [
+              { title: "workspace:write", meta: "用于 AI 修改与文件写入", status: "Scoped" },
+              { title: "preview:launch", meta: "仅供 preview worker 使用", status: "Internal" },
+              { title: "billing:read", meta: "只读运营报表消费方", status: "Restricted" },
+            ],
+            focusAreas: ["Scopes", "Members", "Policies", "Secrets"],
+          },
+          {
+            route: "environments",
+            label: "Environments",
+            headline: "环境与发布轨道",
+            subheadline: "开发、预发、生产和区域部署不再混在一起。",
+            summary: "体现平台工程与多环境控制能力。",
+            metricLabel: "运行环境",
+            metricValue: "4",
+            insightLabel: "最近发布",
+            insightValue: "12m ago",
+            records: [
+              { title: "dev / cn", meta: "CloudBase preview runtime", status: "Ready" },
+              { title: "staging / global", meta: "Canonical preview on Vercel", status: "Stable" },
+              { title: "prod / global", meta: "Pending sandbox verification", status: "Queued" },
+            ],
+            focusAreas: ["Deploy targets", "Runtime", "Secrets", "Rollbacks"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "API and runtime command center",
+            subheadline: "Bring endpoints, logs, auth, and environments into one developer platform.",
+            summary: "This should read like a developer product, not a generic admin.",
+            metricLabel: "Weekly requests",
+            metricValue: "18.2M",
+            insightLabel: "Error rate",
+            insightValue: "0.12%",
+            records: [
+              { title: "Payments cluster", meta: "99.97% SLA · stable peak traffic", status: "Healthy" },
+              { title: "Webhook delivery rail", meta: "182ms median latency", status: "Monitored" },
+              { title: "Agent runtime API", meta: "4 new consumers today", status: "Growing" },
+            ],
+            focusAreas: ["Endpoints", "Logs", "Auth", "Environments"],
+          },
+          {
+            route: "endpoints",
+            label: "Endpoints",
+            headline: "Endpoint catalog",
+            subheadline: "Organize APIs by service, version, and traffic instead of shipping docs alone.",
+            summary: "This page should feel like an API catalog and control room.",
+            metricLabel: "Live endpoints",
+            metricValue: "64",
+            insightLabel: "New versions",
+            insightValue: "5",
+            records: [
+              { title: "POST /v1/projects/generate", meta: "Primary app generation entry", status: "v1" },
+              { title: "GET /v1/runs", meta: "Returns runtime and log summaries", status: "stable" },
+              { title: "POST /v1/auth/issue-token", meta: "Issues workspace access tokens", status: "beta" },
+            ],
+            focusAreas: ["Versioning", "Owners", "Usage", "SDK mapping"],
+          },
+          {
+            route: "logs",
+            label: "Logs",
+            headline: "Logs and diagnostics",
+            subheadline: "Pull together errors, latency, traces, and releases in one place.",
+            summary: "This should feel like observability tooling.",
+            metricLabel: "Exception logs",
+            metricValue: "24",
+            insightLabel: "Median latency",
+            insightValue: "182ms",
+            records: [
+              { title: "preview-runtime WARN", meta: "Sandbox boot took 2.3s", status: "Notice" },
+              { title: "auth-service ERROR", meta: "2 OAuth callbacks timed out", status: "Error" },
+              { title: "billing-webhook INFO", meta: "Retries recovered all failed events", status: "Recovered" },
+            ],
+            focusAreas: ["Search", "Trace", "Latency", "Recovery"],
+          },
+          {
+            route: "auth",
+            label: "Auth",
+            headline: "Auth and token policies",
+            subheadline: "Put keys, scopes, memberships, and environment access in one place.",
+            summary: "This is the developer access layer.",
+            metricLabel: "Active keys",
+            metricValue: "128",
+            insightLabel: "Privileged scopes",
+            insightValue: "17",
+            records: [
+              { title: "workspace:write", meta: "Used for AI edits and file writes", status: "Scoped" },
+              { title: "preview:launch", meta: "Reserved for preview worker access", status: "Internal" },
+              { title: "billing:read", meta: "Read-only reporting consumer", status: "Restricted" },
+            ],
+            focusAreas: ["Scopes", "Members", "Policies", "Secrets"],
+          },
+          {
+            route: "environments",
+            label: "Environments",
+            headline: "Environment rail",
+            subheadline: "Keep dev, staging, production, and region lanes clearly separated.",
+            summary: "This is where platform engineering becomes visible.",
+            metricLabel: "Runtime lanes",
+            metricValue: "4",
+            insightLabel: "Latest release",
+            insightValue: "12m ago",
+            records: [
+              { title: "dev / cn", meta: "CloudBase preview runtime", status: "Ready" },
+              { title: "staging / global", meta: "Canonical preview on Vercel", status: "Stable" },
+              { title: "prod / global", meta: "Pending sandbox verification", status: "Queued" },
+            ],
+            focusAreas: ["Deploy targets", "Runtime", "Secrets", "Rollbacks"],
+          },
+        ]
+  }
+
+  if (archetype === "marketing_admin") {
+    return isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "官网与后台联动控制台",
+            subheadline: "让官网、下载、文档和后台工作区成为同一个产品体系。",
+            summary: "这条线不再只是 landing page，而是增长与管理联动。",
+            metricLabel: "本周访问",
+            metricValue: "82k",
+            insightLabel: "转化率",
+            insightValue: "5.8%",
+            records: [
+              { title: "官网首页 CTA", meta: "下载转化提升 12%", status: "Live" },
+              { title: "下载中心", meta: "Android / iOS / Docs 三轨联动", status: "Healthy" },
+              { title: "后台配置", meta: "文案、版本与套餐已同步", status: "Synced" },
+            ],
+            focusAreas: ["Website", "Downloads", "Docs", "Admin"],
+          },
+          {
+            route: "website",
+            label: "Website",
+            headline: "官网结构总览",
+            subheadline: "管理 Hero、功能区、客户背书和 CTA，而不是单独改静态页面。",
+            summary: "这页体现官网运营和转化管理。",
+            metricLabel: "活跃版块",
+            metricValue: "9",
+            insightLabel: "首屏转化",
+            insightValue: "6.2%",
+            records: [
+              { title: "Hero 主叙事", meta: "中国版 AI 产品定位已收口", status: "Ready" },
+              { title: "功能亮点区", meta: "展示 editor / runs / templates", status: "Updated" },
+              { title: "客户背书区", meta: "新增 4 组案例卡片", status: "Queued" },
+            ],
+            focusAreas: ["Hero", "Social proof", "CTA", "SEO"],
+          },
+          {
+            route: "downloads",
+            label: "Downloads",
+            headline: "下载分发中心",
+            subheadline: "统一 Android、iOS、文档和安装说明。",
+            summary: "这页更像产品分发中心。",
+            metricLabel: "下载转化",
+            metricValue: "18.4%",
+            insightLabel: "文档触达",
+            insightValue: "42%",
+            records: [
+              { title: "Android 包", meta: "云端镜像已同步", status: "Ready" },
+              { title: "iOS TestFlight", meta: "本周演示包已更新", status: "Live" },
+              { title: "安装文档", meta: "新手引导覆盖 3 个平台", status: "Updated" },
+            ],
+            focusAreas: ["Packages", "Install guide", "Docs", "Device coverage"],
+          },
+          {
+            route: "docs",
+            label: "Docs",
+            headline: "文档中心",
+            subheadline: "让产品文档、API 文档和 onboarding 指南成为同一套内容系统。",
+            summary: "承接下载后和销售前的知识链路。",
+            metricLabel: "文档页面",
+            metricValue: "27",
+            insightLabel: "搜到答案率",
+            insightValue: "87%",
+            records: [
+              { title: "快速开始", meta: "3 分钟完成项目接入", status: "Popular" },
+              { title: "环境配置", meta: "Vercel / CloudBase / Supabase", status: "Core" },
+              { title: "团队协作", meta: "角色、权限、分享链路", status: "Drafting" },
+            ],
+            focusAreas: ["Quickstart", "Reference", "Guides", "Search"],
+          },
+          {
+            route: "admin",
+            label: "Admin",
+            headline: "后台配置台",
+            subheadline: "在同一个地方改官网内容、版本、套餐和投放策略。",
+            summary: "后台与官网联动，才像真正产品。",
+            metricLabel: "待发布改动",
+            metricValue: "6",
+            insightLabel: "同步状态",
+            insightValue: "healthy",
+            records: [
+              { title: "定价文案更新", meta: "待同步到首页与下载页", status: "Review" },
+              { title: "版本发布说明", meta: "等待运营确认发布时间", status: "Queued" },
+              { title: "表单与转化策略", meta: "已绑定市场追踪参数", status: "Live" },
+            ],
+            focusAreas: ["CMS", "Releases", "Pricing", "Growth ops"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "Website + admin command center",
+            subheadline: "Treat website, downloads, docs, and admin as one product surface.",
+            summary: "This moves the output beyond a landing page into a growth system.",
+            metricLabel: "Weekly visits",
+            metricValue: "82k",
+            insightLabel: "Conversion rate",
+            insightValue: "5.8%",
+            records: [
+              { title: "Homepage CTA rail", meta: "Download conversion up 12%", status: "Live" },
+              { title: "Download center", meta: "Android / iOS / docs are linked", status: "Healthy" },
+              { title: "Admin settings", meta: "Copy, releases, and pricing stay synced", status: "Synced" },
+            ],
+            focusAreas: ["Website", "Downloads", "Docs", "Admin"],
+          },
+          {
+            route: "website",
+            label: "Website",
+            headline: "Website structure",
+            subheadline: "Manage hero, proof, features, and CTA instead of editing a static page.",
+            summary: "This page should feel like marketing operations.",
+            metricLabel: "Active sections",
+            metricValue: "9",
+            insightLabel: "Hero conversion",
+            insightValue: "6.2%",
+            records: [
+              { title: "Hero narrative", meta: "Positioning is now aligned", status: "Ready" },
+              { title: "Feature rail", meta: "Now highlights editor / runs / templates", status: "Updated" },
+              { title: "Proof section", meta: "4 new customer cards queued", status: "Queued" },
+            ],
+            focusAreas: ["Hero", "Social proof", "CTA", "SEO"],
+          },
+          {
+            route: "downloads",
+            label: "Downloads",
+            headline: "Distribution hub",
+            subheadline: "Unify Android, iOS, docs, and install guidance.",
+            summary: "This is a distribution surface, not just a pair of buttons.",
+            metricLabel: "Download conversion",
+            metricValue: "18.4%",
+            insightLabel: "Docs reach",
+            insightValue: "42%",
+            records: [
+              { title: "Android package", meta: "Mirrors synced", status: "Ready" },
+              { title: "iOS TestFlight", meta: "Latest demo build published", status: "Live" },
+              { title: "Install docs", meta: "Covers 3 setup paths", status: "Updated" },
+            ],
+            focusAreas: ["Packages", "Install guide", "Docs", "Device coverage"],
+          },
+          {
+            route: "docs",
+            label: "Docs",
+            headline: "Docs center",
+            subheadline: "Keep product docs, API docs, and onboarding guides in one system.",
+            summary: "This page connects pre-sale and post-download education.",
+            metricLabel: "Doc pages",
+            metricValue: "27",
+            insightLabel: "Search success",
+            insightValue: "87%",
+            records: [
+              { title: "Quickstart", meta: "3-minute setup path", status: "Popular" },
+              { title: "Environment guide", meta: "Vercel / CloudBase / Supabase", status: "Core" },
+              { title: "Team collaboration", meta: "Roles, access, and sharing", status: "Drafting" },
+            ],
+            focusAreas: ["Quickstart", "Reference", "Guides", "Search"],
+          },
+          {
+            route: "admin",
+            label: "Admin",
+            headline: "Admin control room",
+            subheadline: "Edit website content, releases, pricing, and growth rules in one place.",
+            summary: "This is what turns a website into a product system.",
+            metricLabel: "Pending changes",
+            metricValue: "6",
+            insightLabel: "Sync status",
+            insightValue: "healthy",
+            records: [
+              { title: "Pricing copy update", meta: "Needs homepage + download sync", status: "Review" },
+              { title: "Release notes", meta: "Waiting for ops publish window", status: "Queued" },
+              { title: "Form and conversion rules", meta: "Tracking params are wired", status: "Live" },
+            ],
+            focusAreas: ["CMS", "Releases", "Pricing", "Growth ops"],
+          },
+        ]
+  }
+
+  return []
+}
+
+function renderArchetypeWorkspaceHome(spec: AppSpec) {
+  const pages = getArchetypePageDefinitions(spec)
+  if (!pages.length) return null
+  const isCn = spec.region === "cn"
+  const brand = spec.title
+  const archetype = getScaffoldArchetype(spec)
+  const accent =
+    archetype === "crm" ? "#2563eb" : archetype === "api_platform" ? "#06b6d4" : archetype === "marketing_admin" ? "#111827" : "#7c3aed"
+
+  return `import Link from "next/link";
+
+export default function Page() {
+  const isCn = ${isCn ? "true" : "false"};
+  const pages = ${JSON.stringify(pages, null, 2)} as const;
+  const brand = ${JSON.stringify(brand)};
+  const accent = ${JSON.stringify(accent)};
+  return (
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: "linear-gradient(180deg,#f7f8fc 0%,#ffffff 54%,#eef4ff 100%)", color: "#0f172a" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 28, padding: 26, background: "linear-gradient(135deg, rgba(37,99,235,0.08), rgba(255,255,255,0.96))", border: "1px solid rgba(148,163,184,0.18)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(15,23,42,0.06)", color: accent, fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "应用工作区骨架" : "Application workspace scaffold"}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 36, fontWeight: 900 }}>{brand}</h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "#475569", lineHeight: 1.8 }}>
+                {isCn
+                  ? "这一版不再只输出页面，而是把首页、控制台、模块页和运营路径组织成一个可继续扩展的应用工作区。"
+                  : "This version moves beyond page generation and organizes the result as an extensible application workspace with modules and control surfaces."}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {pages.slice(0, 4).map((item) => (
+                <Link key={item.route} href={item.route === "dashboard" ? "/dashboard" : "/" + item.route} style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: item.route === "dashboard" ? accent : "#ffffff", color: item.route === "dashboard" ? "#ffffff" : "#0f172a", border: item.route === "dashboard" ? "none" : "1px solid rgba(148,163,184,0.18)", fontWeight: 800 }}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+          {pages.slice(0, 4).map((page) => (
+            <div key={page.route} style={{ borderRadius: 22, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 18 }}>
+              <div style={{ color: "#64748b", fontSize: 12 }}>{page.label}</div>
+              <div style={{ marginTop: 10, fontWeight: 900, fontSize: 20 }}>{page.metricValue}</div>
+              <div style={{ marginTop: 8, color: "#334155", fontSize: 13 }}>{page.metricLabel}</div>
+              <div style={{ marginTop: 12, color: "#64748b", lineHeight: 1.7, fontSize: 13 }}>{page.summary}</div>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "模块导航" : "Module navigation"}</div>
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              {pages.map((page, index) => (
+                <Link key={page.route} href={page.route === "dashboard" ? "/dashboard" : "/" + page.route} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: index === 0 ? "rgba(37,99,235,0.08)" : "#f8fafc", color: "#0f172a", border: "1px solid rgba(148,163,184,0.14)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{page.headline}</div>
+                    <div style={{ borderRadius: 999, padding: "4px 8px", background: "#ffffff", color: accent, fontSize: 11, fontWeight: 800 }}>{page.label}</div>
+                  </div>
+                  <div style={{ marginTop: 8, color: "#64748b", fontSize: 13, lineHeight: 1.7 }}>{page.subheadline}</div>
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "为什么这更像应用" : "Why this feels like an app"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {(isCn
+                  ? ["不再只靠首页承接全部信息", "每个 archetype 都有自己的一组模块页", "控制台、运营页、文档页和后台配置开始分层"]
+                  : ["The home page no longer carries everything", "Each archetype gets its own module set", "Console, ops, docs, and admin layers now diverge"]).map((item) => (
+                  <div key={item} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "#cbd5e1", fontSize: 13 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "当前重点" : "Current focus"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {pages[0].focusAreas.map((item) => (
+                  <div key={item} style={{ borderRadius: 12, background: "#f8fafc", padding: "10px 12px", color: "#334155", fontSize: 13 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+}
+
+function renderArchetypeConsolePage(spec: AppSpec, route: string) {
+  const pages = getArchetypePageDefinitions(spec)
+  const current = pages.find((page) => page.route === route)
+  if (!current) return null
+  const isCn = spec.region === "cn"
+  const brand = spec.title
+  const archetype = getScaffoldArchetype(spec)
+  const accent =
+    archetype === "crm" ? "#2563eb" : archetype === "api_platform" ? "#06b6d4" : archetype === "marketing_admin" ? "#111827" : "#7c3aed"
+  const panelBackground = archetype === "api_platform" ? "#081120" : "#ffffff"
+  const panelText = archetype === "api_platform" ? "#e2e8f0" : "#0f172a"
+  const mutedText = archetype === "api_platform" ? "#94a3b8" : "#64748b"
+  const surface = archetype === "api_platform" ? "rgba(15,23,42,0.78)" : "#f8fafc"
+  const border = archetype === "api_platform" ? "1px solid rgba(148,163,184,0.12)" : "1px solid rgba(148,163,184,0.16)"
+
+  return `import Link from "next/link";
+
+export default function GeneratedConsolePage() {
+  const isCn = ${isCn ? "true" : "false"};
+  const brand = ${JSON.stringify(brand)};
+  const pages = ${JSON.stringify(pages, null, 2)} as const;
+  const current = ${JSON.stringify(current, null, 2)} as const;
+  const accent = ${JSON.stringify(accent)};
+  const panelBackground = ${JSON.stringify(panelBackground)};
+  const panelText = ${JSON.stringify(panelText)};
+  const mutedText = ${JSON.stringify(mutedText)};
+  const surface = ${JSON.stringify(surface)};
+  const border = ${JSON.stringify(border)};
+
+  return (
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: ${JSON.stringify(archetype === "api_platform" ? "linear-gradient(180deg,#07111f 0%,#0b1220 100%)" : "linear-gradient(180deg,#f6f8fc 0%,#ffffff 52%,#eef4ff 100%)")}, color: panelText }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 26, border, background: panelBackground, padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(15,23,42,0.06)")}, color: accent, fontSize: 12, fontWeight: 800 }}>
+                {brand}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 34, fontWeight: 900 }}>{current.headline}</h1>
+              <p style={{ margin: 0, maxWidth: 860, color: mutedText, lineHeight: 1.8 }}>{current.subheadline}</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {pages.map((item) => (
+                <Link key={item.route} href={item.route === "dashboard" ? "/dashboard" : "/" + item.route} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", background: item.route === current.route ? accent : ${JSON.stringify(archetype === "api_platform" ? "rgba(255,255,255,0.04)" : "#ffffff")}, color: item.route === current.route ? "#ffffff" : panelText, border: item.route === current.route ? "none" : border, fontSize: 13, fontWeight: 700 }}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+          {[
+            { label: current.metricLabel, value: current.metricValue, tone: accent },
+            { label: current.insightLabel, value: current.insightValue, tone: accent },
+            { label: isCn ? "页面角色" : "Page role", value: current.label, tone: panelText },
+            { label: isCn ? "模块数量" : "Linked modules", value: String(current.focusAreas.length), tone: panelText },
+          ].map((item) => (
+            <div key={item.label} style={{ borderRadius: 20, border, background: panelBackground, padding: 18 }}>
+              <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
+              <div style={{ marginTop: 10, fontSize: 28, fontWeight: 900, color: item.tone }}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "当前页说明" : "Current page overview"}</div>
+            <p style={{ marginTop: 12, color: mutedText, lineHeight: 1.8 }}>{current.summary}</p>
+            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+              {current.records.map((item) => (
+                <div key={item.title} style={{ borderRadius: 16, background: surface, border, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ borderRadius: 999, padding: "4px 10px", background: ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")}, color: accent, fontSize: 11, fontWeight: 800 }}>
+                      {item.status}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, color: mutedText, lineHeight: 1.7, fontSize: 13 }}>{item.meta}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "核心模块" : "Core modules"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {current.focusAreas.map((item, index) => (
+                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {(isCn
+                  ? ["补真实数据读写", "让 AI 修改能反写到当前模块", "继续拉开各 archetype 的模块深度"]
+                  : ["Connect real data reads and writes", "Let AI edits write back into this module", "Keep widening archetype-specific depth"]).map((item, index) => (
+                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText, fontSize: 13 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
 }
 
 function renderCodePlatformHome(spec: AppSpec) {
@@ -1543,6 +2382,10 @@ export default function Page() {
 function renderPage(spec: AppSpec) {
   if (spec.kind === "code_platform") {
     return renderCodePlatformHome(spec)
+  }
+  const archetypeHome = renderArchetypeWorkspaceHome(spec)
+  if (archetypeHome) {
+    return archetypeHome
   }
   const premiumTemplateHome = renderPremiumTemplateHome(spec)
   if (premiumTemplateHome) {
@@ -3840,10 +4683,481 @@ export default function AnalyticsPage() {
 `
 }
 
+type CodePlatformRouteSeed = {
+  id: string
+  href: string
+  filePath: string
+  labelCn: string
+  labelEn: string
+  focusCn: string
+  focusEn: string
+  symbols: string[]
+}
+
+type CodePlatformFileSeed = {
+  id: string
+  name: string
+  fullPath: string
+  symbols: string[]
+  body: string
+}
+
+type CodePlatformFileGroupSeed = {
+  id: string
+  name: string
+  files: CodePlatformFileSeed[]
+}
+
+type CodePlatformTemplateSeed = {
+  id: string
+  name: string
+  summary: string
+  focus: string
+  tags: string[]
+  badge: string
+  color: string
+}
+
+type CodePlatformRunSeed = {
+  id: string
+  name: string
+  branch: string
+  status: string
+  detail: string
+  duration: string
+  time: string
+  tone: string
+}
+
+function buildCodePlatformRoutes(spec: AppSpec): CodePlatformRouteSeed[] {
+  const routes: CodePlatformRouteSeed[] = [
+    {
+      id: "home",
+      href: "/",
+      filePath: "app/page.tsx",
+      labelCn: "工作台首页",
+      labelEn: "Workspace home",
+      focusCn: "生成总览、当前项目入口与交付摘要",
+      focusEn: "Generation overview, current app entry, and delivery summary",
+      symbols: ["HomePage", "WorkspaceHero", "DeliverySummary"],
+    },
+    {
+      id: "dashboard",
+      href: "/dashboard",
+      filePath: "app/dashboard/page.tsx",
+      labelCn: "控制台总览",
+      labelEn: "Control plane overview",
+      focusCn: "应用头部、访问控制、交付与集成状态",
+      focusEn: "App header, access controls, delivery, and integration status",
+      symbols: ["DashboardPage", "ControlPlaneHeader", "WorkspaceMetrics"],
+    },
+    {
+      id: "editor",
+      href: "/editor",
+      filePath: "app/editor/page.tsx",
+      labelCn: "编辑器工作区",
+      labelEn: "Editor workspace",
+      focusCn: "文件树、多标签、终端、预览与 AI 助手",
+      focusEn: "Explorer, tabs, terminal, preview, and AI assistant",
+      symbols: ["EditorPage", "WorkbenchShell", "AssistantRail"],
+    },
+    {
+      id: "runs",
+      href: "/runs",
+      filePath: "app/runs/page.tsx",
+      labelCn: "运行链路",
+      labelEn: "Runtime flow",
+      focusCn: "生成、构建、预览、部署与回退",
+      focusEn: "Generate, build, preview, deploy, and fallback",
+      symbols: ["RunsPage", "RunTimeline", "BuildAcceptanceRail"],
+    },
+    {
+      id: "templates",
+      href: "/templates",
+      filePath: "app/templates/page.tsx",
+      labelCn: "模板轨道",
+      labelEn: "Template rails",
+      focusCn: "官网、销售、API、社区等生成方向",
+      focusEn: "Website, sales, API, community, and other generation tracks",
+      symbols: ["TemplatesPage", "TemplateRail", "TrackFilters"],
+    },
+    {
+      id: "pricing",
+      href: "/pricing",
+      filePath: "app/pricing/page.tsx",
+      labelCn: "套餐与升级",
+      labelEn: "Plans and upgrades",
+      focusCn: "免费版、专业版、精英版能力差异",
+      focusEn: "Free, Pro, and Elite capability differences",
+      symbols: ["PricingPage", "PlanGrid", "CapabilityComparison"],
+    },
+    {
+      id: "settings",
+      href: "/settings",
+      filePath: "app/settings/page.tsx",
+      labelCn: "环境设置",
+      labelEn: "Environment settings",
+      focusCn: "部署、数据库、权限、发布通道",
+      focusEn: "Deployment, database, access, and publish lane",
+      symbols: ["SettingsPage", "DeploymentRail", "AccessPolicyPanel"],
+    },
+  ]
+
+  if (spec.features.includes("analytics_page")) {
+    routes.push({
+      id: "analytics",
+      href: "/analytics",
+      filePath: "app/analytics/page.tsx",
+      labelCn: "分析页",
+      labelEn: "Analytics",
+      focusCn: "趋势、运行表现与业务指标",
+      focusEn: "Trends, runtime health, and product metrics",
+      symbols: ["AnalyticsPage", "TrendBoard", "HealthMetrics"],
+    })
+  }
+
+  if (spec.features.includes("about_page")) {
+    routes.push({
+      id: "about",
+      href: "/about",
+      filePath: "app/about/page.tsx",
+      labelCn: "说明页",
+      labelEn: "About",
+      focusCn: "产品说明、启用能力与模块说明",
+      focusEn: "Product notes, enabled features, and module explanation",
+      symbols: ["AboutPage", "FeatureNotes", "ModuleSummary"],
+    })
+  }
+
+  return routes
+}
+
+function buildCodePlatformEditorFileGroups(spec: AppSpec): CodePlatformFileGroupSeed[] {
+  const isCn = spec.region === "cn"
+  const routeFiles = buildCodePlatformRoutes(spec).map((route) => {
+    const componentName = route.filePath === "app/page.tsx"
+      ? "HomePage"
+      : `${route.id.charAt(0).toUpperCase()}${route.id.slice(1)}Page`
+    return {
+      id: route.id,
+      name: route.filePath.replace(/^app\//, ""),
+      fullPath: route.filePath,
+      symbols: route.symbols,
+      body: `export default function ${componentName}() {\n  return {\n    brand: ${JSON.stringify(spec.title)},\n    route: ${JSON.stringify(route.href)},\n    focus: ${JSON.stringify(isCn ? route.focusCn : route.focusEn)},\n    modules: ${JSON.stringify(spec.modules.slice(0, 4), null, 2)},\n  }\n}`,
+    }
+  })
+
+  return [
+    {
+      id: "app",
+      name: "app",
+      files: routeFiles,
+    },
+    {
+      id: "components",
+      name: "components/generated",
+      files: [
+        {
+          id: "workspace-shell",
+          name: "generated/workspace-shell.tsx",
+          fullPath: "components/generated/workspace-shell.tsx",
+          symbols: ["WorkspaceShell", "AppShellHeader", "WorkspaceSidebar"],
+          body: `export function WorkspaceShell() {\n  return {\n    surfaces: ["activity-bar", "file-tree", "editor", "terminal", "assistant"],\n    brand: ${JSON.stringify(spec.title)},\n  }\n}`,
+        },
+        {
+          id: "activity-feed",
+          name: "generated/activity-feed.tsx",
+          fullPath: "components/generated/activity-feed.tsx",
+          symbols: ["ActivityFeed", "ActivityRow", "ActivityPill"],
+          body: `export function ActivityFeed() {\n  return {\n    recent: ${JSON.stringify(spec.modules.slice(0, 3), null, 2)},\n    tone: ${JSON.stringify(isCn ? "中文交付工作流" : "delivery-focused workflow")},\n  }\n}`,
+        },
+        {
+          id: "board-column",
+          name: "generated/board-column.tsx",
+          fullPath: "components/generated/board-column.tsx",
+          symbols: ["BoardColumn", "StatusRail", "CardStack"],
+          body: `export function BoardColumn() {\n  return {\n    statuses: ["todo", "in_progress", "done"],\n    region: ${JSON.stringify(spec.region)},\n  }\n}`,
+        },
+        {
+          id: "insight-tile",
+          name: "generated/insight-tile.tsx",
+          fullPath: "components/generated/insight-tile.tsx",
+          symbols: ["InsightTile", "InsightValue", "InsightMeta"],
+          body: `export function InsightTile() {\n  return {\n    planTier: ${JSON.stringify(spec.planTier)},\n    features: ${JSON.stringify(spec.features.slice(0, 4), null, 2)},\n  }\n}`,
+        },
+      ],
+    },
+    {
+      id: "runtime",
+      name: "runtime",
+      files: [
+        {
+          id: "items-store",
+          name: "lib/items-store.ts",
+          fullPath: "lib/items-store.ts",
+          symbols: ["readItems", "writeItems", "listItems"],
+          body: `export const storageProfile = {\n  region: ${JSON.stringify(spec.region)},\n  database: ${JSON.stringify(spec.databaseTarget)},\n  deployment: ${JSON.stringify(spec.deploymentTarget)},\n}`,
+        },
+        {
+          id: "api-items",
+          name: "api/items/route.ts",
+          fullPath: "app/api/items/route.ts",
+          symbols: ["GET", "POST", "PATCH"],
+          body: `export const runtimeFlow = {\n  methods: ["GET", "POST", "PATCH"],\n  focus: ${JSON.stringify(isCn ? "让工作区中的任务、模块和状态能被真正修改" : "Make tasks, modules, and state mutable inside the workspace")},\n}`,
+        },
+        {
+          id: "spec-json",
+          name: "spec.json",
+          fullPath: "spec.json",
+          symbols: ["title", "kind", "planTier", "modules"],
+          body: JSON.stringify(
+            {
+              title: spec.title,
+              kind: spec.kind,
+              planTier: spec.planTier,
+              modules: spec.modules.slice(0, 6),
+              features: spec.features,
+            },
+            null,
+            2
+          ),
+        },
+        {
+          id: "region-config",
+          name: "region.config.json",
+          fullPath: "region.config.json",
+          symbols: ["region", "deploymentTarget", "databaseTarget"],
+          body: JSON.stringify(
+            {
+              region: spec.region,
+              deploymentTarget: spec.deploymentTarget,
+              databaseTarget: spec.databaseTarget,
+              language: spec.language,
+              timezone: spec.timezone,
+            },
+            null,
+            2
+          ),
+        },
+      ],
+    },
+  ]
+}
+
+function buildCodePlatformTemplateSeeds(spec: AppSpec): CodePlatformTemplateSeed[] {
+  const isCn = spec.region === "cn"
+  const tiers = {
+    free: isCn ? "免费" : "Free",
+    pro: isCn ? "专业版" : "Pro",
+    elite: isCn ? "精英版" : "Elite",
+  } as const
+  return [
+    {
+      id: "website",
+      name: isCn ? "官网与下载站" : "Website + downloads",
+      summary: isCn ? "首页、下载页、文档与定价串成一套对外路径" : "Home, downloads, docs, and pricing tied into one external path",
+      focus: "home",
+      tags: ["website", "downloads", "docs"],
+      badge: tiers.free,
+      color: "#4c1d95",
+    },
+    {
+      id: "sales",
+      name: isCn ? "销售后台" : "Sales admin",
+      summary: isCn ? "客户、商机、合同与交付看板联动" : "Customers, deals, contracts, and delivery boards",
+      focus: "dashboard",
+      tags: ["crm", "delivery", "ops"],
+      badge: tiers.pro,
+      color: "#1e3a5f",
+    },
+    {
+      id: "api",
+      name: isCn ? "API 数据平台" : "API platform",
+      summary: isCn ? "接口、日志、鉴权、环境和监控" : "Endpoints, logs, auth, environments, and monitoring",
+      focus: "runs",
+      tags: ["api", "monitoring", "auth"],
+      badge: tiers.pro,
+      color: "#134e4a",
+    },
+    {
+      id: "community",
+      name: isCn ? "社区反馈中心" : "Community hub",
+      summary: isCn ? "反馈、工单、公告、知识库同屏协同" : "Feedback, tickets, announcements, and knowledge base in one flow",
+      focus: "templates",
+      tags: ["community", "feedback", "support"],
+      badge: tiers.elite,
+      color: "#78350f",
+    },
+  ]
+}
+
+function buildCodePlatformRunSeeds(spec: AppSpec): CodePlatformRunSeed[] {
+  const isCn = spec.region === "cn"
+  return [
+    {
+      id: "run-overview",
+      name: `${spec.title} ${isCn ? "总览链路" : "overview flow"}`,
+      branch: "main",
+      status: isCn ? "通过" : "ready",
+      detail: isCn ? "控制台与交付面板同步" : "Control plane and delivery panels synced",
+      duration: "1m 18s",
+      time: isCn ? "3 分钟前" : "3 min ago",
+      tone: "#10b981",
+    },
+    {
+      id: "run-editor",
+      name: `${spec.title} ${isCn ? "编辑器工作区" : "editor workspace"}`,
+      branch: "workspace/editor",
+      status: isCn ? "构建中" : "running",
+      detail: isCn ? "文件树、AI 助手与终端联动" : "Explorer, AI rail, and terminal syncing",
+      duration: isCn ? "进行中" : "running",
+      time: isCn ? "刚刚" : "just now",
+      tone: "#3b82f6",
+    },
+    {
+      id: "run-preview",
+      name: `${spec.title} ${isCn ? "预览回退链路" : "preview fallback chain"}`,
+      branch: "preview/recovery",
+      status: isCn ? "待验证" : "pending",
+      detail: isCn ? "canonical / runtime / fallback 收口" : "canonical / runtime / fallback convergence",
+      duration: "52s",
+      time: isCn ? "8 分钟前" : "8 min ago",
+      tone: "#f59e0b",
+    },
+    {
+      id: "run-delivery",
+      name: `${spec.title} ${isCn ? "模板与交付" : "templates and delivery"}`,
+      branch: "delivery/templates",
+      status: isCn ? "通过" : "ready",
+      detail: isCn ? "模板轨道、套餐与设置页已对齐" : "Template rails, pricing, and settings aligned",
+      duration: "2m 04s",
+      time: isCn ? "15 分钟前" : "15 min ago",
+      tone: "#22c55e",
+    },
+  ]
+}
+
+function buildCodePlatformDashboardMetrics(spec: AppSpec) {
+  const isCn = spec.region === "cn"
+  const routeCount = buildCodePlatformRoutes(spec).length
+  const moduleCount = spec.modules.length
+  const featureCount = spec.features.length
+  return isCn
+    ? [
+        { label: "当前路由", value: String(routeCount), tone: "#8b5cf6", delta: `+${Math.max(1, routeCount - 4)}` },
+        { label: "模块数量", value: String(moduleCount), tone: "#22c55e", delta: `+${Math.max(1, moduleCount - 6)}` },
+        { label: "AI 能力", value: String(featureCount + 4), tone: "#38bdf8", delta: `+${featureCount}` },
+        { label: "验收状态", value: spec.planTier === "elite" ? "Showcase" : spec.planTier === "pro" ? "Demo+" : "Scaffold", tone: "#f59e0b", delta: spec.deploymentTarget },
+      ]
+    : [
+        { label: "Routes", value: String(routeCount), tone: "#8b5cf6", delta: `+${Math.max(1, routeCount - 4)}` },
+        { label: "Modules", value: String(moduleCount), tone: "#22c55e", delta: `+${Math.max(1, moduleCount - 6)}` },
+        { label: "AI surfaces", value: String(featureCount + 4), tone: "#38bdf8", delta: `+${featureCount}` },
+        { label: "Acceptance", value: spec.planTier === "elite" ? "Showcase" : spec.planTier === "pro" ? "Demo+" : "Scaffold", tone: "#f59e0b", delta: spec.deploymentTarget },
+      ]
+}
+
+function buildCodePlatformActivitySeeds(spec: AppSpec) {
+  const isCn = spec.region === "cn"
+  return [
+    {
+      title: isCn ? "AI 已同步当前文件树与模板轨道" : "AI synced the current file tree and template rails",
+      meta: isCn
+        ? `当前核心模块：${spec.modules.slice(0, 3).join(" / ")}`
+        : `Current core modules: ${spec.modules.slice(0, 3).join(" / ")}`,
+      status: isCn ? "已联动" : "linked",
+    },
+    {
+      title: isCn ? "预览链路已围绕当前项目收口" : "Preview routing has converged around the current project",
+      meta: isCn
+        ? `${spec.deploymentTarget} · ${spec.databaseTarget} · fallback ready`
+        : `${spec.deploymentTarget} · ${spec.databaseTarget} · fallback ready`,
+      status: isCn ? "稳定" : "stable",
+    },
+    {
+      title: isCn ? "套餐与模板深度已映射到当前样板" : "Plan depth and template rails are mapped into the current sample",
+      meta: isCn
+        ? `plan=${spec.planTier} · features=${spec.features.join(" / ")}`
+        : `plan=${spec.planTier} · features=${spec.features.join(" / ")}`,
+      status: isCn ? "可演示" : "demo-ready",
+    },
+  ]
+}
+
+function buildCodePlatformManagementCards(spec: AppSpec) {
+  const isCn = spec.region === "cn"
+  return [
+    {
+      title: isCn ? "访问与可见性" : "Access and visibility",
+      value: isCn
+        ? `team visible · ${spec.planTier} tier · ${spec.region === "cn" ? "国内路径" : "国际路径"}`
+        : `team visible · ${spec.planTier} tier · ${spec.region === "cn" ? "china path" : "global path"}`,
+    },
+    {
+      title: isCn ? "域名与发布" : "Domains and release",
+      value: isCn
+        ? `${spec.deploymentTarget} · canonical preview · runtime enhancement`
+        : `${spec.deploymentTarget} · canonical preview · runtime enhancement`,
+    },
+    {
+      title: isCn ? "数据与集成" : "Data and integrations",
+      value: isCn
+        ? `${spec.databaseTarget} · auth / docs / delivery rails`
+        : `${spec.databaseTarget} · auth / docs / delivery rails`,
+    },
+    {
+      title: isCn ? "自动化与守卫" : "Automation and guards",
+      value: isCn
+        ? `${spec.features.length} feature flags · build acceptance rail`
+        : `${spec.features.length} feature flags · build acceptance rail`,
+    },
+  ]
+}
+
+function buildCodePlatformAcceptanceTracks(spec: AppSpec) {
+  const templateSeeds = buildCodePlatformTemplateSeeds(spec)
+  return [
+    spec.region === "cn" ? "当前代码平台" : "Current code platform",
+    ...templateSeeds.map((item) => item.name),
+  ]
+}
+
+function buildCodePlatformFeaturedBundles(spec: AppSpec) {
+  const isCn = spec.region === "cn"
+  return [
+    {
+      title: isCn ? "工作区主壳" : "Workspace shell",
+      note: isCn
+        ? `Explorer / Editor / Runs / Assistant 围绕 ${spec.title} 收口`
+        : `Explorer / Editor / Runs / Assistant converge around ${spec.title}`,
+      color: "#8b5cf6",
+    },
+    {
+      title: isCn ? "验收与回退" : "Acceptance and fallback",
+      note: isCn
+        ? `${spec.deploymentTarget} + ${spec.databaseTarget} + current-project fallback`
+        : `${spec.deploymentTarget} + ${spec.databaseTarget} + current-project fallback`,
+      color: "#22c55e",
+    },
+    {
+      title: isCn ? "模板与升级" : "Templates and upgrades",
+      note: isCn
+        ? `${spec.planTier} tier drives template breadth and delivery depth`
+        : `${spec.planTier} tier drives template breadth and delivery depth`,
+      color: "#38bdf8",
+    },
+  ]
+}
+
 function renderDashboardPage(spec: AppSpec) {
   if (spec.kind === "code_platform") {
     const isCn = spec.region === "cn"
     const brand = spec.title
+    const routeSeeds = buildCodePlatformRoutes(spec)
+    const generatedRouteSummary = routeSeeds.map((item) => item.href === "/" ? "home" : item.href.replace(/^\//, "")).join(" / ")
+    const metrics = buildCodePlatformDashboardMetrics(spec)
+    const activity = buildCodePlatformActivitySeeds(spec)
+    const managementCards = buildCodePlatformManagementCards(spec)
     const sidebar = isCn
       ? ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
       : ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
@@ -3856,23 +5170,7 @@ export default function DashboardPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
   const items = ${JSON.stringify(sidebar, null, 2)} as const;
-  const metrics = ${JSON.stringify(
-    isCn
-      ? [
-          { label: "活跃工作区", value: "12", tone: "#8b5cf6", delta: "+3" },
-          { label: "今日运行", value: "47", tone: "#22c55e", delta: "+12%" },
-          { label: "AI 动作", value: "1,284", tone: "#38bdf8", delta: "+218" },
-          { label: "演示通过率", value: "96%", tone: "#f59e0b", delta: "+4%" },
-        ]
-      : [
-          { label: "Active workspaces", value: "12", tone: "#8b5cf6", delta: "+3" },
-          { label: "Runs today", value: "47", tone: "#22c55e", delta: "+12%" },
-          { label: "AI actions", value: "1,284", tone: "#38bdf8", delta: "+218" },
-          { label: "Demo pass rate", value: "96%", tone: "#f59e0b", delta: "+4%" },
-        ],
-    null,
-    2
-  )} as const;
+  const metrics = ${JSON.stringify(metrics, null, 2)} as const;
   const controlCards = ${JSON.stringify(
     isCn
       ? [
@@ -3895,54 +5193,24 @@ export default function DashboardPage() {
       ? [
           { label: "产品类型", value: "AI 代码编辑平台" },
           { label: "目标市场", value: "中国团队 / 中文工作流 / 项目交付" },
-          { label: "已生成页面", value: "dashboard / editor / runs / templates / pricing" },
+          { label: "已生成页面", value: generatedRouteSummary },
           { label: "AI 工具", value: "explain / fix / generate / refactor" },
-          { label: "当前路径", value: (isCn ? "国内" : "海外") + " · " + (isCn ? "CloudBase" : "Vercel") + " · " + (isCn ? "云文档" : "Supabase") },
-          { label: "最近修改", value: "强化编辑器工作区与运行链路展示" },
+          { label: "当前路径", value: (spec.region === "cn" ? "国内" : "国际") + " · " + spec.deploymentTarget + " · " + spec.databaseTarget },
+          { label: "最近修改", value: spec.modules.slice(0, 3).join(" / ") },
         ]
       : [
           { label: "Product type", value: "AI coding platform" },
           { label: "Target market", value: "China-ready teams / localized workflow / delivery" },
-          { label: "Generated pages", value: "dashboard / editor / runs / templates / pricing" },
+          { label: "Generated pages", value: generatedRouteSummary },
           { label: "AI tools", value: "explain / fix / generate / refactor" },
-          { label: "Current path", value: (isCn ? "CN" : "Global") + " · " + (isCn ? "CloudBase" : "Vercel") + " · " + (isCn ? "Cloud docs" : "Supabase") },
-          { label: "Latest change", value: "Strengthened editor workspace and runtime presentation" },
+          { label: "Current path", value: (spec.region === "cn" ? "China" : "Global") + " · " + spec.deploymentTarget + " · " + spec.databaseTarget },
+          { label: "Latest change", value: spec.modules.slice(0, 3).join(" / ") },
         ],
     null,
     2
   )} as const;
-  const activity = ${JSON.stringify(
-    isCn
-      ? [
-          { title: "AI 完成 editor 工作台增强", meta: "Explain / Fix / Generate / Refactor 轨道已联动", status: "已落地" },
-          { title: "Preview 与运行态联动刷新", meta: "runtime -> preview -> dashboard 摘要已同步", status: "稳定" },
-          { title: "模板库已补齐验收轨道", meta: "官网、销售、API、社区四类模板已可切换", status: "可演示" },
-        ]
-      : [
-          { title: "AI finished the editor workspace pass", meta: "Explain / Fix / Generate / Refactor now drive the workspace", status: "shipped" },
-          { title: "Preview now syncs with runtime state", meta: "runtime -> preview -> dashboard summary stays in sync", status: "stable" },
-          { title: "Template acceptance rails were expanded", meta: "Website, sales, API, and community tracks are switchable", status: "demo-ready" },
-        ],
-    null,
-    2
-  )} as const;
-  const managementCards = ${JSON.stringify(
-    isCn
-      ? [
-          { title: "权限与可见性", value: "团队可见 · 邀请 12 人 · Link sharing 开启" },
-          { title: "域名与发布", value: "preview.mornstack.local · staging 可切 production" },
-          { title: "集成与 API", value: "GitHub / 支付 / CloudBase / Supabase / Webhook" },
-          { title: "Agent 自动化", value: "3 个 agents 正在监控 editor、preview、deploy" },
-        ]
-      : [
-          { title: "Access and visibility", value: "Team visible · 12 invites · link sharing on" },
-          { title: "Domains and release", value: "preview.mornstack.local · staging can promote to prod" },
-          { title: "Integrations and API", value: "GitHub / payments / CloudBase / Supabase / webhooks" },
-          { title: "Agent automation", value: "3 agents are watching editor, preview, and deploy" },
-        ],
-    null,
-    2
-  )} as const;
+  const activity = ${JSON.stringify(activity, null, 2)} as const;
+  const managementCards = ${JSON.stringify(managementCards, null, 2)} as const;
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
@@ -4131,6 +5399,10 @@ export default function DashboardPage() {
 }
 `
   }
+  const archetypeDashboard = renderArchetypeConsolePage(spec, "dashboard")
+  if (archetypeDashboard) {
+    return archetypeDashboard
+  }
   const skin = getTemplateSkin(spec)
   const dashboardBadge = spec.templateId ?? spec.kind
   const isCodePlatform = false
@@ -4258,156 +5530,30 @@ export default function DashboardPage() {
 function renderCodeEditorPage(spec: AppSpec) {
   const isCn = spec.region === "cn"
   const brand = spec.title
-  return `"use client";
-// @ts-nocheck
+  const fileGroups = buildCodePlatformEditorFileGroups(spec)
+  const templateTracks = buildCodePlatformTemplateSeeds(spec)
+  const routeSeeds = buildCodePlatformRoutes(spec)
+  return `// @ts-nocheck
+"use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 export default function EditorPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
-  const fileGroups = [
-    {
-      id: "app",
-      name: "app",
-      files: [
-        {
-          id: "dashboard",
-          name: "dashboard/page.tsx",
-          fullPath: "app/dashboard/page.tsx",
-          symbols: ["DashboardHero", "DeliveryRail", "ProjectGrid"],
-          body: ${JSON.stringify(`export default function DashboardPage() {
-  return (
-    <main>
-      <DashboardHero />
-      <DeliveryRail />
-      <ProjectGrid />
-    </main>
-  );
-}`)},
-        },
-        {
-          id: "editor",
-          name: "editor/page.tsx",
-          fullPath: "app/editor/page.tsx",
-          symbols: ["EditorWorkbench", "TerminalDock", "PreviewSurface"],
-          body: ${JSON.stringify(`export default function EditorPage() {
-  return (
-    <EditorWorkbench
-      explorer
-      commandPalette
-      editorTabs
-      terminalDock
-      previewSurface
-      aiPanel
-    />
-  );
-}`)},
-        },
-        {
-          id: "runs",
-          name: "runs/page.tsx",
-          fullPath: "app/runs/page.tsx",
-          symbols: ["RunsBoard", "PipelineCards", "RunLogPanel"],
-          body: ${JSON.stringify(`export default function RunsPage() {
-  return (
-    <RunsBoard
-      pipelines={["generate", "build", "preview", "deploy"]}
-      runLogs
-      diagnostics
-    />
-  );
-}`)},
-        },
-        {
-          id: "templates",
-          name: "templates/page.tsx",
-          fullPath: "app/templates/page.tsx",
-          symbols: ["TemplateRail", "AcceptanceTracks", "CategoryFilters"],
-          body: ${JSON.stringify(`export default function TemplatesPage() {
-  return (
-    <TemplateRail
-      categories={["website", "sales", "api", "community"]}
-      acceptanceTracks
-      filters
-    />
-  );
-}`)},
-        },
-        {
-          id: "settings",
-          name: "settings/page.tsx",
-          fullPath: "app/settings/page.tsx",
-          symbols: ["SettingsPage", "DeploymentTarget", "DatabaseTarget"],
-          body: ${JSON.stringify(`export default function SettingsPage() {
-  return (
-    <SettingsPage
-      deploymentTargets={["cloudbase", "vercel", "docker"]}
-      databaseTargets={["cloudbase-doc", "supabase-postgres", "mysql"]}
-      accessPolicy
-      publishLane
-    />
-  );
-}`)},
-        },
-      ],
-    },
-    {
-      id: "components",
-      name: "components",
-      files: [
-        {
-          id: "assistant",
-          name: "ai/assistant-panel.tsx",
-          fullPath: "components/ai/assistant-panel.tsx",
-          symbols: ["AssistantPanel", "ModeTabs", "ActionQueue"],
-          body: ${JSON.stringify(`export function AssistantPanel() {
-  return (
-    <aside>
-      <ModeTabs />
-      <PromptComposer />
-      <ActionQueue />
-    </aside>
-  );
-}`)},
-        },
-        {
-          id: "workbench",
-          name: "editor/workbench.tsx",
-          fullPath: "components/editor/workbench.tsx",
-          symbols: ["WorkbenchShell", "ExplorerPane", "CommandResults"],
-          body: ${JSON.stringify(`export function WorkbenchShell() {
-  return (
-    <section>
-      <ExplorerPane />
-      <EditorTabs />
-      <CommandResults />
-    </section>
-  );
-}`)},
-        },
-      ],
-    },
-    {
-      id: "lib",
-      name: "lib",
-      files: [
-        {
-          id: "agents",
-          name: "agents/runtime.ts",
-          fullPath: "lib/agents/runtime.ts",
-          symbols: ["queueAgentTask", "syncRuntimeState", "writeRunLog"],
-          body: ${JSON.stringify(`export async function queueAgentTask(mode: string) {
-  return {
-    mode,
-    state: "queued",
-    target: "editor-runtime",
+  type WorkbenchFile = {
+    id: string;
+    name: string;
+    fullPath: string;
+    symbols: readonly string[];
+    body: string;
   };
-}`)},
-        },
-      ],
-    },
-  ] as const;
+  type WorkbenchGroup = {
+    id: string;
+    name: string;
+    files: WorkbenchFile[];
+  };
+  const fileGroups: WorkbenchGroup[] = ${JSON.stringify(fileGroups, null, 2)} as WorkbenchGroup[];
 
   const aiModes = [
     isCn ? "解释" : "Explain",
@@ -4433,29 +5579,25 @@ export default function EditorPage() {
         { icon: "⚙", label: "Workspace settings" },
       ];
 
-  const templates = isCn
-    ? [
-        { id: "website", name: "官网与下载站", summary: "首页 / 下载页 / 文档 / 定价", focus: "dashboard" },
-        { id: "sales", name: "销售后台", summary: "客户 / 商机 / 合同 / 交付", focus: "dashboard" },
-        { id: "api", name: "API 数据平台", summary: "接口 / 趋势 / 监控 / 告警", focus: "runs" },
-        { id: "community", name: "社区反馈中心", summary: "工单 / 反馈 / 公告 / 知识库", focus: "templates" },
-      ]
-    : [
-        { id: "website", name: "Website + downloads", summary: "home / downloads / docs / pricing", focus: "dashboard" },
-        { id: "sales", name: "Sales admin", summary: "customers / deals / contracts / delivery", focus: "dashboard" },
-        { id: "api", name: "API platform", summary: "routes / trends / monitors / alerts", focus: "runs" },
-        { id: "community", name: "Community hub", summary: "tickets / feedback / announcements / kb", focus: "templates" },
-      ];
+  const templates = ${JSON.stringify(templateTracks, null, 2)} as Array<{
+    id: string;
+    name: string;
+    summary: string;
+    focus: string;
+    tags: string[];
+    badge: string;
+    color: string;
+  }>;
   const workspaceRail = isCn
     ? [
         { title: "活动栏", value: "Explorer / Search / Git / Run / AI / Settings" },
-        { title: "文件结构", value: "app / components / lib 三层文件树" },
-        { title: "运行状态", value: "dev server / preview / terminal output 同步" },
+        { title: "文件结构", value: fileGroups.map((group) => group.name).join(" / ") },
+        { title: "运行状态", value: "dev server / preview / terminal output / build acceptance" },
       ]
     : [
         { title: "Activity bar", value: "Explorer / Search / Git / Run / AI / Settings" },
-        { title: "File structure", value: "app / components / lib with clear hierarchy" },
-        { title: "Runtime state", value: "dev server / preview / terminal output stay in sync" },
+        { title: "File structure", value: fileGroups.map((group) => group.name).join(" / ") },
+        { title: "Runtime state", value: "dev server / preview / terminal output / build acceptance" },
       ];
   const assistantActions = isCn
     ? [
@@ -4489,27 +5631,39 @@ export default function EditorPage() {
         { id: "open-editor", label: "> 打开 editor/page.tsx", desc: "切到主工作区入口", type: "file", target: "editor" },
         { id: "open-runs", label: "> 打开 runs/page.tsx", desc: "查看构建、预览和部署日志", type: "file", target: "runs" },
         { id: "open-settings", label: "> 打开 settings/page.tsx", desc: "切换部署、数据库与权限策略", type: "file", target: "settings" },
-        { id: "search-symbols", label: "> 搜索符号 WorkbenchShell", desc: "定位编辑器主壳组件", type: "symbol", target: "workbench" },
+        { id: "search-symbols", label: "> 搜索符号 WorkspaceShell", desc: "定位编辑器主壳组件", type: "symbol", target: "workspace-shell" },
         { id: "run-preview", label: "> 启动预览链路", desc: "触发生成后的预览和热更新", type: "run", target: "preview" },
       ]
     : [
         { id: "open-editor", label: "> Open editor/page.tsx", desc: "Jump to the main workbench entry", type: "file", target: "editor" },
         { id: "open-runs", label: "> Open runs/page.tsx", desc: "Inspect build, preview, and deploy logs", type: "file", target: "runs" },
         { id: "open-settings", label: "> Open settings/page.tsx", desc: "Switch deployment, database, and access policies", type: "file", target: "settings" },
-        { id: "search-symbols", label: "> Search symbol WorkbenchShell", desc: "Locate the main editor-shell component", type: "symbol", target: "workbench" },
+        { id: "search-symbols", label: "> Search symbol WorkspaceShell", desc: "Locate the main editor-shell component", type: "symbol", target: "workspace-shell" },
         { id: "run-preview", label: "> Start preview flow", desc: "Trigger generated preview and hot reload", type: "run", target: "preview" },
       ];
 
+  const routeManifest = ${JSON.stringify(routeSeeds.map((route) => ({
+    id: route.id,
+    href: route.href,
+    label: isCn ? route.labelCn : route.labelEn,
+    focus: isCn ? route.focusCn : route.focusEn,
+  })), null, 2)} as Array<{ id: string; href: string; label: string; focus: string }>;
   const allFiles = fileGroups.flatMap((group) => group.files);
-  const [selectedFile, setSelectedFile] = useState(allFiles[1].id);
-  const [openTabs, setOpenTabs] = useState([allFiles[1].id, allFiles[0].id, allFiles[2].id]);
+  const [selectedFile, setSelectedFile] = useState(allFiles[0].id);
+  const [openTabs, setOpenTabs] = useState(allFiles.slice(0, 3).map((file) => file.id));
   const [activeMode, setActiveMode] = useState<typeof aiModes[number]>(aiModes[2]);
+  const [activeRail, setActiveRail] = useState(activityBarItems[0].label);
   const [commandQuery, setCommandQuery] = useState("");
   const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal");
   const [runtimeState, setRuntimeState] = useState<"idle" | "running" | "failed" | "ready">("ready");
   const [activeTemplate, setActiveTemplate] = useState(templates[0]);
   const [aiInput, setAiInput] = useState(isCn ? "继续把文件树、编辑器、终端和预览做成真正可用的 IDE。" : "Keep turning the file tree, editor, terminal, and preview into a truly usable IDE.");
   const [saveNote, setSaveNote] = useState(isCn ? "未保存变更" : "Unsaved changes");
+  const [assistantTrail, setAssistantTrail] = useState(assistantHistory);
+  const [previewRailNotes, setPreviewRailNotes] = useState(() => routeManifest.map((item) => item.label + ": " + item.focus));
+  const [expandedGroups, setExpandedGroups] = useState(() =>
+    Object.fromEntries(fileGroups.map((group) => [group.id, true]))
+  );
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
@@ -4521,6 +5675,11 @@ export default function EditorPage() {
   );
 
   const currentFile = allFiles.find((file) => file.id === selectedFile) ?? allFiles[0];
+  const currentDraft = drafts[currentFile.id] ?? "";
+  const currentSnippet = currentDraft.split("\\n").slice(0, 8).join("\\n");
+  const dirtyFileIds = allFiles
+    .filter((file) => drafts[file.id] !== file.body.replace(/morncursor/g, ${JSON.stringify(brand)}))
+    .map((file) => file.id);
 
   const visibleGroups = fileGroups
     .map((group) => ({
@@ -4560,6 +5719,15 @@ export default function EditorPage() {
   }, [selectedFile, isCn]);
 
   useEffect(() => {
+    setPreviewRailNotes((current) => [
+      (isCn ? "当前文件: " : "Current file: ") + currentFile.fullPath,
+      (isCn ? "当前 AI 模式: " : "Current AI mode: ") + activeMode,
+      (isCn ? "当前模板轨道: " : "Current template rail: ") + activeTemplate.name,
+      ...current.filter((item, index) => index < 2),
+    ].slice(0, 4));
+  }, [activeMode, activeTemplate.name, currentFile.fullPath, isCn]);
+
+  useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
@@ -4569,8 +5737,13 @@ export default function EditorPage() {
   }, []);
 
   const openFile = (id) => {
+    setActiveRail(activityBarItems[0].label);
     setSelectedFile(id);
     setOpenTabs((current) => (current.includes(id) ? current : [...current, id].slice(-6)));
+  };
+
+  const toggleGroup = (groupId) => {
+    setExpandedGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
   };
 
   const closeFile = (id) => {
@@ -4589,6 +5762,7 @@ export default function EditorPage() {
       if (command.type === "symbol") setActiveMode(aiModes[0]);
       return;
     }
+    setActiveRail(activityBarItems[3].label);
     setRuntimeState("running");
     setTerminalTab("terminal");
   };
@@ -4607,11 +5781,66 @@ export default function EditorPage() {
     openFile(template.focus);
     setRuntimeState("running");
     setActiveMode(aiModes[2]);
+    setDrafts((current) => ({
+      ...current,
+      [template.focus]:
+        current[template.focus] +
+        "\\n\\n" +
+        (isCn
+          ? "// Template sync: 已按「" + template.name + "」方向补齐当前模块骨架"
+          : "// Template sync: current module expanded toward the " + template.name + " direction"),
+    }));
     setAiInput(
       isCn
         ? "把当前工作区继续朝「" + template.name + "」方向补齐，并保持编辑器主壳不散。"
         : "Push the current workspace toward the " + template.name + " direction without breaking the main editor shell."
     );
+    setAssistantTrail((current) => [
+      (isCn ? "AI：已切换模板轨道到 " : "AI: switched template rail to ") + template.name,
+      ...current,
+    ].slice(0, 6));
+  };
+
+  const applyAiAction = (mode) => {
+    const tag =
+      mode === aiModes[0]
+        ? isCn
+          ? "// Explain: 当前文件职责、边界与后续拆分建议"
+          : "// Explain: responsibilities, boundaries, and next split suggestions"
+        : mode === aiModes[1]
+          ? isCn
+            ? "// Fix: 已补运行守卫、错误提示与恢复路径"
+            : "// Fix: runtime guards, error handling, and recovery path added"
+          : mode === aiModes[2]
+            ? isCn
+              ? "// Generate: 已补模块骨架、交互钩子与状态轨道"
+              : "// Generate: module scaffold, interaction hooks, and state rails added"
+            : isCn
+              ? "// Refactor: 已整理 explorer、editor、assistant 的边界"
+              : "// Refactor: explorer, editor, and assistant boundaries reorganized";
+
+    setActiveMode(mode);
+    setActiveRail(activityBarItems[4].label);
+    setRuntimeState(mode === aiModes[1] ? "running" : "ready");
+    setTerminalTab(mode === aiModes[1] ? "problems" : "output");
+    setDrafts((current) => ({
+      ...current,
+      [currentFile.id]: current[currentFile.id].includes(tag)
+        ? current[currentFile.id]
+        : current[currentFile.id] + "\\n\\n" + tag,
+    }));
+    setSaveNote(isCn ? "AI 已写入当前文件草稿" : "AI wrote changes into the current draft");
+    setPreviewRailNotes([
+      (isCn ? "页面更新: " : "Updated view: ") + currentFile.name,
+      (isCn ? "当前动作: " : "Current action: ") + mode,
+      isCn ? "Preview 摘要已根据当前文件刷新" : "Preview summary refreshed for the current file",
+      (isCn ? "模板轨道: " : "Template rail: ") + activeTemplate.name,
+    ]);
+    setAssistantTrail((current) => [
+      (isCn ? "AI：" : "AI: ") + mode + (isCn ? " 已作用到 " : " applied to ") + currentFile.fullPath,
+      (isCn ? "用户：" : "User: ") + aiInput,
+      ...current,
+    ].slice(0, 6));
   };
 
   const terminalLogs = {
@@ -4678,20 +5907,6 @@ export default function EditorPage() {
       ? "把 explorer、editor、preview、terminal、assistant 拆成稳定子模块，生成结果会更接近真实产品。"
       : "Split explorer, editor, preview, terminal, and assistant into stable modules to move closer to a real product.",
   };
-
-  const previewNotes = isCn
-    ? [
-        "Dashboard: 交付总览、项目轨道、验收模板、权限与集成",
-        "Editor: 文件树、多标签、终端、AI 联动、选区动作",
-        "Runs: 生成、构建、预览、部署链路与历史记录",
-        "Settings: 部署、数据库、权限与发布通道",
-      ]
-    : [
-        "Dashboard: delivery overview, project rails, acceptance templates, access, and integrations",
-        "Editor: file tree, tabs, terminal, AI linkage, and selection-aware actions",
-        "Runs: generation, build, preview, deploy flow with history",
-        "Settings: deployment, database, access, and publish lane",
-      ];
 
   const topMetricCards = ${JSON.stringify(
     isCn
@@ -4778,14 +5993,25 @@ export default function EditorPage() {
           <div style={{ display: "grid", gridTemplateColumns: "56px 320px minmax(0,1fr) 360px", minHeight: "calc(100vh - 150px)" }}>
             <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
               {activityBarItems.map((item, index) => (
-                <div key={item.label} title={item.label} style={{ width: 38, height: 38, borderRadius: 12, background: index === 0 ? "rgba(124,58,237,0.22)" : "transparent", color: index === 0 ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 16 }}>
+                <button
+                  key={item.label}
+                  type="button"
+                  title={item.label}
+                  onClick={() => setActiveRail(item.label)}
+                  style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: activeRail === item.label ? "rgba(124,58,237,0.22)" : "transparent", color: activeRail === item.label ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 16, cursor: "pointer" }}
+                >
                   {item.icon}
-                </div>
+                </button>
               ))}
             </div>
 
             <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 16, display: "grid", alignContent: "start", gap: 14 }}>
-              <div style={{ fontSize: 14, fontWeight: 800 }}>{isCn ? "资源管理器" : "Explorer"}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{isCn ? "资源管理器" : "Explorer"}</div>
+                <div style={{ borderRadius: 999, padding: "4px 8px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>
+                  {activeRail}
+                </div>
+              </div>
               <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} placeholder={isCn ? "搜索命令、文件、符号..." : "Search commands, files, symbols..."} style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#11131a", color: "#f8fafc", padding: "10px 12px", outline: "none" }} />
               <div style={{ display: "grid", gap: 8 }}>
                 {workspaceRail.map((item) => (
@@ -4812,14 +6038,20 @@ export default function EditorPage() {
               <div style={{ display: "grid", gap: 12 }}>
                 {visibleGroups.map((group) => (
                   <div key={group.id} style={{ display: "grid", gap: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                      <div style={{ color: "rgba(255,255,255,0.54)", fontSize: 13, fontWeight: 700 }}>{group.name}</div>
+                    <button type="button" onClick={() => toggleGroup(group.id)} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", border: "none", background: "transparent", padding: 0, cursor: "pointer" }}>
+                      <div style={{ color: "rgba(255,255,255,0.54)", fontSize: 13, fontWeight: 700 }}>
+                        {expandedGroups[group.id] ? "▾ " : "▸ "}
+                        {group.name}
+                      </div>
                       <div style={{ color: "rgba(255,255,255,0.36)", fontSize: 11 }}>{group.files.length}</div>
-                    </div>
-                    {group.files.map((file) => (
+                    </button>
+                    {expandedGroups[group.id] && group.files.map((file) => (
                       <button key={file.id} onClick={() => openFile(file.id)} style={{ borderRadius: 12, padding: "10px 12px", background: selectedFile === file.id ? "rgba(124,58,237,0.18)" : "transparent", color: selectedFile === file.id ? "#e9d5ff" : "rgba(255,255,255,0.72)", border: "1px solid rgba(255,255,255,0.05)", textAlign: "left", cursor: "pointer" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13 }}>{file.name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>
+                            {file.name}
+                            {dirtyFileIds.includes(file.id) ? " •" : ""}
+                          </div>
                           <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 11 }}>{file.fullPath.split("/")[0]}</div>
                         </div>
                         <div style={{ marginTop: 4, fontSize: 12, color: selectedFile === file.id ? "rgba(233,213,255,0.78)" : "rgba(255,255,255,0.42)" }}>{file.symbols.join(" · ")}</div>
@@ -4835,7 +6067,7 @@ export default function EditorPage() {
                 {activeTabs.map((tab) => (
                   <div key={tab.id} style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "14px 16px", borderRight: "1px solid rgba(255,255,255,0.06)", color: selectedFile === tab.id ? "#f8fafc" : "rgba(255,255,255,0.46)", background: selectedFile === tab.id ? "#1a1b25" : "transparent", fontSize: 14 }}>
                     <button type="button" onClick={() => openFile(tab.id)} style={{ border: "none", background: "transparent", color: "inherit", cursor: "pointer" }}>
-                      {tab.name.split("/").slice(-1)[0]}
+                      {tab.name.split("/").slice(-1)[0]}{dirtyFileIds.includes(tab.id) ? " •" : ""}
                     </button>
                     <button type="button" onClick={() => closeFile(tab.id)} style={{ border: "none", background: "transparent", color: "inherit", cursor: "pointer", opacity: 0.6 }}>
                       ×
@@ -4852,6 +6084,9 @@ export default function EditorPage() {
                       <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.62)" }}>{currentFile.symbols.join(" · ")}</div>
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ borderRadius: 999, padding: "4px 8px", background: dirtyFileIds.includes(currentFile.id) ? "rgba(245,158,11,0.18)" : "rgba(34,197,94,0.16)", color: dirtyFileIds.includes(currentFile.id) ? "#fcd34d" : "#86efac", fontSize: 11, fontWeight: 800 }}>
+                        {dirtyFileIds.includes(currentFile.id) ? (isCn ? "未提交" : "Dirty") : (isCn ? "已同步" : "Synced")}
+                      </div>
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.46)" }}>{saveNote}</div>
                       <button onClick={saveCurrentFile} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
                         {isCn ? "保存草稿" : "Save draft"}
@@ -4869,12 +6104,12 @@ export default function EditorPage() {
                   <div style={{ overflow: "auto" }}>
                     <div style={{ display: "grid", gridTemplateColumns: "70px minmax(0,1fr)" }}>
                       <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.28)", paddingTop: 18, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 2 }}>
-                        {Array.from({ length: drafts[currentFile.id].split("\\n").length }, (_, i) => (
+                        {Array.from({ length: currentDraft.split("\\n").length }, (_, i) => (
                           <div key={i} style={{ padding: "0 18px", textAlign: "right" }}>{i + 1}</div>
                         ))}
                       </div>
                       <textarea
-                        value={drafts[currentFile.id]}
+                        value={currentDraft}
                         onChange={(event) => {
                           const next = event.target.value;
                           setDrafts((current) => ({ ...current, [currentFile.id]: next }));
@@ -4889,11 +6124,17 @@ export default function EditorPage() {
 
                 <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前预览摘要" : "Current preview summary"}</div>
-                  {previewNotes.map((item) => (
+                  {previewRailNotes.map((item) => (
                     <div key={item} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: "12px 14px", color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 1.7 }}>
                       {item}
                     </div>
                   ))}
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前代码片段" : "Current code snippet"}</div>
+                    <pre style={{ margin: "10px 0 0", whiteSpace: "pre-wrap", color: "#cbd5e1", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.7 }}>
+                      {currentSnippet}
+                    </pre>
+                  </div>
                   <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
                     <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区环境配置" : "Workspace environment"}</div>
                     <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
@@ -4918,7 +6159,7 @@ export default function EditorPage() {
                     <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前文件动作" : "Current file actions"}</div>
                     <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                       {assistantActions.map((item) => (
-                        <button key={item.mode} onClick={() => setActiveMode(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", border: "none", textAlign: "left", cursor: "pointer", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.72)" }}>
+                        <button key={item.mode} onClick={() => applyAiAction(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", border: "none", textAlign: "left", cursor: "pointer", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.72)" }}>
                           <div style={{ fontWeight: 800, fontSize: 12 }}>{item.title}</div>
                           <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6 }}>{item.note}</div>
                         </button>
@@ -4968,7 +6209,7 @@ export default function EditorPage() {
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "代码动作" : "Code actions"}</div>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                   {assistantActions.map((item) => (
-                    <button key={item.title} onClick={() => setActiveMode(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
+                    <button key={item.title} onClick={() => applyAiAction(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
                       <div style={{ fontWeight: 800 }}>{item.title}</div>
                       <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.note}</div>
                     </button>
@@ -4981,10 +6222,13 @@ export default function EditorPage() {
                 <div style={{ color: "rgba(255,255,255,0.74)", fontSize: 13, lineHeight: 1.8 }}>{aiMessages[activeMode]}</div>
                 <textarea value={aiInput} onChange={(event) => setAiInput(event.target.value)} spellCheck={false} style={{ width: "100%", minHeight: 110, marginTop: 14, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#0d1119", color: "#f8fafc", padding: 12, resize: "vertical", outline: "none" }} />
                 <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => setRuntimeState("running")} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
+                  <button onClick={() => applyAiAction(activeMode)} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
                     {isCn ? "提交给 AI" : "Send to AI"}
                   </button>
-                  <button onClick={() => openFile("assistant")} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#f8fafc", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
+                  <button onClick={() => {
+                    openFile("assistant");
+                    applyAiAction(aiModes[2]);
+                  }} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#f8fafc", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
                     {isCn ? "插入到代码" : "Insert into code"}
                   </button>
                 </div>
@@ -4993,7 +6237,7 @@ export default function EditorPage() {
               <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "创作记录" : "Creation history"}</div>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {assistantHistory.map((item, index) => (
+                  {assistantTrail.map((item, index) => (
                     <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
                       {item}
                     </div>
@@ -5025,23 +6269,11 @@ export default function EditorPage() {
 function renderCodeRunsPage(spec: AppSpec) {
   const isCn = spec.region === "cn"
   const brand = spec.title
-  const rows = isCn
-    ? [
-        { name: "MornCursor 官网", id: "#281", branch: "main", status: "部署成功", detail: "AI 自动修复 + 发布", duration: "1m 23s", time: "2 分钟前", tone: "#10b981" },
-        { name: "销售管理后台", id: "#280", branch: "develop", status: "构建中", detail: "Git Push", duration: "进行中", time: "5 分钟前", tone: "#3b82f6" },
-        { name: "API 数据平台", id: "#279", branch: "feature/auth", status: "测试失败", detail: "PR 检查", duration: "3m 47s", time: "18 分钟前", tone: "#ef4444" },
-        { name: "社区反馈中心", id: "#278", branch: "main", status: "已部署", detail: "Git Push", duration: "2m 11s", time: "1 小时前", tone: "#10b981" },
-      ]
-    : [
-        { name: "MornCursor website", id: "#281", branch: "main", status: "deploy", detail: "AI repair", duration: "1m 23s", time: "2 min ago", tone: "#10b981" },
-        { name: "Sales admin", id: "#280", branch: "develop", status: "build", detail: "Git Push", duration: "running", time: "5 min ago", tone: "#3b82f6" },
-        { name: "API platform", id: "#279", branch: "feature/auth", status: "test", detail: "PR check", duration: "3m 47s", time: "18 min ago", tone: "#ef4444" },
-        { name: "Community hub", id: "#278", branch: "main", status: "deploy", detail: "Git Push", duration: "2m 11s", time: "1 hour ago", tone: "#10b981" },
-      ]
+  const rows = buildCodePlatformRunSeeds(spec)
   return `// @ts-nocheck
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function RunsPage() {
   const isCn = ${isCn ? "true" : "false"};
@@ -5085,6 +6317,11 @@ export default function RunsPage() {
     visibility: "team",
     publishChannel: "preview",
   });
+  const filters = isCn
+    ? ["全部", "成功", "运行中", "失败", "最近 1 小时"]
+    : ["All", "Success", "Running", "Failed", "Last hour"];
+  const [activeFilter, setActiveFilter] = useState(filters[0]);
+  const [selectedRunId, setSelectedRunId] = useState(rows[0]?.id ?? "");
 
   useEffect(() => {
     try {
@@ -5094,6 +6331,44 @@ export default function RunsPage() {
       setWorkspaceConfig((current) => ({ ...current, ...parsed }));
     } catch {}
   }, []);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      if (activeFilter === filters[0]) return true;
+      if (activeFilter === filters[1]) return /成功|deploy/i.test(row.status);
+      if (activeFilter === filters[2]) return /构建中|build|running/i.test(row.status);
+      if (activeFilter === filters[3]) return /失败|test|error/i.test(row.status);
+      return /2 分钟前|5 分钟前|1 hour|18 min|2 min|5 min/i.test(row.time);
+    });
+  }, [activeFilter, filters, rows]);
+
+  const selectedRun = filteredRows.find((row) => row.id === selectedRunId) ?? filteredRows[0] ?? rows[0];
+  const runLogs = {
+    "run-overview": [
+      "$ pnpm build",
+      "planner -> scaffold -> acceptance",
+      "control plane routes synced",
+      "current project overview ready",
+    ],
+    "run-editor": [
+      "$ pnpm dev",
+      "editor workspace syncing current file groups",
+      "assistant rail switched into file-aware mode",
+      "terminal and preview notes refreshed",
+    ],
+    "run-preview": [
+      "$ pnpm preview:check",
+      "canonical / runtime / fallback converging",
+      "resolved preview URL verified",
+      "fallback reason captured for the current project",
+    ],
+    "run-delivery": [
+      "$ pnpm ship:prep",
+      "template rails aligned with current spec",
+      "pricing + settings connected to the delivery story",
+      "handoff notes refreshed",
+    ],
+  };
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
@@ -5186,14 +6461,15 @@ export default function RunsPage() {
               </div>
             ))}
           </section>
-          <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-            {[(isCn ? "全部" : "All"), (isCn ? "成功" : "Success"), (isCn ? "运行中" : "Running"), (isCn ? "失败" : "Failed"), (isCn ? "警告" : "Warnings")].map((item, index) => (
-              <div key={item} style={{ borderRadius: 12, padding: "10px 16px", background: index === 0 ? "rgba(124,58,237,0.2)" : "#1f212c", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700 }}>{item}</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+            {filters.map((item) => (
+              <button key={item} onClick={() => setActiveFilter(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeFilter === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeFilter === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>{item}</button>
             ))}
           </div>
-          <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#17181f", overflow: "hidden" }}>
-            {rows.map((row) => (
-              <div key={row.name + row.id} style={{ display: "grid", gridTemplateColumns: "48px 1fr 320px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+          <section style={{ display: "grid", gridTemplateColumns: "1.12fr 0.88fr", gap: 16 }}>
+            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#17181f", overflow: "hidden" }}>
+            {filteredRows.map((row) => (
+              <button key={row.name + row.id} onClick={() => setSelectedRunId(row.id)} style={{ width: "100%", border: "none", background: selectedRun?.id === row.id ? "rgba(124,58,237,0.1)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "48px 1fr 320px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", textAlign: "left" }}>
                 <div style={{ width: 42, height: 42, borderRadius: 14, background: row.tone + "22", display: "grid", placeItems: "center", color: row.tone }}>◉</div>
                 <div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -5208,9 +6484,42 @@ export default function RunsPage() {
                   <span>{row.duration}</span>
                   <span>{row.time}</span>
                 </div>
-              </div>
+              </button>
             ))}
-          </div>
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前运行详情" : "Selected run"}</div>
+                  <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedRun?.id}</div>
+                </div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {[
+                    { label: isCn ? "项目" : "Project", value: selectedRun?.name },
+                    { label: isCn ? "分支" : "Branch", value: selectedRun?.branch },
+                    { label: isCn ? "状态" : "Status", value: selectedRun?.status },
+                    { label: isCn ? "动作" : "Action", value: selectedRun?.detail },
+                    { label: isCn ? "耗时" : "Duration", value: selectedRun?.duration },
+                  ].map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ fontWeight: 800 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "重新运行" : "Re-run"}</button>
+                  <button style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>{isCn ? "打开日志" : "Open logs"}</button>
+                </div>
+              </div>
+              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "运行日志片段" : "Run log excerpt"}</div>
+                <div style={{ marginTop: 12, borderRadius: 16, background: "#0d1119", padding: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.85, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+                  {(runLogs[selectedRun?.id] ?? runLogs["#281"]).join("\\n")}
+                </div>
+              </div>
+            </div>
+          </section>
           <section style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
             <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
               <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "最近日志" : "Recent logs"}</div>
@@ -5250,24 +6559,17 @@ export default function RunsPage() {
 function renderCodeTemplatesPage(spec: AppSpec) {
   const isCn = spec.region === "cn"
   const brand = spec.title
-  const rows = isCn
-    ? [
-        { title: "企业官网 + 下载站", note: "包含首页、产品介绍、定价、下载中心、博客等完整企业站", tags: ["React", "TailwindCSS", "SEO"], badge: "免费", stats: "2847   ↓ 12.4k", color: "#4c1d95" },
-        { title: "销售管理后台 (CRM)", note: "全链路销售管理系统：客户管理、线索跟踪、合同审批、业绩看板", tags: ["CRM", "Dashboard", "数据看板"], badge: "专业版", stats: "1963   ↓ 8.7k", color: "#1e3a5f" },
-        { title: "API 数据平台", note: "接口管理、数据监控、Mock 服务、文档自动生成，支持 OpenAPI", tags: ["API", "监控", "OpenAPI"], badge: "专业版", stats: "1421   ↓ 6.2k", color: "#134e4a" },
-        { title: "社区反馈中心", note: "用户反馈收集、工单管理、需求投票、版本公告、知识库", tags: ["反馈", "工单", "社区"], badge: "免费", stats: "981   ↓ 3.9k", color: "#78350f" },
-        { title: "营销活动管理平台", note: "活动创建、渠道投放、效果追踪、A/B 测试、转化漏斗分析", tags: ["营销", "投放", "AB 测试"], badge: "精英版", stats: "769   ↓ 3.1k", color: "#7f1d1d" },
-        { title: "产品落地页生成器", note: "AI 驱动的落地页快速生成工具，支持拖拽编辑、组件库、多端预览", tags: ["Landing Page", "AI", "拖拽"], badge: "专业版", stats: "1152   ↓ 5.3k", color: "#312e81" },
-      ]
-    : [
-        { title: "Company site + downloads", note: "Homepage, pricing, download center, docs, and blogs", tags: ["React", "TailwindCSS", "SEO"], badge: "Free", stats: "2847   ↓ 12.4k", color: "#4c1d95" },
-        { title: "Sales admin CRM", note: "Customers, leads, contracts, approvals, and performance views", tags: ["CRM", "Dashboard", "Analytics"], badge: "Pro", stats: "1963   ↓ 8.7k", color: "#1e3a5f" },
-        { title: "API platform", note: "API management, monitoring, mock service, and docs", tags: ["API", "Monitoring", "OpenAPI"], badge: "Pro", stats: "1421   ↓ 6.2k", color: "#134e4a" },
-        { title: "Community hub", note: "Feedback, ticketing, voting, announcements, and knowledge base", tags: ["Feedback", "Tickets", "Community"], badge: "Free", stats: "981   ↓ 3.9k", color: "#78350f" },
-        { title: "Marketing ops", note: "Campaigns, channels, A/B tests, and conversion funnels", tags: ["Marketing", "Ads", "AB Test"], badge: "Elite", stats: "769   ↓ 3.1k", color: "#7f1d1d" },
-        { title: "Landing page builder", note: "AI-driven page builder with drag-and-drop and previews", tags: ["Landing Page", "AI", "Builder"], badge: "Pro", stats: "1152   ↓ 5.3k", color: "#312e81" },
-      ]
-  const visibleRows = spec.planTier === "elite" ? rows : spec.planTier === "pro" ? rows : rows.slice(0, 3)
+  const acceptanceTracks = buildCodePlatformAcceptanceTracks(spec)
+  const featuredBundles = buildCodePlatformFeaturedBundles(spec)
+  const templateRows = buildCodePlatformTemplateSeeds(spec).map((item, index) => ({
+    title: item.name,
+    note: item.summary,
+    tags: item.tags,
+    badge: item.badge,
+    stats: `${1800 - index * 280}   ↓ ${Math.max(2.4, 8.4 - index * 1.3)}k`,
+    color: item.color,
+  }))
+  const visibleRows = spec.planTier === "elite" ? templateRows : spec.planTier === "pro" ? templateRows : templateRows.slice(0, 3)
   return `// @ts-nocheck
 "use client";
 import Link from "next/link";
@@ -5277,31 +6579,12 @@ export default function TemplatesPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
   const rows = ${JSON.stringify(visibleRows, null, 2)} as const;
-  const acceptanceTracks = ${JSON.stringify(
-    isCn
-      ? ["中国版 Cursor", "销售后台", "官网与下载站", "API 数据平台", "社区反馈中心"]
-      : ["China-ready Cursor", "Sales admin", "Website and downloads", "API platform", "Community hub"],
-    null,
-    2
-  )} as const;
+  const acceptanceTracks = ${JSON.stringify(acceptanceTracks, null, 2)} as const;
   const groups = isCn ? ["全部模板", "官网与落地页", "管理后台", "数据平台", "社区与运营", "营销工具"] : ["All", "Sites", "Admin", "Data", "Community", "Marketing"];
-  const featuredBundles = ${JSON.stringify(
-    isCn
-      ? [
-          { title: "代码平台套件", note: "Dashboard / Editor / Runs / Templates / Pricing 五页骨架", color: "#8b5cf6" },
-          { title: "交付验收套件", note: "Preview、分享、运行历史、汇报材料打包展示", color: "#22c55e" },
-          { title: "增长联动套件", note: "admin 宣传资产 + market 销售闭环联动", color: "#38bdf8" },
-        ]
-      : [
-          { title: "Code platform suite", note: "Dashboard / Editor / Runs / Templates / Pricing scaffold", color: "#8b5cf6" },
-          { title: "Acceptance suite", note: "Preview, share, run history, and reporting materials", color: "#22c55e" },
-          { title: "Growth suite", note: "Admin promo assets plus market sales loop", color: "#38bdf8" },
-        ],
-    null,
-    2
-  )} as const;
+  const featuredBundles = ${JSON.stringify(featuredBundles, null, 2)} as const;
   const [activeGroup, setActiveGroup] = useState(groups[0]);
   const [templateSearch, setTemplateSearch] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(rows[0]?.title ?? "");
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
@@ -5327,6 +6610,7 @@ export default function TemplatesPage() {
     const matchesSearch = !templateSearch.trim() || (row.title + row.note + row.tags.join(" ")).toLowerCase().includes(templateSearch.trim().toLowerCase());
     return matchesGroup && matchesSearch;
   });
+  const selectedTemplate = filteredRows.find((row) => row.title === selectedTemplateId) ?? filteredRows[0] ?? rows[0];
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
@@ -5408,9 +6692,10 @@ export default function TemplatesPage() {
               <button key={item} onClick={() => setActiveGroup(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeGroup === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeGroup === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>{item}</button>
             ))}
           </div>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 18 }}>
+          <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 18 }}>
             {filteredRows.map((row) => (
-              <div key={row.title} style={{ borderRadius: 22, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "#17181f" }}>
+              <button key={row.title} onClick={() => setSelectedTemplateId(row.title)} style={{ borderRadius: 22, overflow: "hidden", border: selectedTemplate?.title === row.title ? "1px solid rgba(124,58,237,0.38)" : "1px solid rgba(255,255,255,0.07)", background: "#17181f", padding: 0, cursor: "pointer", textAlign: "left" }}>
                 <div style={{ height: 150, background: row.color, opacity: 0.85 }} />
                 <div style={{ padding: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
@@ -5433,8 +6718,49 @@ export default function TemplatesPage() {
                   </div>
                   <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14, color: "rgba(255,255,255,0.44)", fontSize: 13 }}>{row.stats}</div>
                 </div>
-              </div>
+              </button>
             ))}
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "模板详情" : "Template details"}</div>
+                  <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedTemplate?.badge}</div>
+                </div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {[
+                    { label: isCn ? "名称" : "Name", value: selectedTemplate?.title },
+                    { label: isCn ? "说明" : "Summary", value: selectedTemplate?.note },
+                    { label: isCn ? "技术标签" : "Tags", value: selectedTemplate?.tags.join(" / ") },
+                    { label: isCn ? "使用热度" : "Usage", value: selectedTemplate?.stats },
+                  ].map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "预期生成结果" : "Expected output"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {(selectedTemplate?.tags ?? []).map((tag, index) => (
+                    <div key={tag} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12 }}>
+                      {(isCn ? "将优先补强: " : "Will prioritize: ") + tag}
+                    </div>
+                  ))}
+                  <div style={{ borderRadius: 14, background: "#232533", padding: 12, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                    {isCn
+                      ? "模板不只是换皮，而是会带出对应 scaffold、页面结构和控制台重点。"
+                      : "Templates should influence scaffold, route structure, and console emphasis instead of only changing visuals."}
+                  </div>
+                </div>
+                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "基于模板生成" : "Generate from template"}</button>
+                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", color: "#f8fafc", padding: "10px 14px", fontWeight: 700 }}>{isCn ? "带到编辑器" : "Open in editor"}</Link>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </div>
@@ -6633,6 +7959,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
       reason: "Initialize workspace data file",
     },
   ]
+  const archetype = getScaffoldArchetype(spec)
 
   if (spec.planTier !== "free" && spec.planTier !== "starter") {
     files.push({
@@ -6642,13 +7969,15 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     })
   }
 
-  if (spec.kind === "code_platform" || spec.planTier === "pro" || spec.planTier === "elite") {
+  if (spec.kind === "code_platform" || archetype !== "task" || spec.planTier === "pro" || spec.planTier === "elite") {
     files.push({
       path: "app/dashboard/page.tsx",
       content: renderDashboardPage(spec),
       reason: spec.kind === "code_platform"
         ? "Add generated dashboard overview entry page for code-platform projects"
-        : "Add generated dashboard overview entry page for pro tiers",
+        : archetype !== "task"
+          ? "Add generated dashboard overview entry page for scaffold-driven application projects"
+          : "Add generated dashboard overview entry page for pro tiers",
     })
   }
 
@@ -6682,6 +8011,91 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     )
   }
 
+  if (archetype === "crm") {
+    files.push(
+      {
+        path: "app/leads/page.tsx",
+        content: renderArchetypeConsolePage(spec, "leads") ?? renderTemplateExtraPage(spec, "leads"),
+        reason: "Add lead pool page for CRM scaffold",
+      },
+      {
+        path: "app/pipeline/page.tsx",
+        content: renderArchetypeConsolePage(spec, "pipeline") ?? renderTasksPage(spec),
+        reason: "Add deal progression page for CRM scaffold",
+      },
+      {
+        path: "app/customers/page.tsx",
+        content: renderArchetypeConsolePage(spec, "customers") ?? renderTasksPage(spec),
+        reason: "Add customer account page for CRM scaffold",
+      },
+      {
+        path: "app/automations/page.tsx",
+        content: renderArchetypeConsolePage(spec, "automations") ?? renderTasksPage(spec),
+        reason: "Add automation rules page for CRM scaffold",
+      }
+    )
+  }
+
+  if (archetype === "api_platform") {
+    files.push(
+      {
+        path: "app/endpoints/page.tsx",
+        content: renderArchetypeConsolePage(spec, "endpoints") ?? renderTemplateExtraPage(spec, "incidents"),
+        reason: "Add endpoint catalog page for API platform scaffold",
+      },
+      {
+        path: "app/logs/page.tsx",
+        content: renderArchetypeConsolePage(spec, "logs") ?? renderTemplateExtraPage(spec, "incidents"),
+        reason: "Add logs and diagnostics page for API platform scaffold",
+      },
+      {
+        path: "app/auth/page.tsx",
+        content: renderArchetypeConsolePage(spec, "auth") ?? renderTasksPage(spec),
+        reason: "Add auth and policy page for API platform scaffold",
+      },
+      {
+        path: "app/environments/page.tsx",
+        content: renderArchetypeConsolePage(spec, "environments") ?? renderTasksPage(spec),
+        reason: "Add environments page for API platform scaffold",
+      }
+    )
+  }
+
+  if (archetype === "marketing_admin") {
+    files.push(
+      {
+        path: "app/website/page.tsx",
+        content: renderArchetypeConsolePage(spec, "website") ?? renderTasksPage(spec),
+        reason: "Add website structure page for marketing-admin scaffold",
+      },
+      {
+        path: "app/downloads/page.tsx",
+        content: renderArchetypeConsolePage(spec, "downloads") ?? renderTemplateExtraPage(spec, "downloads"),
+        reason: "Add download center page for marketing-admin scaffold",
+      },
+      {
+        path: "app/docs/page.tsx",
+        content: renderArchetypeConsolePage(spec, "docs") ?? renderTasksPage(spec),
+        reason: "Add docs center page for marketing-admin scaffold",
+      },
+      {
+        path: "app/admin/page.tsx",
+        content: renderArchetypeConsolePage(spec, "admin") ?? renderTasksPage(spec),
+        reason: "Add admin console page for marketing-admin scaffold",
+      }
+    )
+  }
+
+  if (archetype === "community") {
+    files.push(
+      {
+        path: "app/events/page.tsx",
+        content: renderTemplateExtraPage(spec, "events"),
+        reason: "Add events page for community scaffold",
+      }
+    )
+  }
+
   if (hasFeature(spec, "about_page")) {
     files.push({
       path: "app/about/page.tsx",
@@ -6698,7 +8112,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     })
   }
 
-  if (spec.templateId === "opsdesk") {
+  if (spec.templateId === "opsdesk" && archetype !== "crm") {
     files.push({
       path: "app/leads/page.tsx",
       content: renderTemplateExtraPage(spec, "leads"),
@@ -6706,7 +8120,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     })
   }
 
-  if (spec.templateId === "taskflow") {
+  if (spec.templateId === "taskflow" && archetype !== "api_platform") {
     files.push({
       path: "app/incidents/page.tsx",
       content: renderTemplateExtraPage(spec, "incidents"),
@@ -6714,7 +8128,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     })
   }
 
-  if (spec.templateId === "orbital") {
+  if (spec.templateId === "orbital" && archetype !== "community") {
     files.push({
       path: "app/events/page.tsx",
       content: renderTemplateExtraPage(spec, "events"),
@@ -6722,7 +8136,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     })
   }
 
-  if (spec.templateId === "launchpad") {
+  if (spec.templateId === "launchpad" && archetype !== "marketing_admin") {
     files.push({
       path: "app/downloads/page.tsx",
       content: renderTemplateExtraPage(spec, "downloads"),

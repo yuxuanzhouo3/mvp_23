@@ -17,6 +17,12 @@ interface MobileSidebarProps {
 
 type RecentProject = {
   projectId: string
+  generation?: {
+    buildStatus: "ok" | "failed" | "skipped" | null
+  }
+  preview?: {
+    status?: "idle" | "building" | "ready" | "failed"
+  }
   presentation: {
     displayName: string
     icon: {
@@ -150,10 +156,20 @@ export function MobileSidebar({ open, onClose }: MobileSidebarProps) {
                         <span
                           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-[11px] font-semibold text-white"
                           style={{ background: `linear-gradient(135deg, ${icon.from}, ${icon.to})`, boxShadow: `0 0 0 1px ${icon.ring}` }}
-                        >
-                          {icon.glyph}
-                        </span>
+                      >
+                        {icon.glyph}
+                      </span>
                         <span className={active ? "font-medium" : ""}>{project.presentation.displayName}</span>
+                        <span
+                          className={cn(
+                            "ml-auto inline-block h-1.5 w-1.5 rounded-full",
+                            project.preview?.status === "ready"
+                              ? "bg-emerald-500"
+                              : project.preview?.status === "failed"
+                                ? "bg-red-500"
+                                : "bg-amber-400"
+                          )}
+                        />
                       </Link>
                     </li>
                   )

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { RecentGenerations } from "@/components/dashboard/recent-generations"
 
 type ProjectItem = {
   projectId: string
@@ -15,6 +16,12 @@ type ProjectItem = {
   createdAt: string
   updatedAt: string
   historyCount: number
+  generation?: {
+    status: "done" | "error" | "idle"
+    summary: string
+    buildStatus: "ok" | "failed" | "skipped" | null
+    createdAt: string | null
+  }
   presentation: {
     displayName: string
     subtitle: string
@@ -33,11 +40,29 @@ type ProjectItem = {
   }
   preview?: {
     defaultMode: "static_ssr"
+    activeMode?: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+    status?: "idle" | "building" | "ready" | "failed"
     canonicalUrl: string
     runtimeUrl: string
+    resolvedUrl?: string
+    fallbackReason?: string
     supportsDynamicRuntime: boolean
     supportsSandboxRuntime: boolean
   }
+}
+
+function buildAcceptanceLabel(status?: "ok" | "failed" | "skipped" | null) {
+  if (status === "ok") return "build: passed"
+  if (status === "failed") return "build: failed"
+  if (status === "skipped") return "build: skipped"
+  return "build: pending"
+}
+
+function buildPreviewLabel(status?: "idle" | "building" | "ready" | "failed") {
+  if (status === "ready") return "preview: ready"
+  if (status === "failed") return "preview: failed"
+  if (status === "building") return "preview: building"
+  return "preview: idle"
 }
 
 export default function ProjectsPage() {
@@ -151,18 +176,26 @@ export default function ProjectsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">{project.presentation.summary}</p>
-              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge variant="outline">{buildAcceptanceLabel(project.generation?.buildStatus)}</Badge>
+                <Badge variant="outline">{buildPreviewLabel(project.preview?.status)}</Badge>
+                {project.preview?.activeMode ? <Badge variant="outline">{project.preview.activeMode}</Badge> : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <span>Region: {project.region.toUpperCase()}</span>
                 <span>Events: {project.historyCount}</span>
                 <span>Updated: {new Date(project.updatedAt).toLocaleString()}</span>
               </div>
+              {project.preview?.fallbackReason ? (
+                <p className="mt-3 text-xs text-amber-700">{project.preview.fallbackReason}</p>
+              ) : null}
               <div className="flex gap-2 mt-4">
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/apps/${project.projectId}`}>Open Workspace</Link>
                 </Button>
-                {project.preview?.canonicalUrl ? (
+                {(project.preview?.resolvedUrl || project.preview?.canonicalUrl) ? (
                   <Button variant="ghost" size="sm" asChild>
-                    <a href={project.preview.canonicalUrl} target="_blank" rel="noreferrer">
+                    <a href={project.preview.resolvedUrl || project.preview.canonicalUrl} target="_blank" rel="noreferrer">
                       Open Preview
                     </a>
                   </Button>
@@ -180,6 +213,8 @@ export default function ProjectsPage() {
           </Card>
         ) : null}
       </div>
+
+      <RecentGenerations />
     </div>
   )
 }

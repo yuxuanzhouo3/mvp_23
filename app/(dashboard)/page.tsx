@@ -26,6 +26,12 @@ type GeneratePostResp = {
 type RecentApp = {
   projectId: string
   updatedAt: string
+  generation?: {
+    buildStatus: "ok" | "failed" | "skipped" | null
+  }
+  preview?: {
+    status?: "idle" | "building" | "ready" | "failed"
+  }
   presentation: {
     displayName: string
     subtitle: string
@@ -551,6 +557,30 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">{app.presentation.summary}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] text-muted-foreground">
+                          {app.generation?.buildStatus === "ok"
+                            ? (isZh ? "Build 已通过" : "Build passed")
+                            : app.generation?.buildStatus === "failed"
+                              ? (isZh ? "Build 失败" : "Build failed")
+                              : app.generation?.buildStatus === "skipped"
+                                ? (isZh ? "Build 跳过" : "Build skipped")
+                                : isZh
+                                  ? "Build 待验证"
+                                  : "Build pending"}
+                        </span>
+                        <span className="rounded-full border border-border/70 px-2.5 py-1 text-[11px] text-muted-foreground">
+                          {app.preview?.status === "ready"
+                            ? (isZh ? "预览就绪" : "Preview ready")
+                            : app.preview?.status === "failed"
+                              ? (isZh ? "预览失败" : "Preview failed")
+                              : app.preview?.status === "building"
+                                ? (isZh ? "预览准备中" : "Preview building")
+                                : isZh
+                                  ? "预览待启动"
+                                  : "Preview idle"}
+                        </span>
+                      </div>
                       <div className="mt-4 text-xs text-muted-foreground">
                         {isZh ? "最近更新" : "Updated"} · {new Date(app.updatedAt).toLocaleString()}
                       </div>

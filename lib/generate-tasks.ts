@@ -19,6 +19,8 @@ export type GenerateTask = {
   logs?: string[]
   summary?: string
   changedFiles?: string[]
+  buildStatus?: "ok" | "failed" | "skipped"
+  buildLogs?: string[]
   templateTitle?: string
   error?: string
   retries?: number

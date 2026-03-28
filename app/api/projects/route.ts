@@ -12,6 +12,18 @@ function buildPreviewUrl(projectKey: string) {
   return buildCanonicalPreviewUrl(projectKey)
 }
 
+function resolvePreviewUrl(args: {
+  projectId: string
+  activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  canonicalUrl: string
+  runtimeUrl: string
+  sandboxUrl: string
+}) {
+  if (args.activeMode === "sandbox_runtime") return args.sandboxUrl
+  if (args.activeMode === "dynamic_runtime") return args.runtimeUrl
+  return args.canonicalUrl
+}
+
 function resolveActivePreviewMode(args: {
   previewMode?: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
   sandboxStatus?: "stopped" | "starting" | "running" | "error"
@@ -56,6 +68,42 @@ function normalizeRuntimeUrl(projectId: string, url?: string) {
     return normalized.endsWith("/preview") ? `${normalized}/` : normalized
   }
   return normalized
+}
+
+function getLatestGenerateRecord(history: Array<{
+  type: "generate" | "iterate"
+  status: "done" | "error"
+  summary?: string
+  buildStatus?: "ok" | "failed" | "skipped"
+  buildLogs?: string[]
+  createdAt: string
+}> = []) {
+  return history
+    .slice()
+    .reverse()
+    .find((item) => item.type === "generate") ?? null
+}
+
+function resolveFallbackReason(args: {
+  requestedMode?: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
+  runtimeStatus?: "stopped" | "starting" | "running" | "error"
+  runtimeError?: string
+  sandboxStatus?: "stopped" | "starting" | "running" | "error"
+  sandboxError?: string
+}) {
+  if (args.activeMode !== "static_ssr") return ""
+  if (args.requestedMode === "sandbox_runtime") {
+    if (args.sandboxStatus === "error") return args.sandboxError || "Sandbox preview failed. Falling back to the project canonical preview."
+    if (args.sandboxStatus === "starting") return "Sandbox preview is still booting. Using the current project canonical preview for now."
+    return "Sandbox preview is unavailable. Using the current project canonical preview."
+  }
+  if (args.requestedMode === "dynamic_runtime") {
+    if (args.runtimeStatus === "error") return args.runtimeError || "Runtime preview failed. Falling back to the current project canonical preview."
+    if (args.runtimeStatus === "starting") return "Runtime preview is still starting. Using the current project canonical preview for now."
+    return "Runtime preview is unavailable. Using the current project canonical preview."
+  }
+  return ""
 }
 
 async function isPortInUse(port?: number) {
@@ -126,6 +174,7 @@ export async function GET(req: Request) {
     const projectDir = await resolveProjectPath(projectId)
     const spec = projectDir ? await readProjectSpec(projectDir) : null
     const latestHistory = project.history?.length ? project.history[project.history.length - 1] : null
+    const latestGenerate = getLatestGenerateRecord(project.history)
     const presentation = buildProjectPresentation({
       projectId,
       region: project.region,
@@ -138,11 +187,21 @@ export async function GET(req: Request) {
       runtimeStatus: runtime?.status,
     })
     const publicProjectKey = project.projectSlug || projectId
+    const canonicalUrl = buildPreviewUrl(publicProjectKey)
+    const runtimeUrl = normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url)
+    const sandboxUrl = buildSandboxPreviewUrl(projectId)
     return NextResponse.json({
       project: {
         ...project,
         spec,
         presentation,
+        generation: {
+          status: latestGenerate?.status ?? "idle",
+          summary: latestGenerate?.summary ?? "",
+          buildStatus: latestGenerate?.buildStatus ?? null,
+          buildLogs: latestGenerate?.buildLogs ?? [],
+          createdAt: latestGenerate?.createdAt ?? null,
+        },
         preview: {
           defaultMode: "static_ssr",
           activeMode,
@@ -151,9 +210,24 @@ export async function GET(req: Request) {
             runtimeStatus: runtime?.status,
             sandboxStatus: project.sandboxRuntime?.status,
           }),
-          canonicalUrl: buildPreviewUrl(publicProjectKey),
-          runtimeUrl: normalizeRuntimeUrl(projectId, (runtime as { url?: string } | undefined)?.url),
-          sandboxUrl: buildSandboxPreviewUrl(projectId),
+          canonicalUrl,
+          runtimeUrl,
+          sandboxUrl,
+          resolvedUrl: resolvePreviewUrl({
+            projectId,
+            activeMode,
+            canonicalUrl,
+            runtimeUrl,
+            sandboxUrl,
+          }),
+          fallbackReason: resolveFallbackReason({
+            requestedMode: project.previewMode ?? getDefaultPreviewMode(),
+            activeMode,
+            runtimeStatus: runtime?.status,
+            runtimeError: runtime?.lastError,
+            sandboxStatus: project.sandboxRuntime?.status,
+            sandboxError: project.sandboxRuntime?.lastError,
+          }),
           sandboxExternalUrl: project.sandboxRuntime?.url || null,
           sandboxStatus: project.sandboxRuntime?.status ?? "stopped",
           supportsDynamicRuntime: !Boolean(process.env.VERCEL),
@@ -181,6 +255,12 @@ export async function GET(req: Request) {
     workspacePath: string
     historyCount: number
     presentation: ReturnType<typeof buildProjectPresentation>
+    generation: {
+      status: "done" | "error" | "idle"
+      summary: string
+      buildStatus: "ok" | "failed" | "skipped" | null
+      createdAt: string | null
+    }
     runtime?: {
       status: "stopped" | "starting" | "running" | "error"
       pid?: number
@@ -196,6 +276,8 @@ export async function GET(req: Request) {
       canonicalUrl: string
       runtimeUrl: string
       sandboxUrl: string | null
+      resolvedUrl: string
+      fallbackReason: string
       sandboxExternalUrl: string | null
       sandboxStatus: "stopped" | "starting" | "running" | "error"
       supportsDynamicRuntime: boolean
@@ -209,12 +291,16 @@ export async function GET(req: Request) {
     const projectDir = await resolveProjectPath(p.projectId)
     const spec = projectDir ? await readProjectSpec(projectDir) : null
     const latestHistory = p.history?.length ? p.history[p.history.length - 1] : null
+    const latestGenerate = getLatestGenerateRecord(p.history)
     const activeMode = resolveActivePreviewMode({
       previewMode: p.previewMode ?? getDefaultPreviewMode(),
       sandboxStatus: p.sandboxRuntime?.status,
       runtimeStatus: runtime?.status,
     })
     const publicProjectKey = p.projectSlug || p.projectId
+    const canonicalUrl = buildPreviewUrl(publicProjectKey)
+    const runtimeUrl = normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url)
+    const sandboxUrl = buildSandboxPreviewUrl(p.projectId)
     normalized.push({
       projectId: p.projectId,
       region: p.region,
@@ -230,6 +316,12 @@ export async function GET(req: Request) {
         spec,
         latestHistory,
       }),
+      generation: {
+        status: latestGenerate?.status ?? "idle",
+        summary: latestGenerate?.summary ?? "",
+        buildStatus: latestGenerate?.buildStatus ?? null,
+        createdAt: latestGenerate?.createdAt ?? null,
+      },
       preview: {
         defaultMode: "static_ssr",
         activeMode,
@@ -238,9 +330,24 @@ export async function GET(req: Request) {
           runtimeStatus: runtime?.status,
           sandboxStatus: p.sandboxRuntime?.status,
         }),
-        canonicalUrl: buildPreviewUrl(publicProjectKey),
-        runtimeUrl: normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url),
-        sandboxUrl: buildSandboxPreviewUrl(p.projectId),
+        canonicalUrl,
+        runtimeUrl,
+        sandboxUrl,
+        resolvedUrl: resolvePreviewUrl({
+          projectId: p.projectId,
+          activeMode,
+          canonicalUrl,
+          runtimeUrl,
+          sandboxUrl,
+        }),
+        fallbackReason: resolveFallbackReason({
+          requestedMode: p.previewMode ?? getDefaultPreviewMode(),
+          activeMode,
+          runtimeStatus: runtime?.status,
+          runtimeError: runtime?.lastError,
+          sandboxStatus: p.sandboxRuntime?.status,
+          sandboxError: p.sandboxRuntime?.lastError,
+        }),
         sandboxExternalUrl: p.sandboxRuntime?.url || null,
         sandboxStatus: p.sandboxRuntime?.status ?? "stopped",
         supportsDynamicRuntime: !Boolean(process.env.VERCEL),

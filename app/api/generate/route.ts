@@ -1,5 +1,6 @@
 import path from "path"
 import { promises as fs } from "fs"
+import { spawn } from "child_process"
 import { NextResponse } from "next/server"
 import {
   appendProjectHistory,
@@ -9,6 +10,7 @@ import {
   getWorkspacePath,
   resolveProjectPath,
   safeProjectId,
+  updateProject,
   upsertProject,
   writeTextFile,
   type Region,
@@ -79,6 +81,11 @@ type GenerateTaskRecord = GenerateTask & {
   rawPrompt?: string
   templateId?: string
   templateTitle?: string
+}
+
+type WorkspaceBuildResult = {
+  status: "ok" | "failed" | "skipped"
+  logs: string[]
 }
 
 type PlannerProductType =
@@ -344,7 +351,18 @@ function normalizePlannerSpec(
   databaseTarget: DatabaseTarget
 ) {
   const fallback = fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
-  const productType = (parsed?.productType as PlannerProductType | undefined) ?? fallback.productType
+  const rawProductType = sanitizeUiText(String(parsed?.productType ?? ""))
+    .toLowerCase()
+    .replace(/-/g, "_")
+  const productType =
+    rawProductType === "ai_code_platform" ||
+    rawProductType === "crm_workspace" ||
+    rawProductType === "api_platform" ||
+    rawProductType === "community_hub" ||
+    rawProductType === "content_site" ||
+    rawProductType === "task_workspace"
+      ? (rawProductType as PlannerProductType)
+      : fallback.productType
   return {
     ...fallback,
     ...parsed,
@@ -398,6 +416,9 @@ async function callPlannerModel(args: {
   databaseTarget: DatabaseTarget
 }): Promise<PlannerSpec> {
   const { prompt, region, planTier, deploymentTarget, databaseTarget } = args
+  if (inferPlannerProductType(prompt) === "ai_code_platform") {
+    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+  }
   const config = resolveAiConfig({ mode: "planner" })
   const system = [
     "You are the planning layer for a Next.js application generator.",
@@ -463,7 +484,12 @@ function createPlannedAppSpec(args: {
   ]
   const features: SpecFeature[] =
     kind === "code_platform"
-      ? (["description_field", "assignee_filter", ...(planTier === "pro" || planTier === "elite" ? ["analytics_page", "about_page", "blocked_status"] : [])] as SpecFeature[])
+      ? ([
+          "description_field",
+          "assignee_filter",
+          "about_page",
+          ...(planTier === "pro" || planTier === "elite" ? ["analytics_page", "blocked_status"] : []),
+        ] as SpecFeature[])
       : (["description_field", "assignee_filter"] as SpecFeature[])
 
   return createAppSpec(prompt, region, {
@@ -599,6 +625,115 @@ async function applyGeneratedFiles(
   return changed
 }
 
+async function pathExists(filePath: string) {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function compactBuildLogs(lines: string[], maxChars = 12_000) {
+  const joined = lines.join("").trim()
+  if (!joined) return [] as string[]
+  const trimmed = joined.length > maxChars ? `...${joined.slice(joined.length - maxChars)}` : joined
+  return trimmed.split(/\r?\n/).filter(Boolean).slice(-160)
+}
+
+async function hasUsableValidationInstall(workspacePath: string) {
+  const workspaceNodeModules = path.join(workspacePath, "node_modules")
+  const workspaceNextBin = path.join(workspaceNodeModules, "next", "dist", "bin", "next")
+  const workspaceReactPkg = path.join(workspaceNodeModules, "react", "package.json")
+  return (await pathExists(workspaceNextBin)) && (await pathExists(workspaceReactPkg))
+}
+
+async function ensureWorkspaceValidationModules(workspacePath: string) {
+  if (await hasUsableValidationInstall(workspacePath)) {
+    return true
+  }
+
+  const workspaceNodeModules = path.join(workspacePath, "node_modules")
+  const hostNodeModules = path.join(process.cwd(), "node_modules")
+  const hostNextBin = path.join(hostNodeModules, "next", "dist", "bin", "next")
+  const hostReactPkg = path.join(hostNodeModules, "react", "package.json")
+
+  if (!(await pathExists(hostNextBin)) || !(await pathExists(hostReactPkg))) {
+    return false
+  }
+
+  if (!(await pathExists(workspaceNodeModules))) {
+    try {
+      await fs.symlink(hostNodeModules, workspaceNodeModules, "dir")
+    } catch {
+      // noop
+    }
+  }
+
+  return await hasUsableValidationInstall(workspacePath)
+}
+
+async function validateGeneratedWorkspace(workspacePath: string): Promise<WorkspaceBuildResult> {
+  const packageJsonPath = path.join(workspacePath, "package.json")
+  const hostNextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next")
+
+  if (!(await pathExists(packageJsonPath))) {
+    return { status: "skipped", logs: ["Skipped: package.json missing in generated workspace"] }
+  }
+
+  if (!(await pathExists(hostNextBin))) {
+    return { status: "skipped", logs: ["Skipped: host next build runtime unavailable"] }
+  }
+
+  const validationInstallReady = await ensureWorkspaceValidationModules(workspacePath)
+  if (!validationInstallReady) {
+    return { status: "skipped", logs: ["Skipped: validation install unavailable for generated workspace"] }
+  }
+
+  return new Promise<WorkspaceBuildResult>((resolve) => {
+    const output: string[] = []
+    const child = spawn(process.execPath, [hostNextBin, "build"], {
+      cwd: workspacePath,
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        NEXT_TELEMETRY_DISABLED: "1",
+      },
+      windowsHide: true,
+      shell: false,
+    })
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill()
+      } catch {
+        // noop
+      }
+      resolve({
+        status: "failed",
+        logs: compactBuildLogs([...output, "\nBuild validation timed out after 240000ms."]),
+      })
+    }, 240_000)
+
+    child.stdout?.on("data", (data) => output.push(String(data)))
+    child.stderr?.on("data", (data) => output.push(String(data)))
+    child.on("error", (error) => {
+      clearTimeout(timer)
+      resolve({
+        status: "failed",
+        logs: compactBuildLogs([...output, `\n${error.message}`]),
+      })
+    })
+    child.on("close", (code) => {
+      clearTimeout(timer)
+      resolve({
+        status: code === 0 ? "ok" : "failed",
+        logs: compactBuildLogs(output),
+      })
+    })
+  })
+}
+
 async function writeGeneratedProjectFiles(
   outDir: string,
   projectId: string,
@@ -638,11 +773,6 @@ ${prompt}
 npm install
 \`\`\`
 
-## DB migrate (SQLite)
-\`\`\`bash
-npx prisma migrate dev --name init
-\`\`\`
-
 ## Run
 \`\`\`bash
 npx next dev --webpack -p 3001
@@ -667,16 +797,13 @@ ${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTa
           dev: "next dev --webpack -p 3001",
           build: "next build",
           start: "next start -p 3001",
-          prisma: "prisma",
         },
         dependencies: {
           next: "16.1.6",
           react: "^19",
           "react-dom": "^19",
-          "@prisma/client": "^6.0.0",
         },
         devDependencies: {
-          prisma: "^6.0.0",
           typescript: "^5.0.0",
           "@types/node": "^20.0.0",
           "@types/react": "^19.0.0",
@@ -793,53 +920,29 @@ export default nextConfig;
   )
 
   await writeTextFile(
-    path.join(outDir, "prisma", "schema.prisma"),
-    `generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  status      String   @default("todo")
-  priority    String   @default("medium")
-  assignee    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-`
-  )
-
-  await writeTextFile(
-    path.join(outDir, "lib", "prisma.ts"),
-    `import { PrismaClient } from "@prisma/client";
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: ["error", "warn"],
-  });
-
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-`
-  )
-
-  await writeTextFile(
     path.join(outDir, "app", "api", "items", "route.ts"),
-    `import { NextResponse } from "next/server";
-import { prisma } from "../../../lib/prisma";
+    `import { promises as fs } from "fs";
+import path from "path";
+import { NextResponse } from "next/server";
+
+const DATA_FILE = path.join(process.cwd(), "data", "items.json");
+
+async function readItems() {
+  try {
+    const raw = await fs.readFile(DATA_FILE, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+async function writeItems(items: unknown) {
+  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
+  await fs.writeFile(DATA_FILE, JSON.stringify(items, null, 2), "utf8");
+}
 
 export async function GET() {
-  const tasks = await prisma.task.findMany({ orderBy: { createdAt: "desc" } });
-  return NextResponse.json(tasks);
+  return NextResponse.json(await readItems());
 }
 
 export async function POST(req: Request) {
@@ -848,16 +951,21 @@ export async function POST(req: Request) {
   if (!title) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
-  const task = await prisma.task.create({
-    data: {
+  const items = await readItems();
+  const next = [
+    {
+      id: String(Date.now()),
       title,
       description: String(body?.description ?? "").trim() || null,
       status: String(body?.status ?? "todo"),
       priority: String(body?.priority ?? "medium"),
       assignee: String(body?.assignee ?? "").trim() || null,
+      createdAt: new Date().toISOString(),
     },
-  });
-  return NextResponse.json(task);
+    ...items,
+  ];
+  await writeItems(next);
+  return NextResponse.json(next[0]);
 }
 
 export async function PATCH(req: Request) {
@@ -866,17 +974,10 @@ export async function PATCH(req: Request) {
   if (!id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
   }
-  const task = await prisma.task.update({
-    where: { id },
-    data: {
-      ...(typeof body?.title === "string" ? { title: String(body.title).trim() || undefined } : {}),
-      ...(typeof body?.description === "string" ? { description: String(body.description).trim() || null } : {}),
-      ...(typeof body?.status === "string" ? { status: String(body.status).trim() || undefined } : {}),
-      ...(typeof body?.priority === "string" ? { priority: String(body.priority).trim() || undefined } : {}),
-      ...(typeof body?.assignee === "string" ? { assignee: String(body.assignee).trim() || null } : {}),
-    },
-  });
-  return NextResponse.json(task);
+  const items = await readItems();
+  const next = items.map((item: any) => item.id === id ? { ...item, ...body } : item);
+  await writeItems(next);
+  return NextResponse.json(next.find((item: any) => item.id === id) ?? null);
 }
 `
   )
@@ -1479,6 +1580,10 @@ async function runGenerateTaskWorker(jobId: string) {
   const logs: string[] = []
   let summary = "Initial project generated"
   let changedFiles: string[] = []
+  let buildResult: WorkspaceBuildResult = {
+    status: "skipped",
+    logs: ["Build validation was not attempted yet."],
+  }
 
   await updateGenerateTask(jobId, (t) => ({ ...t, status: "running", error: undefined }))
   await appendGenerateTaskLog(jobId, "[1/6] 任务开始：准备工作区")
@@ -1588,6 +1693,19 @@ async function runGenerateTaskWorker(jobId: string) {
       await appendGenerateTaskLog(jobId, "[5/6] 已强制应用 Prompt 标题与业务身份")
     }
 
+    await appendGenerateTaskLog(jobId, "[5.5/6] 正在执行生成后 build 验收")
+    buildResult = await validateGeneratedWorkspace(outDir)
+    if (buildResult.status === "ok") {
+      logs.push("[OK] Build validation passed")
+      await appendGenerateTaskLog(jobId, "[5.5/6] Build 验收通过")
+    } else if (buildResult.status === "failed") {
+      logs.push("[WARN] Build validation failed")
+      await appendGenerateTaskLog(jobId, "[5.5/6] Build 验收失败，当前项目将保留并继续使用自身 fallback")
+    } else {
+      logs.push("[WARN] Build validation skipped")
+      await appendGenerateTaskLog(jobId, "[5.5/6] Build 验收被跳过：当前环境缺少可用验证条件")
+    }
+
     await appendProjectHistory(current.projectId, {
       id: `evt_${Date.now()}`,
       type: "generate",
@@ -1595,7 +1713,8 @@ async function runGenerateTaskWorker(jobId: string) {
       createdAt: new Date().toISOString(),
       status: "done",
       summary,
-      buildStatus: "skipped",
+      buildStatus: buildResult.status,
+      buildLogs: buildResult.logs,
       changedFiles,
     })
 
@@ -1605,6 +1724,8 @@ async function runGenerateTaskWorker(jobId: string) {
       logs: [...(t.logs ?? []), ...logs],
       summary,
       changedFiles,
+      buildStatus: buildResult.status,
+      buildLogs: buildResult.logs,
       error: undefined,
     }))
     await appendGenerateTaskLog(jobId, "[6/6] 生成完成")
@@ -1768,6 +1889,8 @@ export async function GET(req: Request) {
       logs: currentTask.logs ?? [],
       summary: currentTask.summary,
       changedFiles: currentTask.changedFiles ?? [],
+      buildStatus: currentTask.buildStatus,
+      buildLogs: currentTask.buildLogs ?? [],
       templateTitle: currentTask.templateTitle,
       error: currentTask.error,
       appUrl: buildProjectPreviewPath(currentTask.projectId),
@@ -1776,7 +1899,6 @@ export async function GET(req: Request) {
       runCommands: [
         `cd ${outDir ?? getWorkspacePath(currentTask.projectId)}`,
         "npm install",
-        "npx prisma migrate dev --name init",
         "npx next dev -p 3001",
       ],
     })
@@ -1824,6 +1946,8 @@ export async function GET(req: Request) {
         ],
     summary: latestGenerate?.summary,
     changedFiles: latestGenerate?.changedFiles ?? [],
+    buildStatus: latestGenerate?.buildStatus,
+    buildLogs: latestGenerate?.buildLogs ?? [],
     templateTitle: undefined,
     appUrl: buildProjectPreviewPath(projectId),
     repoUrl: `local://workspaces/${projectId}`,
@@ -1831,7 +1955,6 @@ export async function GET(req: Request) {
     runCommands: [
       `cd ${outDir}`,
       "npm install",
-      "npx prisma migrate dev --name init",
       "npx next dev -p 3001",
     ],
   })
