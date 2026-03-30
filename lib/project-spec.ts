@@ -4416,15 +4416,17 @@ function renderAboutPage(spec: AppSpec) {
   const spec = ${JSON.stringify(spec, null, 2)} as const;
   const skin = ${JSON.stringify(skin, null, 2)} as const;
   const modules = ${JSON.stringify(spec.modules.slice(0, 6), null, 2)} as const;
+  const features = ${JSON.stringify(spec.features, null, 2)} as readonly string[];
+  const isCn = ${spec.region === "cn" ? "true" : "false"};
   return (
     <main style={{ minHeight: "100vh", padding: 28, background: skin.pageBackground, color: skin.textPrimary, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif" }}>
       <div style={{ maxWidth: 960, margin: "0 auto", display: "grid", gap: 18 }}>
         <section style={{ borderRadius: 28, border: skin.cardBorder, background: skin.panelBackground, padding: 24 }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             {[
-              { href: "/", label: spec.region === "cn" ? "首页" : "Home" },
-              ...(spec.features.includes("analytics_page") ? [{ href: "/analytics", label: spec.region === "cn" ? "分析" : "Analytics" }] : []),
-              { href: "/about", label: spec.region === "cn" ? "项目说明" : "About", active: true },
+              { href: "/", label: isCn ? "首页" : "Home" },
+              ...(features.includes("analytics_page") ? [{ href: "/analytics", label: isCn ? "分析" : "Analytics" }] : []),
+              { href: "/about", label: isCn ? "项目说明" : "About", active: true },
             ].map((item) => (
               <a key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? skin.accentStrong : skin.inputBackground, color: item.active ? "#ffffff" : skin.textPrimary, fontSize: 13, fontWeight: 700, border: item.active ? "none" : skin.cardBorder }}>
                 {item.label}
@@ -4449,7 +4451,7 @@ function renderAboutPage(spec: AppSpec) {
           <div style={{ border: skin.cardBorder, borderRadius: 20, padding: 18, background: skin.cardBackground }}>
             <div style={{ fontWeight: 600 }}>${spec.region === "cn" ? "已启用能力" : "Enabled features"}</div>
             <ul style={{ margin: "12px 0 0", paddingLeft: 18, color: skin.textSecondary, lineHeight: 1.8 }}>
-              {spec.features.map((feature) => (
+              {features.map((feature) => (
                 <li key={feature}>{feature}</li>
               ))}
             </ul>
@@ -4462,7 +4464,7 @@ function renderAboutPage(spec: AppSpec) {
               <div key={module} style={{ borderRadius: 16, border: skin.cardBorder, background: skin.inputBackground, padding: 14 }}>
                 <div style={{ fontWeight: 700 }}>{module}</div>
                 <div style={{ marginTop: 8, color: skin.textSecondary, fontSize: 13, lineHeight: 1.7 }}>
-                  {spec.region === "cn" ? "已纳入当前生成工作区的产品能力。" : "Included in the current generated product surface."}
+                  {isCn ? "已纳入当前生成工作区的产品能力。" : "Included in the current generated product surface."}
                 </div>
               </div>
             ))}
@@ -5149,6 +5151,72 @@ function buildCodePlatformFeaturedBundles(spec: AppSpec) {
   ]
 }
 
+function getCodePlatformPlanLabel(planTier: PlanTier, region: Region) {
+  if (region === "cn") {
+    if (planTier === "elite") return "精英版"
+    if (planTier === "pro") return "专业版"
+    if (planTier === "builder") return "建造者版"
+    if (planTier === "starter") return "启动版"
+    return "免费版"
+  }
+
+  if (planTier === "elite") return "Elite"
+  if (planTier === "pro") return "Pro"
+  if (planTier === "builder") return "Builder"
+  if (planTier === "starter") return "Starter"
+  return "Free"
+}
+
+function buildCodePlatformElementSeeds(spec: AppSpec) {
+  const isCn = spec.region === "cn"
+  const seeds = [
+    {
+      routeId: "home",
+      elements: isCn ? ["入口 Hero", "项目列表", "交付摘要", "升级入口"] : ["Entry hero", "Project list", "Delivery summary", "Upgrade rail"],
+    },
+    {
+      routeId: "dashboard",
+      elements: isCn ? ["控制台头部", "指标矩阵", "访问策略卡", "交付轨道"] : ["Control-plane header", "Metric matrix", "Access policy card", "Delivery rail"],
+    },
+    {
+      routeId: "editor",
+      elements: isCn ? ["活动栏", "文件树", "标签栏", "预览摘要"] : ["Activity bar", "Explorer tree", "Tab strip", "Preview summary"],
+    },
+    {
+      routeId: "runs",
+      elements: isCn ? ["运行列表", "构建日志", "回退守卫", "发布检查"] : ["Run list", "Build logs", "Fallback guards", "Release checks"],
+    },
+    {
+      routeId: "templates",
+      elements: isCn ? ["模板筛选", "模板卡片", "详情面板", "生成入口"] : ["Template filters", "Template cards", "Detail panel", "Generate entry"],
+    },
+    {
+      routeId: "pricing",
+      elements: isCn ? ["套餐卡片", "能力对比表", "升级动作", "推荐说明"] : ["Plan cards", "Capability table", "Upgrade actions", "Fit narrative"],
+    },
+    {
+      routeId: "settings",
+      elements: isCn ? ["部署轨道", "数据库轨道", "权限策略", "发布通道"] : ["Deployment rail", "Database rail", "Access policy", "Publish lane"],
+    },
+  ] as Array<{ routeId: string; elements: string[] }>
+
+  if (spec.features.includes("analytics_page")) {
+    seeds.push({
+      routeId: "analytics",
+      elements: isCn ? ["趋势总览", "健康指标", "异常列表", "对比窗口"] : ["Trend overview", "Health metrics", "Incident list", "Comparison window"],
+    })
+  }
+
+  if (spec.features.includes("about_page")) {
+    seeds.push({
+      routeId: "about",
+      elements: isCn ? ["产品说明", "能力清单", "模块摘要", "交付边界"] : ["Product brief", "Capability list", "Module summary", "Delivery bounds"],
+    })
+  }
+
+  return seeds
+}
+
 function renderDashboardPage(spec: AppSpec) {
   if (spec.kind === "code_platform") {
     const isCn = spec.region === "cn"
@@ -5158,18 +5226,44 @@ function renderDashboardPage(spec: AppSpec) {
     const metrics = buildCodePlatformDashboardMetrics(spec)
     const activity = buildCodePlatformActivitySeeds(spec)
     const managementCards = buildCodePlatformManagementCards(spec)
+    const planLabel = getCodePlatformPlanLabel(spec.planTier, spec.region)
+    const elementSeeds = buildCodePlatformElementSeeds(spec)
     const sidebar = isCn
       ? ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
       : ["Overview", "Users", "Data", "Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API", "Settings"]
     return `// @ts-nocheck
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function DashboardPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
+  const defaultPlanName = ${JSON.stringify(planLabel)};
   const items = ${JSON.stringify(sidebar, null, 2)} as const;
+  const routeManifest = ${JSON.stringify(routeSeeds.map((route) => ({
+    id: route.id,
+    href: route.href,
+    filePath: route.filePath,
+    label: isCn ? route.labelCn : route.labelEn,
+    focus: isCn ? route.focusCn : route.focusEn,
+  })), null, 2)} as Array<{ id: string; href: string; filePath: string; label: string; focus: string }>;
+  const elementCatalog = ${JSON.stringify(elementSeeds, null, 2)} as Array<{ routeId: string; elements: string[] }>;
+  const sidebarControlIndex = {
+    Overview: 0,
+    Users: 1,
+    Data: 2,
+    Analytics: 2,
+    Domains: 1,
+    Integrations: 3,
+    Security: 1,
+    Agents: 0,
+    Automations: 2,
+    Logs: 2,
+    API: 3,
+    Settings: 1,
+  } as const;
   const metrics = ${JSON.stringify(metrics, null, 2)} as const;
   const controlCards = ${JSON.stringify(
     isCn
@@ -5218,6 +5312,19 @@ export default function DashboardPage() {
     loginPolicy: "hybrid",
     publishChannel: "preview",
   });
+  const [activeSidebar, setActiveSidebar] = useState(items[0]);
+  const [selectedActivity, setSelectedActivity] = useState(activity[0]?.title ?? "");
+  const [activeElementName, setActiveElementName] = useState("");
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateName: isCn ? "官网与下载站" : "Website + downloads",
+    selectedPlanName: defaultPlanName,
+    routeLabel: isCn ? "控制台总览" : "Dashboard overview",
+    filePath: "app/dashboard/page.tsx",
+    lastAction: isCn ? "查看控制台总览" : "Viewing dashboard overview",
+    lastChangedAt: isCn ? "未写入" : "No draft yet",
+    lastChangedFile: "app/dashboard/page.tsx",
+    readiness: "overview",
+  });
 
   useEffect(() => {
     try {
@@ -5228,170 +5335,414 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      setWorkspaceSession((current) => ({
+        ...current,
+        ...parsed,
+        selectedPlanName: parsed.selectedPlanName ?? parsed.planName ?? current.selectedPlanName,
+      }));
+      if (typeof parsed.dashboardFocus === "string") setActiveSidebar(parsed.dashboardFocus);
+      if (typeof parsed.dashboardActivity === "string") setSelectedActivity(parsed.dashboardActivity);
+      if (typeof parsed.elementName === "string") setActiveElementName(parsed.elementName);
+    } catch {}
+  }, []);
+
+  const activeControlCard = useMemo(() => {
+    const controlIndex = sidebarControlIndex[activeSidebar] ?? 0;
+    return controlCards[controlIndex] ?? controlCards[0];
+  }, [activeSidebar, controlCards, sidebarControlIndex]);
+
+  const activeLog = useMemo(() => {
+    return activity.find((item) => item.title === selectedActivity) ?? activity[0];
+  }, [selectedActivity]);
+
+  const linkedRoute = useMemo(() => {
+    return routeManifest.find((item) => item.id === (workspaceSession.routeId ?? "")) ?? routeManifest.find((item) => item.id === "dashboard") ?? routeManifest[0];
+  }, [routeManifest, workspaceSession.routeId]);
+
+  const dashboardElements =
+    elementCatalog.find((item) => item.routeId === "dashboard")?.elements ??
+    (isCn ? ["控制台头部", "指标矩阵", "访问策略卡"] : ["Control-plane header", "Metric matrix", "Access policy card"]);
+
+  const activeElement =
+    dashboardElements.find((item) => item === activeElementName) ??
+    dashboardElements[0] ??
+    (isCn ? "控制台头部" : "Control-plane header");
+
+  const workspaceContext = [
+    { label: isCn ? "当前模板" : "Current template", value: workspaceSession.selectedTemplateName },
+    { label: isCn ? "当前套餐" : "Current plan", value: workspaceSession.selectedPlanName || defaultPlanName },
+    { label: isCn ? "联动页面" : "Linked page", value: linkedRoute?.label ?? workspaceSession.routeLabel },
+    { label: isCn ? "最近写入文件" : "Last changed file", value: workspaceSession.lastChangedFile || workspaceSession.filePath },
+    { label: isCn ? "最近动作" : "Last action", value: workspaceSession.lastAction },
+    { label: isCn ? "最近写入" : "Last write", value: workspaceSession.lastChangedAt },
+  ];
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard", active: true },
+    { href: "/editor", label: "Code" },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs" },
+    { href: "/templates", label: isCn ? "模板库" : "Templates" },
+    { href: "/settings", label: isCn ? "设置" : "Settings" },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
+    ...(${spec.planTier === "elite" ? "true" : "false"} ? [{ href: "/reports", label: isCn ? "汇报" : "Reports" }, { href: "/team", label: isCn ? "团队" : "Team" }] : []),
+  ] as const;
+
+  useEffect(() => {
+    if (!activeElementName) setActiveElementName(dashboardElements[0] ?? "");
+  }, [activeElementName, dashboardElements]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          selectedPlanName: workspaceSession.selectedPlanName || defaultPlanName,
+          routeId: "dashboard",
+          routeLabel: isCn ? "控制台总览" : "Dashboard overview",
+          filePath: "app/dashboard/page.tsx",
+          dashboardFocus: activeSidebar,
+          dashboardActivity: activeLog?.title ?? selectedActivity,
+          elementName: activeElement,
+          lastChangedFile: workspaceSession.lastChangedFile || "app/dashboard/page.tsx",
+          readiness: workspaceSession.readiness || "overview",
+        })
+      );
+    } catch {}
+  }, [SESSION_KEY, activeElement, activeLog?.title, activeSidebar, defaultPlanName, isCn, selectedActivity, workspaceSession]);
+
+  const handleSidebarSelect = (item) => {
+    setActiveSidebar(item);
+    setWorkspaceSession((current) => ({
+      ...current,
+      lastAction: (isCn ? "控制台焦点切到 " : "Console focus moved to ") + item,
+    }));
+  };
+
+  const handleActivitySelect = (title) => {
+    setSelectedActivity(title);
+    setWorkspaceSession((current) => ({
+      ...current,
+      lastAction: (isCn ? "查看创作记录 " : "Opened creation log ") + title,
+    }));
+  };
+
+  const handleElementSelect = (element) => {
+    setActiveElementName(element);
+    setWorkspaceSession((current) => ({
+      ...current,
+      lastAction: (isCn ? "聚焦控制元素 " : "Focused control element ") + element,
+    }));
+  };
+
   return (
     <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#11131a 0%,#171923 100%)", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 1460, margin: "0 auto", borderRadius: 26, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", padding: "18px 22px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={{ width: 42, height: 42, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+      <div style={{ maxWidth: 1500, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.08)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 28%), #17181f", padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "中国版 AI 代码编辑平台总览" : "China-ready AI coding overview"}</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {[
-              { href: "/", label: isCn ? "总览" : "Overview", active: true },
-              { href: "/editor", label: isCn ? "编辑器" : "Editor" },
-              { href: "/runs", label: isCn ? "运行" : "Runs" },
-              { href: "/templates", label: isCn ? "模板库" : "Templates" },
-              { href: "/settings", label: isCn ? "设置" : "Settings" },
-              { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
-            ].map((item) => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                {item.label}
-              </Link>
-            ))}
-            <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1c1e29", padding: "10px 16px", minWidth: 220, color: "rgba(255,255,255,0.38)", fontSize: 13 }}>
-              {isCn ? "搜索项目、运行、模板..." : "Search projects, runs, templates..."}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)" }}>
-          <aside style={{ borderRight: "1px solid rgba(255,255,255,0.08)", padding: 18, display: "grid", gap: 10, alignContent: "start", background: "#14151c" }}>
-            <div style={{ borderRadius: 14, background: "#1c1e29", padding: "12px 14px", color: "rgba(255,255,255,0.42)" }}>{isCn ? "搜索..." : "Search..."}</div>
-            {items.map((item, index) => (
-              <div key={item} style={{ borderRadius: 14, background: index === 0 ? "rgba(124,58,237,0.22)" : "transparent", padding: "12px 14px", fontWeight: index === 0 ? 700 : 500, color: index === 0 ? "#f8fafc" : "rgba(255,255,255,0.68)" }}>
-                {item}
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(124,58,237,0.2)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "控制台工作区" : "Control-plane workspace"}
               </div>
-            ))}
-            <div style={{ marginTop: 10, borderRadius: 18, background: "#1b1c24", border: "1px solid rgba(255,255,255,0.06)", padding: 16 }}>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)" }}>{isCn ? "控制台焦点" : "Console focus"}</div>
-              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                {[
-                  isCn ? "Open App / Share App / Open Files / Open Docs" : "Open App / Share App / Open Files / Open Docs",
-                  isCn ? "用户邀请、权限、域名、Agent 自动化放到一个控制台里" : "Invites, permissions, domains, and agent automation in one console",
-                  isCn ? "更像产品后台，而不是生成摘要卡片" : "Feel like a product console, not a generation summary",
-                ].map((item) => (
-                  <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-                    {item}
-                  </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 30, fontWeight: 900 }}>
+                {isCn ? "先把老板能看到的主工作台做得更像真实产品" : "Make the main workspace feel like a real product before going deeper"}
+              </h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                {isCn ? "这一页现在优先承接 Preview / Dashboard / Code 的主工作流，把高频入口放前面，低频控制项压到下面，方便直接上线给老板看。" : "This page now prioritizes the Preview / Dashboard / Code workflow, keeps high-frequency entry points first, and pushes low-frequency controls lower for a cleaner demo-ready surface."}
+              </p>
+            </div>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
                 ))}
               </div>
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "运行、模板、设置、升级已收进 Overview，避免打散主工作区。" : "Runs, templates, settings, and pricing are moved into Overview to keep the main workspace focused."}
+              </div>
             </div>
-          </aside>
-          <section style={{ padding: 24, display: "grid", gap: 18, background: "#17181f" }}>
-            <section style={{ borderRadius: 24, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 30%), #1b1827", padding: 24 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "100px 1fr auto", gap: 18, alignItems: "center" }}>
-                <div style={{ width: 100, height: 100, borderRadius: 24, background: "#27272a", display: "grid", placeItems: "center", color: "#a855f7", fontSize: 40 }}>▲</div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>{${JSON.stringify(brand)}}</h1>
-                    <span style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(124,58,237,0.16)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
-                      ${spec.planTier === "elite" ? (isCn ? "精英版" : "Elite") : spec.planTier === "pro" ? (isCn ? "专业版" : "Pro") : isCn ? "免费版" : "Free"}
-                    </span>
-                  </div>
-                  <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.62)", maxWidth: 760, lineHeight: 1.7 }}>
-                    {isCn ? "面向中国研发团队的 AI 代码编辑平台，深度集成代码生成、项目交付、宣传资产输出与销售闭环联动。" : "AI coding workspace for delivery-focused engineering teams with generation, delivery, promo assets, and sales linkage."}
-                  </p>
-                  <div style={{ marginTop: 8, color: "rgba(255,255,255,0.42)" }}>{isCn ? "创建于 14 分钟前" : "Created 14 minutes ago"}</div>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+            {metrics.slice(0, 4).map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, fontSize: 22, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.42)", fontSize: 12 }}>{item.delta}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div style={{ borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>{workspaceSession.selectedPlanName || defaultPlanName}</div>
+            </div>
+            <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>
+              {(isCn ? "当前联动页面: " : "Linked page: ") + (linkedRoute?.label ?? workspaceSession.routeLabel)}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "40px 320px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
+              {[
+                { label: items[0], icon: "◎" },
+                { label: items[1], icon: "◪" },
+                { label: items[2], icon: "▦" },
+                { label: items[items.length - 1], icon: "⚙" },
+              ].map((item) => (
+                <button key={item.label} type="button" title={item.label} onClick={() => handleSidebarSelect(item.label)} style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: activeSidebar === item.label ? "rgba(124,58,237,0.22)" : "transparent", color: activeSidebar === item.label ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13, cursor: "pointer" }}>
+                  {item.icon}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{isCn ? "当前对话主题" : "Current thread"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {[
+                    isCn ? "先把 Preview / Dashboard / Code 这条主工作流做顺。" : "Keep the Preview / Dashboard / Code flow clean and obvious first.",
+                    isCn ? "高频入口放前面，低频功能沉到底部。" : "Keep high-frequency entry points up front and low-frequency controls lower.",
+                    isCn ? "这一页优先给老板看产品感，不先讨论底层架构。" : "This surface is optimized for stakeholder review before deeper architecture work.",
+                  ].map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
                 </div>
-                <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
-                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>{isCn ? "进入编辑器" : "Open editor"}</Link>
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <Link href="/runs" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "查看运行链路" : "Open runs"}</Link>
-                    <Link href="/templates" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>{isCn ? "打开模板轨道" : "Open templates"}</Link>
-                    <Link href="/pricing" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(124,58,237,0.35)", color: "#d8b4fe", fontWeight: 700 }}>{isCn ? "打开套餐与升级" : "View plans"}</Link>
-                  </div>
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 10, background: "#8b5cf6", color: "#fff", padding: "10px 12px", fontWeight: 700, fontSize: 12 }}>
+                    {isCn ? "打开 Code" : "Open Code"}
+                  </Link>
+                  <Link href="/runs" style={{ textDecoration: "none", borderRadius: 10, background: "#232533", color: "#f8fafc", padding: "10px 12px", fontWeight: 700, fontSize: 12 }}>
+                    {isCn ? "打开运行" : "Open runs"}
+                  </Link>
                 </div>
               </div>
-            </section>
 
-            <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-              {metrics.map((item) => (
-                <div key={item.label} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 20 }}>
-                  <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 13 }}>{item.label}</div>
-                  <div style={{ marginTop: 12, fontSize: 30, fontWeight: 900, color: item.tone }}>{item.value}</div>
-                  <div style={{ marginTop: 8, color: "rgba(255,255,255,0.4)", fontSize: 12 }}>{item.delta}</div>
-                </div>
-              ))}
-            </section>
-
-            <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "项目概览" : "Project overview"}</div>
-                <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                  {workspaceModules.map((item) => (
-                    <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px" }}>
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前工作区联动" : "Current workspace linkage"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {workspaceContext.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
                       <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
                       <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
                     </div>
                   ))}
                 </div>
               </div>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前环境策略" : "Current environment profile"}</div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "最近创作记录" : "Recent creation log"}</div>
                 <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {[
-                    { label: isCn ? "部署目标" : "Deployment", value: workspaceConfig.deploymentTarget },
-                    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
-                    { label: isCn ? "可见性" : "Visibility", value: workspaceConfig.visibility },
-                    { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel },
-                    { label: isCn ? "登录策略" : "Login policy", value: workspaceConfig.loginPolicy },
-                  ].map((item) => (
-                    <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
-                      <div style={{ fontWeight: 800 }}>{item.value}</div>
-                    </div>
+                  {activity.slice(0, 4).map((item, index) => (
+                    <button key={item.title} type="button" onClick={() => handleActivitySelect(item.title)} style={{ borderRadius: 12, border: "none", cursor: "pointer", padding: "10px 12px", background: activeLog.title === item.title || index === 0 ? "rgba(124,58,237,0.18)" : "#232533", textAlign: "left" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 700, color: "#f8fafc" }}>{item.title}</div>
+                        <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{item.status}</div>
+                      </div>
+                      <div style={{ marginTop: 6, color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{item.meta}</div>
+                    </button>
                   ))}
                 </div>
               </div>
-            </section>
+            </div>
 
-            <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "主操作轨道" : "Primary operation rails"}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                  {controlCards.map((item, index) => (
-                    <Link key={item.title} href={item.href} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: "#f8fafc", display: "block" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                        <div style={{ fontWeight: 800 }}>{item.title}</div>
-                        <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.72)", fontSize: 11 }}>{item.badge}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", minHeight: 0 }}>
+              <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
+                <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "Dashboard" : "Dashboard"}</div>
+                      <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "把工作台首页收成更清晰的控制面" : "Turn the workspace home into a cleaner control surface"}</div>
+                    </div>
+                    <Link href="/editor" style={{ textDecoration: "none", borderRadius: 12, background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800 }}>
+                      {isCn ? "进入 Code" : "Open Code"}
+                    </Link>
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "主工作区入口" : "Primary workspace entry"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                      {controlCards.map((item, index) => (
+                        <Link key={item.title} href={item.href} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: activeControlCard.title === item.title || index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: "#f8fafc", display: "block" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                            <div style={{ fontWeight: 800 }}>{item.title}</div>
+                            <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.72)", fontSize: 11 }}>{item.badge}</div>
+                          </div>
+                          <div style={{ marginTop: 6, color: "rgba(255,255,255,0.54)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前控制焦点" : "Current control focus"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {[
+                        { label: isCn ? "当前侧栏" : "Sidebar focus", value: activeSidebar },
+                        { label: isCn ? "当前动作" : "Primary action", value: activeControlCard.title },
+                        { label: isCn ? "联动页面" : "Linked route", value: linkedRoute?.label ?? workspaceSession.routeLabel },
+                        { label: isCn ? "当前元素" : "Active element", value: activeElement },
+                      ].map((item) => (
+                        <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                          <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                          <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {dashboardElements.map((item) => (
+                          <button key={item} type="button" onClick={() => handleElementSelect(item)} style={{ borderRadius: 999, border: "none", cursor: "pointer", padding: "6px 10px", background: item === activeElement ? "rgba(124,58,237,0.18)" : "#232533", color: item === activeElement ? "#e9d5ff" : "rgba(255,255,255,0.68)", fontSize: 11, fontWeight: 700 }}>
+                            {item}
+                          </button>
+                        ))}
                       </div>
-                      <div style={{ marginTop: 6, color: "rgba(255,255,255,0.54)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "项目概览" : "Project overview"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
+                      {workspaceModules.map((item) => (
+                        <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px" }}>
+                          <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                          <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前环境策略" : "Current environment profile"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {[
+                        { label: isCn ? "部署目标" : "Deployment", value: workspaceConfig.deploymentTarget },
+                        { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
+                        { label: isCn ? "可见性" : "Visibility", value: workspaceConfig.visibility },
+                        { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel },
+                        { label: isCn ? "登录策略" : "Login policy", value: workspaceConfig.loginPolicy },
+                      ].map((item) => (
+                        <div key={item.label} style={{ borderRadius: 14, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                          <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                          <div style={{ fontWeight: 800 }}>{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                    <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                      {isCn ? "Preview、Dashboard 与 Code 保持一条清晰主线" : "Preview, Dashboard, and Code stay on one clear thread"}
+                    </div>
+                  </div>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {workspaceSurfaceLinks.map((item) => (
+                    <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.68)", fontSize: 12, fontWeight: 700 }}>
+                      {item.label}
                     </Link>
                   ))}
                 </div>
-              </div>
-              <div style={{ display: "grid", gap: 16 }}>
-                <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "管理面板" : "Management panel"}</div>
-                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                    {managementCards.map((item, index) => (
-                      <div key={item.title} style={{ textDecoration: "none", borderRadius: 12, padding: "12px 14px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, display: "block" }}>
-                        <div style={{ fontWeight: 800 }}>{item.title}</div>
-                        <div style={{ marginTop: 6, lineHeight: 1.7 }}>{item.value}</div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspacePanelLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspaceContext.slice(0, 4).map((item) => (
+                      <div key={item.label} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{item.label}</div>
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 1.7 }}>{item.value}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-                <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "创作记录" : "Creation log"}</div>
-                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                    {activity.map((item, index) => (
-                      <div key={item.title} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                          <div style={{ fontWeight: 700 }}>{item.title}</div>
-                          <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{item.status}</div>
+
+                <div style={{ borderRadius: 14, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.22)", padding: 14 }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "老板会先看到什么" : "What stakeholders see first"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {[
+                      isCn ? "1. 顶部 Preview / Dashboard / Code 主入口" : "1. Top-level Preview / Dashboard / Code entry",
+                      isCn ? "2. 左侧 AI 共创区与中间主工作区" : "2. Left AI panel with the main workspace to the right",
+                      isCn ? "3. 低频功能和后续项已经下沉到底部" : "3. Lower-priority and later features have been pushed down",
+                    ].map((item, index) => (
+                      <div key={item} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4, paddingTop: 12, display: "grid", gap: 12 }}>
+                  <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                    {isCn ? "后续再看" : "Later"}
+                  </div>
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "更多控制项" : "More controls"}</div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {items.slice(4).map((item) => (
+                        <button key={item} type="button" onClick={() => handleSidebarSelect(item)} style={{ borderRadius: 10, border: "none", cursor: "pointer", textAlign: "left", background: activeSidebar === item ? "rgba(124,58,237,0.18)" : "#232533", padding: "8px 10px", color: activeSidebar === item ? "#e9d5ff" : "rgba(255,255,255,0.68)", fontSize: 12, fontWeight: 700 }}>
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "管理面板" : "Management panel"}</div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {managementCards.map((item, index) => (
+                        <div key={item.title} style={{ borderRadius: 10, padding: "8px 10px", background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                          <div style={{ fontWeight: 800 }}>{item.title}</div>
+                          <div style={{ marginTop: 4 }}>{item.value}</div>
                         </div>
-                        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{item.meta}</div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </section>
-          </section>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -5533,6 +5884,8 @@ function renderCodeEditorPage(spec: AppSpec) {
   const fileGroups = buildCodePlatformEditorFileGroups(spec)
   const templateTracks = buildCodePlatformTemplateSeeds(spec)
   const routeSeeds = buildCodePlatformRoutes(spec)
+  const planLabel = getCodePlatformPlanLabel(spec.planTier, spec.region)
+  const elementSeeds = buildCodePlatformElementSeeds(spec)
   return `// @ts-nocheck
 "use client";
 import { useEffect, useMemo, useState } from "react";
@@ -5541,6 +5894,9 @@ import Link from "next/link";
 export default function EditorPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
+  const DRAFT_STORAGE_KEY = "mornstack-generated-workspace-drafts";
+  const defaultPlanName = ${JSON.stringify(planLabel)};
   type WorkbenchFile = {
     id: string;
     name: string;
@@ -5587,6 +5943,10 @@ export default function EditorPage() {
     tags: string[];
     badge: string;
     color: string;
+  }>;
+  const elementCatalog = ${JSON.stringify(elementSeeds, null, 2)} as Array<{
+    routeId: string;
+    elements: string[];
   }>;
   const workspaceRail = isCn
     ? [
@@ -5645,9 +6005,10 @@ export default function EditorPage() {
   const routeManifest = ${JSON.stringify(routeSeeds.map((route) => ({
     id: route.id,
     href: route.href,
+    filePath: route.filePath,
     label: isCn ? route.labelCn : route.labelEn,
     focus: isCn ? route.focusCn : route.focusEn,
-  })), null, 2)} as Array<{ id: string; href: string; label: string; focus: string }>;
+  })), null, 2)} as Array<{ id: string; href: string; filePath: string; label: string; focus: string }>;
   const allFiles = fileGroups.flatMap((group) => group.files);
   const [selectedFile, setSelectedFile] = useState(allFiles[0].id);
   const [openTabs, setOpenTabs] = useState(allFiles.slice(0, 3).map((file) => file.id));
@@ -5657,6 +6018,9 @@ export default function EditorPage() {
   const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal");
   const [runtimeState, setRuntimeState] = useState<"idle" | "running" | "failed" | "ready">("ready");
   const [activeTemplate, setActiveTemplate] = useState(templates[0]);
+  const [activeRouteId, setActiveRouteId] = useState(routeManifest[0]?.id ?? "dashboard");
+  const [activeSymbolName, setActiveSymbolName] = useState("");
+  const [activeElementName, setActiveElementName] = useState("");
   const [aiInput, setAiInput] = useState(isCn ? "继续把文件树、编辑器、终端和预览做成真正可用的 IDE。" : "Keep turning the file tree, editor, terminal, and preview into a truly usable IDE.");
   const [saveNote, setSaveNote] = useState(isCn ? "未保存变更" : "Unsaved changes");
   const [assistantTrail, setAssistantTrail] = useState(assistantHistory);
@@ -5670,9 +6034,28 @@ export default function EditorPage() {
     visibility: "team",
     publishChannel: "preview",
   });
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateId: templates[0]?.id ?? "",
+    selectedTemplateName: templates[0]?.name ?? "",
+    selectedPlanName: defaultPlanName,
+    lastAction: isCn ? "等待下一次 AI 修改" : "Waiting for the next AI change",
+    lastIntent: "",
+    lastChangedFile: allFiles[0]?.fullPath ?? "",
+    lastChangedAt: isCn ? "未写入" : "No draft saved yet",
+    readiness: "draft",
+  });
   const [drafts, setDrafts] = useState(() =>
     Object.fromEntries(allFiles.map((file) => [file.id, file.body.replace(/morncursor/g, ${JSON.stringify(brand)})]))
   );
+  const formatSessionTime = () => {
+    const now = new Date();
+    return isCn
+      ? now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+      : now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  };
+  const updateWorkspaceSession = (patch) => {
+    setWorkspaceSession((current) => ({ ...current, ...patch }));
+  };
 
   const currentFile = allFiles.find((file) => file.id === selectedFile) ?? allFiles[0];
   const currentDraft = drafts[currentFile.id] ?? "";
@@ -5680,6 +6063,7 @@ export default function EditorPage() {
   const dirtyFileIds = allFiles
     .filter((file) => drafts[file.id] !== file.body.replace(/morncursor/g, ${JSON.stringify(brand)}))
     .map((file) => file.id);
+  const currentSymbols = currentFile.symbols.slice(0, 4);
 
   const visibleGroups = fileGroups
     .map((group) => ({
@@ -5696,6 +6080,106 @@ export default function EditorPage() {
     .map((id) => allFiles.find((file) => file.id === id))
     .filter(Boolean);
   const currentGroup = fileGroups.find((group) => group.files.some((file) => file.id === selectedFile)) ?? fileGroups[0];
+  const activeRoute = useMemo(() => {
+    return routeManifest.find((item) => item.id === activeRouteId) ?? routeManifest[0];
+  }, [activeRouteId, routeManifest]);
+  const routeElements = useMemo(() => {
+    return (
+      elementCatalog.find((item) => item.routeId === (activeRoute?.id ?? ""))?.elements ??
+      (isCn ? ["主容器", "动作条", "状态摘要"] : ["Primary surface", "Action bar", "Status summary"])
+    );
+  }, [activeRoute?.id, isCn]);
+  const routeFocusedFile = useMemo(() => {
+    return allFiles.find((file) => file.fullPath === activeRoute?.filePath) ?? currentFile;
+  }, [activeRoute, allFiles, currentFile]);
+  const aiTargetFile = routeFocusedFile ?? currentFile;
+  const aiTargetSymbols = aiTargetFile.symbols.slice(0, 4);
+  const activeSymbol =
+    aiTargetSymbols.find((symbol) => symbol === activeSymbolName) ??
+    aiTargetSymbols[0] ??
+    currentSymbols[0] ??
+    (isCn ? "主模块" : "Primary module");
+  const activeElement =
+    routeElements.find((item) => item === activeElementName) ??
+    routeElements[0] ??
+    (isCn ? "主容器" : "Primary surface");
+  const aiContextChips = [
+    (isCn ? "页面" : "Page") + ": " + (activeRoute?.label ?? routeManifest[0]?.label ?? ""),
+    (isCn ? "文件" : "File") + ": " + aiTargetFile.name,
+    (isCn ? "模块" : "Module") + ": " + activeSymbol,
+    (isCn ? "元素" : "Element") + ": " + activeElement,
+    (isCn ? "模板" : "Template") + ": " + activeTemplate.name,
+    (isCn ? "套餐" : "Plan") + ": " + (workspaceSession.selectedPlanName || defaultPlanName),
+  ];
+  const contextBundle = [
+    { label: isCn ? "页面" : "Page", value: activeRoute?.label ?? routeManifest[0]?.label ?? "" },
+    { label: isCn ? "文件" : "File", value: aiTargetFile.fullPath },
+    { label: isCn ? "模块" : "Module", value: activeSymbol },
+    { label: isCn ? "元素" : "Element", value: activeElement },
+    { label: isCn ? "模板" : "Template", value: activeTemplate.name },
+    { label: isCn ? "套餐" : "Plan", value: workspaceSession.selectedPlanName || defaultPlanName },
+    { label: isCn ? "最近写入" : "Last write", value: workspaceSession.lastChangedAt },
+  ];
+  const changePlan = useMemo(
+    () => [
+      {
+        title: isCn ? "当前作用对象" : "Current target",
+        value: (activeRoute?.label ?? routeManifest[0]?.label ?? "") + " / " + activeSymbol + " / " + activeElement,
+      },
+      {
+        title: isCn ? "预览变化" : "Preview effect",
+        value: isCn
+          ? "预览摘要、运行日志与当前文件草稿会一起刷新"
+          : "Preview summary, run logs, and the target draft will refresh together",
+      },
+      {
+        title: isCn ? "交付轨道" : "Delivery rail",
+        value:
+          activeTemplate.name +
+          " · " +
+          (workspaceSession.selectedPlanName || defaultPlanName) +
+          " · " +
+          workspaceConfig.publishChannel,
+      },
+      {
+        title: isCn ? "下一步守卫" : "Next guard",
+        value:
+          activeMode === aiModes[1]
+            ? isCn
+              ? "回到 Runs 检查 preview guard、fallback 和错误恢复"
+              : "Go back to Runs to verify preview guards, fallback, and recovery"
+            : isCn
+              ? "保存草稿后继续做 build acceptance 和交付检查"
+              : "Save the draft, then continue with build acceptance and delivery checks",
+      },
+    ],
+    [
+      activeElement,
+      activeMode,
+      activeRoute?.label,
+      activeSymbol,
+      activeTemplate.name,
+      aiModes,
+      defaultPlanName,
+      isCn,
+      routeManifest,
+      workspaceConfig.publishChannel,
+      workspaceSession.selectedPlanName,
+    ]
+  );
+  const promptPresets = isCn
+    ? [
+        "解释当前页面的数据流和主要职责",
+        "修复当前模块的预览与运行问题",
+        "为当前页面生成一个更完整的控制面板",
+        "重构当前文件，让模块边界更清楚",
+      ]
+    : [
+        "Explain the current page data flow and responsibilities",
+        "Fix preview and runtime issues in this module",
+        "Generate a richer control panel for this page",
+        "Refactor this file into cleaner module boundaries",
+      ];
 
   const commandResults = useMemo(() => {
     const query = commandQuery.trim().toLowerCase();
@@ -5719,13 +6203,32 @@ export default function EditorPage() {
   }, [selectedFile, isCn]);
 
   useEffect(() => {
+    setActiveSymbolName(currentSymbols[0] ?? "");
+  }, [currentFile.id, currentSymbols]);
+
+  useEffect(() => {
+    setActiveElementName(routeElements[0] ?? "");
+  }, [activeRoute?.id, routeElements]);
+
+  useEffect(() => {
     setPreviewRailNotes((current) => [
       (isCn ? "当前文件: " : "Current file: ") + currentFile.fullPath,
       (isCn ? "当前 AI 模式: " : "Current AI mode: ") + activeMode,
       (isCn ? "当前模板轨道: " : "Current template rail: ") + activeTemplate.name,
+      (isCn ? "当前元素: " : "Current element: ") + activeElement,
       ...current.filter((item, index) => index < 2),
     ].slice(0, 4));
-  }, [activeMode, activeTemplate.name, currentFile.fullPath, isCn]);
+  }, [activeElement, activeMode, activeTemplate.name, currentFile.fullPath, isCn]);
+
+  useEffect(() => {
+    const inferredRoute =
+      routeManifest.find((item) =>
+        item.id === "dashboard"
+          ? /dashboard/.test(currentFile.fullPath)
+          : currentFile.fullPath.toLowerCase().includes("/" + item.id.toLowerCase())
+      ) ?? routeManifest[0];
+    if (inferredRoute?.id) setActiveRouteId(inferredRoute.id);
+  }, [currentFile.fullPath, routeManifest]);
 
   useEffect(() => {
     try {
@@ -5736,10 +6239,110 @@ export default function EditorPage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setDrafts((current) => ({ ...current, ...parsed }));
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        if (parsed.selectedTemplateId || parsed.selectedTemplateName) {
+          const savedTemplate =
+            templates.find((item) => item.id === parsed.selectedTemplateId) ??
+            templates.find((item) => item.name === parsed.selectedTemplateName);
+          if (savedTemplate) setActiveTemplate(savedTemplate);
+        }
+        if (parsed.routeId) setActiveRouteId(parsed.routeId);
+        if (parsed.fileId) {
+          setSelectedFile(parsed.fileId);
+          setOpenTabs((current) => (current.includes(parsed.fileId) ? current : [...current, parsed.fileId].slice(-6)));
+        }
+        if (parsed.symbolName) setActiveSymbolName(parsed.symbolName);
+        if (parsed.elementName) setActiveElementName(parsed.elementName);
+        setWorkspaceSession((current) => ({
+          ...current,
+          ...parsed,
+          selectedPlanName: parsed.selectedPlanName ?? parsed.planName ?? current.selectedPlanName,
+        }));
+      }
+    } catch {}
+  }, [templates]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(drafts));
+    } catch {}
+  }, [drafts]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          selectedTemplateId: activeTemplate.id,
+          selectedTemplateName: activeTemplate.name,
+          selectedPlanName: workspaceSession.selectedPlanName || defaultPlanName,
+          routeId: activeRoute?.id ?? routeManifest[0]?.id ?? "editor",
+          routeLabel: activeRoute?.label ?? routeManifest[0]?.label ?? "",
+          fileId: aiTargetFile.id,
+          filePath: aiTargetFile.fullPath,
+          symbolName: activeSymbol,
+          elementName: activeElement,
+          publishChannel: workspaceConfig.publishChannel,
+          visibility: workspaceConfig.visibility,
+        })
+      );
+    } catch {}
+  }, [
+    activeElement,
+    activeRoute?.id,
+    activeRoute?.label,
+    activeSymbol,
+    activeTemplate.id,
+    activeTemplate.name,
+    aiTargetFile.fullPath,
+    aiTargetFile.id,
+    defaultPlanName,
+    routeManifest,
+    workspaceConfig.publishChannel,
+    workspaceConfig.visibility,
+    workspaceSession,
+  ]);
+
   const openFile = (id) => {
     setActiveRail(activityBarItems[0].label);
     setSelectedFile(id);
     setOpenTabs((current) => (current.includes(id) ? current : [...current, id].slice(-6)));
+    const nextFile = allFiles.find((file) => file.id === id);
+    if (nextFile) {
+      updateWorkspaceSession({
+        lastAction: (isCn ? "切换文件到 " : "Focused file ") + nextFile.fullPath,
+        lastChangedFile: nextFile.fullPath,
+      });
+    }
+  };
+
+  const focusRoute = (routeId) => {
+    setActiveRouteId(routeId);
+    const routeFile = allFiles.find((file) => file.id === routeId);
+    if (routeFile) {
+      openFile(routeFile.id);
+      setActiveSymbolName(routeFile.symbols[0] ?? "");
+      updateWorkspaceSession({
+        lastAction: (isCn ? "切到页面上下文 " : "Switched route context to ") + (routeManifest.find((item) => item.id === routeId)?.label ?? routeId),
+      });
+    }
   };
 
   const toggleGroup = (groupId) => {
@@ -5759,12 +6362,23 @@ export default function EditorPage() {
   const runCommand = (command) => {
     if (command.type === "file" || command.type === "symbol") {
       openFile(command.target);
-      if (command.type === "symbol") setActiveMode(aiModes[0]);
+      if (command.type === "symbol") {
+        setActiveMode(aiModes[0]);
+        const symbolFile = allFiles.find((file) => file.id === command.target);
+        setActiveSymbolName(symbolFile?.symbols[0] ?? "WorkspaceShell");
+      }
+      updateWorkspaceSession({
+        lastAction: (isCn ? "执行命令 " : "Ran command ") + command.label,
+      });
       return;
     }
     setActiveRail(activityBarItems[3].label);
     setRuntimeState("running");
     setTerminalTab("terminal");
+    updateWorkspaceSession({
+      lastAction: isCn ? "触发预览运行链路" : "Triggered preview runtime flow",
+      readiness: "running",
+    });
   };
 
   const saveCurrentFile = () => {
@@ -5774,6 +6388,13 @@ export default function EditorPage() {
     }));
     setRuntimeState("ready");
     setSaveNote(isCn ? "刚刚已保存到工作区草稿" : "Saved to workspace draft just now");
+    updateWorkspaceSession({
+      lastAction: isCn ? "保存当前文件草稿" : "Saved current file draft",
+      lastIntent: aiInput,
+      lastChangedFile: currentFile.fullPath,
+      lastChangedAt: formatSessionTime(),
+      readiness: "draft_saved",
+    });
   };
 
   const injectTemplate = (template) => {
@@ -5799,48 +6420,81 @@ export default function EditorPage() {
       (isCn ? "AI：已切换模板轨道到 " : "AI: switched template rail to ") + template.name,
       ...current,
     ].slice(0, 6));
+    updateWorkspaceSession({
+      selectedTemplateId: template.id,
+      selectedTemplateName: template.name,
+      lastAction: (isCn ? "模板轨道切换到 " : "Template rail switched to ") + template.name,
+      lastIntent: isCn ? "继续扩展当前模板方向" : "Continue expanding the selected template direction",
+      lastChangedFile: allFiles.find((file) => file.id === template.focus)?.fullPath ?? template.focus,
+      lastChangedAt: formatSessionTime(),
+      readiness: "template_sync",
+    });
   };
 
   const applyAiAction = (mode) => {
+    const targetFile = aiTargetFile;
+    const targetSymbol = activeSymbol;
     const tag =
       mode === aiModes[0]
         ? isCn
-          ? "// Explain: 当前文件职责、边界与后续拆分建议"
-          : "// Explain: responsibilities, boundaries, and next split suggestions"
+          ? "// Explain: " + (activeRoute?.label ?? "当前页面") + " / " + targetSymbol + " 的职责、边界与后续拆分建议"
+          : "// Explain: responsibilities, boundaries, and next split suggestions for " + (activeRoute?.label ?? "current page") + " / " + targetSymbol
         : mode === aiModes[1]
           ? isCn
-            ? "// Fix: 已补运行守卫、错误提示与恢复路径"
-            : "// Fix: runtime guards, error handling, and recovery path added"
+            ? "// Fix: 已补 " + (activeRoute?.label ?? "当前页面") + " 的运行守卫、错误提示与恢复路径"
+            : "// Fix: runtime guards, error handling, and recovery path added for " + (activeRoute?.label ?? "current page")
           : mode === aiModes[2]
             ? isCn
-              ? "// Generate: 已补模块骨架、交互钩子与状态轨道"
-              : "// Generate: module scaffold, interaction hooks, and state rails added"
+              ? "// Generate: 已为 " + targetSymbol + " 补模块骨架、交互钩子与状态轨道"
+              : "// Generate: module scaffold, interaction hooks, and state rails added for " + targetSymbol
             : isCn
-              ? "// Refactor: 已整理 explorer、editor、assistant 的边界"
-              : "// Refactor: explorer, editor, and assistant boundaries reorganized";
+              ? "// Refactor: 已整理 " + targetFile.name + " 与 " + targetSymbol + " 的边界"
+              : "// Refactor: boundaries reorganized for " + targetFile.name + " / " + targetSymbol;
 
     setActiveMode(mode);
     setActiveRail(activityBarItems[4].label);
     setRuntimeState(mode === aiModes[1] ? "running" : "ready");
     setTerminalTab(mode === aiModes[1] ? "problems" : "output");
+    openFile(targetFile.id);
     setDrafts((current) => ({
       ...current,
-      [currentFile.id]: current[currentFile.id].includes(tag)
-        ? current[currentFile.id]
-        : current[currentFile.id] + "\\n\\n" + tag,
+      [targetFile.id]: current[targetFile.id].includes(tag)
+        ? current[targetFile.id]
+        : current[targetFile.id] +
+          "\\n\\n" +
+          tag +
+          "\\n" +
+          (isCn
+            ? "// Intent: " + aiInput
+            : "// Intent: " + aiInput),
     }));
-    setSaveNote(isCn ? "AI 已写入当前文件草稿" : "AI wrote changes into the current draft");
+    setSaveNote(isCn ? "AI 已写入目标文件草稿" : "AI wrote changes into the target draft");
     setPreviewRailNotes([
-      (isCn ? "页面更新: " : "Updated view: ") + currentFile.name,
+      (isCn ? "页面更新: " : "Updated view: ") + (activeRoute?.label ?? currentFile.name),
       (isCn ? "当前动作: " : "Current action: ") + mode,
-      isCn ? "Preview 摘要已根据当前文件刷新" : "Preview summary refreshed for the current file",
+      (isCn ? "当前模块: " : "Current module: ") + targetSymbol,
       (isCn ? "模板轨道: " : "Template rail: ") + activeTemplate.name,
     ]);
     setAssistantTrail((current) => [
-      (isCn ? "AI：" : "AI: ") + mode + (isCn ? " 已作用到 " : " applied to ") + currentFile.fullPath,
+      (isCn ? "AI：" : "AI: ") + mode + (isCn ? " 已作用到 " : " applied to ") + targetFile.fullPath + " / " + targetSymbol,
       (isCn ? "用户：" : "User: ") + aiInput,
       ...current,
     ].slice(0, 6));
+    updateWorkspaceSession({
+      selectedTemplateId: activeTemplate.id,
+      selectedTemplateName: activeTemplate.name,
+      lastAction:
+        (isCn ? "AI " : "AI ") +
+        mode +
+        (isCn ? " 已写入 " : " updated ") +
+        targetFile.fullPath +
+        " / " +
+        targetSymbol,
+      lastIntent: aiInput,
+      lastChangedFile: targetFile.fullPath,
+      lastChangedAt: formatSessionTime(),
+      readiness: mode === aiModes[1] ? "running_fix" : "draft_updated",
+    });
   };
 
   const terminalLogs = {
@@ -5925,6 +6579,23 @@ export default function EditorPage() {
     null,
     2
   )} as const;
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/editor", label: "Code", active: true },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs" },
+    { href: "/templates", label: isCn ? "模板库" : "Templates" },
+    { href: "/settings", label: isCn ? "设置" : "Settings" },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
+    ...(${spec.planTier === "elite" ? "true" : "false"}
+      ? [
+          { href: "/reports", label: isCn ? "汇报" : "Reports" },
+          { href: "/team", label: isCn ? "团队" : "Team" },
+        ]
+      : []),
+  ] as const;
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
@@ -5968,29 +6639,21 @@ export default function EditorPage() {
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
               <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              {[
-                { href: "/", label: isCn ? "总览" : "Overview" },
-                { href: "/editor", label: isCn ? "编辑器" : "Editor", active: true },
-                { href: "/runs", label: isCn ? "运行" : "Runs" },
-                { href: "/templates", label: isCn ? "模板库" : "Templates" },
-                { href: "/settings", label: isCn ? "设置" : "Settings" },
-                { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
-                ...(${spec.planTier === "elite" ? "true" : "false"}
-                  ? [
-                      { href: "/reports", label: isCn ? "汇报" : "Reports" },
-                      { href: "/team", label: isCn ? "团队" : "Team" },
-                    ]
-                  : []),
-              ].map((item) => (
-                <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                  {item.label}
-                </Link>
-              ))}
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "其它工作区入口已收进 Overview，避免打散主工作区。" : "Other workspace panels are moved into Overview to keep the main surface focused."}
+              </div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "56px 320px minmax(0,1fr) 360px", minHeight: "calc(100vh - 150px)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "40px 340px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
             <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
               {activityBarItems.map((item, index) => (
                 <button
@@ -5998,37 +6661,97 @@ export default function EditorPage() {
                   type="button"
                   title={item.label}
                   onClick={() => setActiveRail(item.label)}
-                  style={{ width: 38, height: 38, borderRadius: 12, border: "none", background: activeRail === item.label ? "rgba(124,58,237,0.22)" : "transparent", color: activeRail === item.label ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 16, cursor: "pointer" }}
+                  style={{ width: 28, height: 28, borderRadius: 9, border: "none", background: activeRail === item.label ? "rgba(124,58,237,0.22)" : "transparent", color: activeRail === item.label ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13, cursor: "pointer" }}
                 >
                   {item.icon}
                 </button>
               ))}
             </div>
 
-            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 16, display: "grid", alignContent: "start", gap: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                <div style={{ fontSize: 14, fontWeight: 800 }}>{isCn ? "资源管理器" : "Explorer"}</div>
-                <div style={{ borderRadius: 999, padding: "4px 8px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>
-                  {activeRail}
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                  <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
                 </div>
+                <div style={{ borderRadius: 10, background: "rgba(124,58,237,0.18)", color: "#c4b5fd", padding: "4px 8px", fontSize: 12, fontWeight: 700 }}>GPT-4</div>
               </div>
-              <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} placeholder={isCn ? "搜索命令、文件、符号..." : "Search commands, files, symbols..."} style={{ width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#11131a", color: "#f8fafc", padding: "10px 12px", outline: "none" }} />
-              <div style={{ display: "grid", gap: 8 }}>
-                {workspaceRail.map((item) => (
-                  <div key={item.title} style={{ borderRadius: 12, background: "#1b1c24", padding: "10px 12px", border: "1px solid rgba(255,255,255,0.05)" }}>
-                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{item.title}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.72)", lineHeight: 1.7 }}>{item.value}</div>
-                  </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {aiModes.map((item) => (
+                  <button key={item} onClick={() => setActiveMode(item)} style={{ borderRadius: 12, padding: "12px 14px", background: activeMode === item ? "rgba(124,58,237,0.22)" : "#1f212c", color: activeMode === item ? "#f8fafc" : "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", textAlign: "left" }}>
+                    {item}
+                  </button>
                 ))}
               </div>
 
-              <div style={{ display: "grid", gap: 8 }}>
-                {commandResults.map((command) => (
-                  <button key={command.id} onClick={() => runCommand(command)} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#1f212c", color: "#f8fafc", padding: "10px 12px", textAlign: "left", cursor: "pointer" }}>
-                    <div style={{ fontWeight: 800, fontSize: 13 }}>{command.label}</div>
-                    <div style={{ marginTop: 4, color: "rgba(255,255,255,0.46)", fontSize: 12, lineHeight: 1.6 }}>{command.desc}</div>
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{${JSON.stringify(brand)}} AI</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  {aiContextChips.map((item) => (
+                    <div key={item} style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(124,58,237,0.16)", color: "#ddd6fe", fontSize: 11, fontWeight: 700 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ color: "rgba(255,255,255,0.74)", fontSize: 13, lineHeight: 1.8 }}>{aiMessages[activeMode]}</div>
+                <textarea value={aiInput} onChange={(event) => setAiInput(event.target.value)} spellCheck={false} style={{ width: "100%", minHeight: 120, marginTop: 14, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#0d1119", color: "#f8fafc", padding: 12, resize: "vertical", outline: "none" }} />
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {promptPresets.map((item, index) => (
+                    <button key={item} type="button" onClick={() => setAiInput(item)} style={{ borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.68)", padding: "10px 12px", fontSize: 12 }}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={() => applyAiAction(activeMode)} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
+                    {isCn ? "提交给 AI" : "Send to AI"}
                   </button>
-                ))}
+                  <button onClick={() => {
+                    openFile(aiTargetFile.id);
+                    applyAiAction(aiModes[2]);
+                  }} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#f8fafc", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
+                    {isCn ? "插入到代码" : "Insert into code"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "代码动作" : "Code actions"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {assistantActions.map((item) => (
+                    <button key={item.title} onClick={() => applyAiAction(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.note}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>{isCn ? "资源管理器" : "Explorer"}</div>
+                  <div style={{ borderRadius: 999, padding: "4px 8px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>
+                    {activeRail}
+                  </div>
+                </div>
+                <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} placeholder={isCn ? "搜索命令、文件、符号..." : "Search commands, files, symbols..."} style={{ width: "100%", marginTop: 12, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#11131a", color: "#f8fafc", padding: "10px 12px", outline: "none" }} />
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {workspaceRail.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 12, background: "#232533", padding: "10px 12px", border: "1px solid rgba(255,255,255,0.05)" }}>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{item.title}</div>
+                      <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.72)", lineHeight: 1.7 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                  {commandResults.map((command) => (
+                    <button key={command.id} onClick={() => runCommand(command)} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#1f212c", color: "#f8fafc", padding: "10px 12px", textAlign: "left", cursor: "pointer" }}>
+                      <div style={{ fontWeight: 800, fontSize: 13 }}>{command.label}</div>
+                      <div style={{ marginTop: 4, color: "rgba(255,255,255,0.46)", fontSize: 12, lineHeight: 1.6 }}>{command.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase" }}>
@@ -6059,6 +6782,29 @@ export default function EditorPage() {
                     ))}
                   </div>
                 ))}
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "模板轨道" : "Template rail"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {templates.map((item) => (
+                    <button key={item.id} onClick={() => injectTemplate(item)} style={{ borderRadius: 12, padding: "10px 12px", background: activeTemplate.id === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: activeTemplate.id === item.id ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <div style={{ fontWeight: 800 }}>{item.name}</div>
+                      <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.summary}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "创作记录" : "Creation history"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {assistantTrail.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -6096,6 +6842,7 @@ export default function EditorPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: "10px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "#12131a", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
                     <div>{isCn ? "当前目录" : "Current folder"}: {currentGroup.name}</div>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <span>{isCn ? "页面上下文" : "Page context"}: {activeRoute?.label ?? routeManifest[0]?.label}</span>
                       <span>{isCn ? "选区 AI" : "Selection AI"}: {activeMode}</span>
                       <span>{isCn ? "模板轨道" : "Template rail"}: {activeTemplate.name}</span>
                       <span>{isCn ? "运行态" : "Runtime"}: {runtimeState}</span>
@@ -6123,7 +6870,55 @@ export default function EditorPage() {
                 </div>
 
                 <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前预览摘要" : "Current preview summary"}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                      <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                        {isCn ? "预览、Dashboard 与 Code 共用同一条工作区线索" : "Preview, Dashboard, and Code stay on one workspace thread"}
+                      </div>
+                    </div>
+                    <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                      Dashboard
+                    </Link>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {workspaceSurfaceLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.68)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {workspacePanelLinks.map((item) => (
+                        <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前主区焦点" : "Current workspace focus"}</div>
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      {routeManifest.map((item) => (
+                        <button key={item.id} type="button" onClick={() => focusRoute(item.id)} style={{ borderRadius: 12, border: "none", cursor: "pointer", background: activeRoute?.id === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: activeRoute?.id === item.id ? "#e9d5ff" : "rgba(255,255,255,0.72)", padding: "10px 12px", textAlign: "left" }}>
+                          <div style={{ fontWeight: 800, fontSize: 12 }}>{item.label}</div>
+                          <div style={{ marginTop: 4, fontSize: 11, lineHeight: 1.6, color: activeRoute?.id === item.id ? "rgba(233,213,255,0.78)" : "rgba(255,255,255,0.44)" }}>{item.focus}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                    <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前页面元素" : "Current page elements"}</div>
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {routeElements.map((item) => (
+                        <button key={item} type="button" onClick={() => setActiveElementName(item)} style={{ borderRadius: 999, border: "none", cursor: "pointer", padding: "6px 10px", background: item === activeElement ? "rgba(124,58,237,0.18)" : "#232533", color: item === activeElement ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontSize: 11, fontWeight: 700 }}>
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {previewRailNotes.map((item) => (
                     <div key={item} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: "12px 14px", color: "rgba(255,255,255,0.72)", fontSize: 13, lineHeight: 1.7 }}>
                       {item}
@@ -6157,6 +6952,16 @@ export default function EditorPage() {
                   </div>
                   <div style={{ borderRadius: 14, background: "#1b1c24", border: "1px solid rgba(255,255,255,0.08)", padding: 14 }}>
                     <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前文件动作" : "Current file actions"}</div>
+                    <div style={{ marginTop: 8, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.7 }}>
+                      {(isCn ? "AI 当前目标文件: " : "AI target file: ") + aiTargetFile.fullPath}
+                    </div>
+                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {aiTargetSymbols.map((symbol) => (
+                        <button key={symbol} type="button" onClick={() => setActiveSymbolName(symbol)} style={{ borderRadius: 999, border: "none", cursor: "pointer", padding: "6px 10px", background: symbol === activeSymbol ? "rgba(124,58,237,0.18)" : "#232533", color: symbol === activeSymbol ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontSize: 11, fontWeight: 700 }}>
+                          {symbol}
+                        </button>
+                      ))}
+                    </div>
                     <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
                       {assistantActions.map((item) => (
                         <button key={item.mode} onClick={() => applyAiAction(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", border: "none", textAlign: "left", cursor: "pointer", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.72)" }}>
@@ -6164,6 +6969,33 @@ export default function EditorPage() {
                           <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.6 }}>{item.note}</div>
                         </button>
                       ))}
+                    </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 4, paddingTop: 12, display: "grid", gap: 12 }}>
+                    <div style={{ color: "rgba(255,255,255,0.34)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                      {isCn ? "后续再看" : "Later"}
+                    </div>
+                    <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前上下文包" : "Current context bundle"}</div>
+                      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                        {contextBundle.map((item) => (
+                          <div key={item.label} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px" }}>
+                            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{item.label}</div>
+                            <div style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 1.7 }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ borderRadius: 14, border: "1px solid rgba(124,58,237,0.22)", background: "rgba(124,58,237,0.1)", padding: 14 }}>
+                      <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "本轮变更计划" : "Current change plan"}</div>
+                      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                        {changePlan.map((item, index) => (
+                          <div key={item.title} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px" }}>
+                            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{item.title}</div>
+                            <div style={{ marginTop: 4, color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -6190,73 +7022,6 @@ export default function EditorPage() {
                 </div>
               </div>
             </div>
-
-            <aside style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 16, display: "grid", alignContent: "start", gap: 14 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 16, fontWeight: 900 }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
-                <div style={{ borderRadius: 10, background: "rgba(124,58,237,0.18)", color: "#c4b5fd", padding: "4px 8px", fontSize: 12, fontWeight: 700 }}>GPT-4</div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {aiModes.map((item) => (
-                  <button key={item} onClick={() => setActiveMode(item)} style={{ borderRadius: 12, padding: "12px 14px", background: activeMode === item ? "rgba(124,58,237,0.22)" : "#1f212c", color: activeMode === item ? "#f8fafc" : "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", textAlign: "left" }}>
-                    {item}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "代码动作" : "Code actions"}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {assistantActions.map((item) => (
-                    <button key={item.title} onClick={() => applyAiAction(item.mode)} style={{ borderRadius: 12, padding: "10px 12px", background: activeMode === item.mode ? "rgba(124,58,237,0.18)" : "#232533", color: activeMode === item.mode ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
-                      <div style={{ fontWeight: 800 }}>{item.title}</div>
-                      <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.note}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
-                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{${JSON.stringify(brand)}} AI</div>
-                <div style={{ color: "rgba(255,255,255,0.74)", fontSize: 13, lineHeight: 1.8 }}>{aiMessages[activeMode]}</div>
-                <textarea value={aiInput} onChange={(event) => setAiInput(event.target.value)} spellCheck={false} style={{ width: "100%", minHeight: 110, marginTop: 14, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#0d1119", color: "#f8fafc", padding: 12, resize: "vertical", outline: "none" }} />
-                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => applyAiAction(activeMode)} style={{ borderRadius: 10, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
-                    {isCn ? "提交给 AI" : "Send to AI"}
-                  </button>
-                  <button onClick={() => {
-                    openFile("assistant");
-                    applyAiAction(aiModes[2]);
-                  }} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#f8fafc", padding: "10px 12px", cursor: "pointer", fontWeight: 700 }}>
-                    {isCn ? "插入到代码" : "Insert into code"}
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "创作记录" : "Creation history"}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {assistantTrail.map((item, index) => (
-                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "模板轨道" : "Template rail"}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {templates.map((item) => (
-                    <button key={item.id} onClick={() => injectTemplate(item)} style={{ borderRadius: 12, padding: "10px 12px", background: activeTemplate.id === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: activeTemplate.id === item.id ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, border: "none", cursor: "pointer", textAlign: "left" }}>
-                      <div style={{ fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ marginTop: 4, lineHeight: 1.6 }}>{item.summary}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </aside>
           </div>
         </div>
       </div>
@@ -6278,7 +7043,25 @@ import { useEffect, useMemo, useState } from "react";
 export default function RunsPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
   const rows = ${JSON.stringify(rows, null, 2)} as const;
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/editor", label: "Code", active: true },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs", active: true },
+    { href: "/templates", label: isCn ? "模板库" : "Templates" },
+    { href: "/settings", label: isCn ? "设置" : "Settings" },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
+    ...(${spec.planTier === "elite" ? "true" : "false"}
+      ? [
+          { href: "/reports", label: isCn ? "汇报" : "Reports" },
+          { href: "/team", label: isCn ? "团队" : "Team" },
+        ]
+      : []),
+  ] as const;
   const stageCards = ${JSON.stringify(
     isCn
       ? [
@@ -6311,11 +7094,48 @@ export default function RunsPage() {
     null,
     2
   )} as const;
+  const activityRail = [
+    { icon: "◫", label: isCn ? "运行" : "Runs", active: true },
+    { icon: "◎", label: "Overview" },
+    { icon: "</>", label: "Code" },
+    { icon: "⚙", label: isCn ? "环境" : "Env" },
+  ] as const;
+  const copilotNotes = isCn
+    ? [
+        "AI 正在把构建日志、预览状态和交付路径串成一条可演示的运行叙事。",
+        "切换不同 run 后，左侧上下文、右侧 overview 和当前日志片段会一起变化。",
+        "这一页要像控制平面，不是单独的表格页。"
+      ]
+    : [
+        "The copilot is turning build logs, preview health, and delivery checkpoints into one runtime story.",
+        "Selecting a run should update the left context, the overview rail, and the current log excerpt together.",
+        "This page should read like a control plane, not an isolated table."
+      ];
+  const deliverySteps = isCn
+    ? [
+        "1. 先看 Preview / Dashboard / Code 是否指向同一项目线索",
+        "2. 再确认当前 run 的构建、预览与部署动作",
+        "3. 最后把日志与交付说明带到老板演示路径里",
+      ]
+    : [
+        "1. Confirm Preview / Dashboard / Code stay on the same project thread",
+        "2. Verify the current run across build, preview, and deploy actions",
+        "3. Carry the logs and delivery notes into the demo path",
+      ];
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
     visibility: "team",
     publishChannel: "preview",
+  });
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateName: isCn ? "官网与下载站" : "Website + downloads",
+    selectedPlanName: ${JSON.stringify(getCodePlatformPlanLabel(spec.planTier, spec.region))},
+    routeLabel: isCn ? "编辑器工作区" : "Editor workspace",
+    filePath: "app/editor/page.tsx",
+    lastAction: isCn ? "等待下一次运行" : "Waiting for the next run",
+    lastChangedAt: isCn ? "未写入" : "No draft yet",
+    readiness: "ready",
   });
   const filters = isCn
     ? ["全部", "成功", "运行中", "失败", "最近 1 小时"]
@@ -6332,6 +7152,15 @@ export default function RunsPage() {
     } catch {}
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setWorkspaceSession((current) => ({ ...current, ...parsed }));
+    } catch {}
+  }, []);
+
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
       if (activeFilter === filters[0]) return true;
@@ -6343,6 +7172,14 @@ export default function RunsPage() {
   }, [activeFilter, filters, rows]);
 
   const selectedRun = filteredRows.find((row) => row.id === selectedRunId) ?? filteredRows[0] ?? rows[0];
+  const sessionContext = [
+    { label: isCn ? "当前页面" : "Current page", value: workspaceSession.routeLabel },
+    { label: isCn ? "目标文件" : "Target file", value: workspaceSession.filePath },
+    { label: isCn ? "模板轨道" : "Template rail", value: workspaceSession.selectedTemplateName },
+    { label: isCn ? "当前套餐" : "Current plan", value: workspaceSession.selectedPlanName },
+    { label: isCn ? "最近动作" : "Last action", value: workspaceSession.lastAction },
+    { label: isCn ? "最近写入" : "Last write", value: workspaceSession.lastChangedAt },
+  ];
   const runLogs = {
     "run-overview": [
       "$ pnpm build",
@@ -6355,6 +7192,7 @@ export default function RunsPage() {
       "editor workspace syncing current file groups",
       "assistant rail switched into file-aware mode",
       "terminal and preview notes refreshed",
+      "focused file -> " + workspaceSession.filePath,
     ],
     "run-preview": [
       "$ pnpm preview:check",
@@ -6367,187 +7205,362 @@ export default function RunsPage() {
       "template rails aligned with current spec",
       "pricing + settings connected to the delivery story",
       "handoff notes refreshed",
+      "delivery context -> " + workspaceSession.selectedTemplateName + " / " + workspaceSession.selectedPlanName,
     ],
   };
+  const overviewCards = [
+    { label: isCn ? "当前运行" : "Active run", value: selectedRun?.id ?? rows[0]?.id ?? "", tone: "#8b5cf6" },
+    { label: isCn ? "部署目标" : "Deploy target", value: workspaceConfig.deploymentTarget, tone: "#22c55e" },
+    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget, tone: "#38bdf8" },
+    { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel, tone: "#f59e0b" },
+  ];
+  const selectedLogLines = runLogs[selectedRun?.id ?? ""] ?? runLogs["run-overview"];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          routeId: "runs",
+          routeLabel: isCn ? "运行链路" : "Runtime flow",
+          lastAction:
+            (isCn ? "查看运行记录 " : "Opened run record ") +
+            (selectedRun?.id ?? rows[0]?.id ?? ""),
+          readiness: selectedRun?.status ?? workspaceSession.readiness,
+        })
+      );
+    } catch {}
+  }, [SESSION_KEY, isCn, rows, selectedRun?.id, selectedRun?.status, workspaceSession]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 1460, margin: "0 auto", borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
-            <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {[
-              { href: "/", label: isCn ? "总览" : "Overview" },
-              { href: "/editor", label: isCn ? "编辑器" : "Editor" },
-              { href: "/runs", label: isCn ? "运行" : "Runs", active: true },
-              { href: "/templates", label: isCn ? "模板库" : "Templates" },
-              { href: "/settings", label: isCn ? "设置" : "Settings" },
-              { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
-              ...(${spec.planTier === "elite" ? "true" : "false"}
-                ? [
-                    { href: "/reports", label: isCn ? "汇报" : "Reports" },
-                    { href: "/team", label: isCn ? "团队" : "Team" },
-                  ]
-                : []),
-            ].map((item) => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div style={{ padding: 22 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", marginBottom: 18 }}>
+      <div style={{ maxWidth: 1500, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.08)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 28%), #17181f", padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 30, fontWeight: 900 }}>{isCn ? "运行面板" : "Runs"}</h1>
-              <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.54)" }}>{isCn ? "管理构建、测试、部署全流程" : "Manage build, test, and deployment flows"}</p>
-            </div>
-            <Link href="/editor" style={{ textDecoration: "none", borderRadius: 14, background: "#8b5cf6", color: "#fff", padding: "14px 20px", fontWeight: 800 }}>{isCn ? "新建运行" : "New run"}</Link>
-          </div>
-          <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, marginBottom: 18 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 32%), #1b1827", padding: 22 }}>
-              <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "运行叙事" : "Runtime narrative"}</div>
-              <h2 style={{ margin: "10px 0 8px", fontSize: 24, fontWeight: 900 }}>{isCn ? "把生成、构建、预览、部署链路都放进同一运维视角里" : "Keep generation, build, preview, and deploy inside one runtime view"}</h2>
-              <p style={{ margin: 0, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
-                {isCn ? "这一页要让老板看到项目不是只有静态页面，而是包含运行状态、构建日志、环境轨道和交付反馈。" : "This page should show that the product includes execution health, build logs, environment rails, and delivery feedback."}
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(124,58,237,0.2)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "运行控制平面" : "Runs control plane"}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 30, fontWeight: 900 }}>
+                {isCn ? "让生成、构建、预览与部署共享同一条运行叙事" : "Keep generation, build, preview, and deploy on one runtime thread"}
+              </h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                {isCn ? "这一页现在不再只是运行列表，而是和 Preview、Dashboard、Code 共用一个工作区上下文，让老板能看到真正的控制平面。" : "This surface should no longer feel like a standalone run list. It now stays connected to Preview, Dashboard, and Code so the workspace reads like a real control plane."}
               </p>
             </div>
-            <div style={{ display: "grid", gap: 12 }}>
-              {stageCards.map((card) => (
-                <div key={card.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
-                  <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{card.label}</div>
-                  <div style={{ marginTop: 8, fontWeight: 800 }}>{card.value}</div>
-                </div>
-              ))}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link href="/editor" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>
+                {isCn ? "回到 Code" : "Return to Code"}
+              </Link>
+              <Link href="/settings" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>
+                {isCn ? "检查环境" : "Check settings"}
+              </Link>
             </div>
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14, marginBottom: 18 }}>
-            {pipelines.map((item) => (
-              <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 800 }}>{item.title}</div>
-                  <div style={{ color: item.color, fontSize: 12, fontWeight: 800 }}>{item.status}</div>
-                </div>
-                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
-              </div>
-            ))}
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14, marginBottom: 18 }}>
-            {[
-              { label: isCn ? "部署环境" : "Deploy target", value: workspaceConfig.deploymentTarget, tone: "#8b5cf6" },
-              { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget, tone: "#22c55e" },
-              { label: isCn ? "可见性" : "Visibility", value: workspaceConfig.visibility, tone: "#38bdf8" },
-              { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel, tone: "#f59e0b" },
-            ].map((item) => (
-              <div key={item.label} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 20 }}>
-                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>{item.label}</div>
-                <div style={{ marginTop: 12, fontSize: 24, color: item.tone, fontWeight: 900 }}>{item.value}</div>
-              </div>
-            ))}
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14, marginBottom: 18 }}>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
             {[
               { label: isCn ? "总运行次数" : "Total runs", value: "281", tone: "#8b5cf6" },
               { label: isCn ? "成功率" : "Success rate", value: "94.3%", tone: "#10b981" },
               { label: isCn ? "平均耗时" : "Average time", value: "2m 15s", tone: "#3b82f6" },
               { label: isCn ? "今日部署" : "Deploys today", value: "8", tone: "#f59e0b" },
             ].map((item) => (
-              <div key={item.label} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 20 }}>
-                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 14 }}>{item.label}</div>
-                <div style={{ marginTop: 12, fontSize: 34, color: item.tone, fontWeight: 900 }}>{item.value}</div>
+              <div key={item.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, color: item.tone }}>{item.value}</div>
               </div>
             ))}
-          </section>
-          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-            {filters.map((item) => (
-              <button key={item} onClick={() => setActiveFilter(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeFilter === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeFilter === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>{item}</button>
-            ))}
           </div>
-          <section style={{ display: "grid", gridTemplateColumns: "1.12fr 0.88fr", gap: 16 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#17181f", overflow: "hidden" }}>
-            {filteredRows.map((row) => (
-              <button key={row.name + row.id} onClick={() => setSelectedRunId(row.id)} style={{ width: "100%", border: "none", background: selectedRun?.id === row.id ? "rgba(124,58,237,0.1)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "48px 1fr 320px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", textAlign: "left" }}>
-                <div style={{ width: 42, height: 42, borderRadius: 14, background: row.tone + "22", display: "grid", placeItems: "center", color: row.tone }}>◉</div>
-                <div>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <div style={{ fontSize: 16, fontWeight: 800 }}>{row.name}</div>
-                    <div style={{ color: "rgba(255,255,255,0.4)" }}>{row.id}</div>
-                    <div style={{ borderRadius: 10, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 12 }}>{row.status}</div>
-                  </div>
-                  <div style={{ marginTop: 8, color: "rgba(255,255,255,0.45)", fontSize: 13 }}>⎇ {row.branch} · {row.detail}</div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, color: "rgba(255,255,255,0.46)", fontSize: 13 }}>
-                  <span>{row.detail}</span>
-                  <span>{row.duration}</span>
-                  <span>{row.time}</span>
-                </div>
-              </button>
-            ))}
+        </section>
+
+        <div style={{ borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
             </div>
-            <div style={{ display: "grid", gap: 16 }}>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前运行详情" : "Selected run"}</div>
-                  <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedRun?.id}</div>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "运行、模板、设置、升级已收进 Overview，避免打散主工作区。" : "Runs, templates, settings, and pricing are moved into Overview to keep the main surface focused."}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "40px 320px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
+              {activityRail.map((item) => (
+                <div key={item.label} title={item.label} style={{ width: 28, height: 28, borderRadius: 9, background: item.active ? "rgba(124,58,237,0.22)" : "transparent", color: item.active ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13 }}>
+                  {item.icon}
                 </div>
-                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                  {[
-                    { label: isCn ? "项目" : "Project", value: selectedRun?.name },
-                    { label: isCn ? "分支" : "Branch", value: selectedRun?.branch },
-                    { label: isCn ? "状态" : "Status", value: selectedRun?.status },
-                    { label: isCn ? "动作" : "Action", value: selectedRun?.detail },
-                    { label: isCn ? "耗时" : "Duration", value: selectedRun?.duration },
-                  ].map((item) => (
-                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
-                      <div style={{ fontWeight: 800 }}>{item.value}</div>
+              ))}
+            </div>
+
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{isCn ? "运行叙事" : "Runtime narrative"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {copilotNotes.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
                     </div>
                   ))}
                 </div>
-                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "重新运行" : "Re-run"}</button>
-                  <button style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>{isCn ? "打开日志" : "Open logs"}</button>
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 10, background: "#8b5cf6", color: "#fff", padding: "10px 12px", fontWeight: 700, fontSize: 12 }}>
+                    {isCn ? "打开 Code" : "Open Code"}
+                  </Link>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 10, background: "#232533", color: "#f8fafc", padding: "10px 12px", fontWeight: 700, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
                 </div>
               </div>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "运行日志片段" : "Run log excerpt"}</div>
-                <div style={{ marginTop: 12, borderRadius: 16, background: "#0d1119", padding: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.85, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
-                  {(runLogs[selectedRun?.id] ?? runLogs["#281"]).join("\\n")}
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前工作区上下文" : "Current workspace context"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {sessionContext.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "运行阶段" : "Runtime stages"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {stageCards.map((card) => (
+                    <div key={card.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{card.label}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800 }}>{card.value}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
-          </section>
-          <section style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "最近日志" : "Recent logs"}</div>
-              <div style={{ marginTop: 12, borderRadius: 16, background: "#0d1119", padding: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.85, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
-                {[
-                  "$ pnpm build",
-                  "route: /api/generate  -> ok",
-                  "preview: /demo  -> ready",
-                  "preview: auth -> workspace -> ready",
-                  isCn ? "next-step: 继续补强运行守卫与错误恢复" : "next-step: harden runtime guards and recovery",
-                ].join("\\n")}
-              </div>
-            </div>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "演示链路" : "Demo chain"}</div>
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {[
-                  isCn ? "1. 进入 /demo 查看老板入口" : "1. Open /demo",
-                  isCn ? "2. 打开 latest 宣传文件夹页" : "2. Open latest promo bundle pages",
-                  isCn ? "3. 进入 /login 与工作区预览验证访问链路" : "3. Walk through /login and workspace preview",
-                ].map((item, index) => (
-                  <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12 }}>
-                    {item}
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", minHeight: 0 }}>
+              <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
+                <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "运行面板" : "Runs"}</div>
+                      <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "从当前工作区直接推进 build、preview 与 deploy" : "Push build, preview, and deploy directly from the active workspace"}</div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      {filters.map((item) => (
+                        <button key={item} onClick={() => setActiveFilter(item)} style={{ borderRadius: 12, padding: "10px 14px", background: activeFilter === item ? "rgba(124,58,237,0.22)" : "#1f212c", color: activeFilter === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                          {item}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                ))}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+                  {pipelines.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ color: item.color, fontSize: 12, fontWeight: 800 }}>{item.status}</div>
+                      </div>
+                      <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+                  {overviewCards.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ marginTop: 10, fontSize: 20, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                    </div>
+                  ))}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.12fr 0.88fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#17181f", overflow: "hidden" }}>
+                    {filteredRows.map((row) => (
+                      <button key={row.name + row.id} onClick={() => setSelectedRunId(row.id)} style={{ width: "100%", border: "none", background: selectedRun?.id === row.id ? "rgba(124,58,237,0.1)" : "transparent", cursor: "pointer", display: "grid", gridTemplateColumns: "48px 1fr 220px", gap: 14, alignItems: "center", padding: "18px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)", textAlign: "left" }}>
+                        <div style={{ width: 42, height: 42, borderRadius: 14, background: row.tone + "22", display: "grid", placeItems: "center", color: row.tone }}>◉</div>
+                        <div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 16, fontWeight: 800 }}>{row.name}</div>
+                            <div style={{ color: "rgba(255,255,255,0.4)" }}>{row.id}</div>
+                            <div style={{ borderRadius: 10, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 12 }}>{row.status}</div>
+                          </div>
+                          <div style={{ marginTop: 8, color: "rgba(255,255,255,0.45)", fontSize: 13 }}>⎇ {row.branch} · {row.detail}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6, color: "rgba(255,255,255,0.46)", fontSize: 12, textAlign: "right" }}>
+                          <span>{row.duration}</span>
+                          <span>{row.time}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前运行详情" : "Selected run"}</div>
+                        <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedRun?.id}</div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {[
+                          { label: isCn ? "项目" : "Project", value: selectedRun?.name },
+                          { label: isCn ? "分支" : "Branch", value: selectedRun?.branch },
+                          { label: isCn ? "状态" : "Status", value: selectedRun?.status },
+                          { label: isCn ? "动作" : "Action", value: selectedRun?.detail },
+                          { label: isCn ? "耗时" : "Duration", value: selectedRun?.duration },
+                        ].map((item) => (
+                          <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+                            <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                            <div style={{ fontWeight: 800, textAlign: "right" }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <button style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "重新运行" : "Re-run"}</button>
+                        <button style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, cursor: "pointer" }}>{isCn ? "打开日志" : "Open logs"}</button>
+                      </div>
+                    </div>
+
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "运行日志片段" : "Run log excerpt"}</div>
+                      <div style={{ marginTop: 12, borderRadius: 16, background: "#0d1119", padding: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.85, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+                        {selectedLogLines.join("\\n")}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "最近日志" : "Recent logs"}</div>
+                    <div style={{ marginTop: 12, borderRadius: 16, background: "#0d1119", padding: 14, fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.85, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
+                      {[
+                        "$ pnpm build",
+                        "route: /api/generate  -> ok",
+                        "preview: /demo  -> ready",
+                        "preview: auth -> workspace -> ready",
+                        isCn ? "next-step: 继续补强运行守卫与错误恢复" : "next-step: harden runtime guards and recovery",
+                      ].join("\\n")}
+                    </div>
+                  </div>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "演示链路" : "Demo chain"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {deliverySteps.map((item, index) => (
+                        <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.8 }}>
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                    <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                      {isCn ? "Preview、Dashboard 与 Runs 共用同一条工作区线索" : "Preview, Dashboard, and Runs stay on one workspace thread"}
+                    </div>
+                  </div>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {workspaceSurfaceLinks.map((item) => (
+                    <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspacePanelLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: item.active ? "rgba(124,58,237,0.18)" : "#232533", color: item.active ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前选中 run" : "Selected run focus"}</div>
+                  <div style={{ marginTop: 8, fontWeight: 800 }}>{selectedRun?.name}</div>
+                  <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                    {(isCn ? "当前状态: " : "Current status: ") + (selectedRun?.status ?? "")}
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {[
+                      (isCn ? "分支" : "Branch") + ": " + (selectedRun?.branch ?? ""),
+                      (isCn ? "动作" : "Action") + ": " + (selectedRun?.detail ?? ""),
+                      (isCn ? "耗时" : "Duration") + ": " + (selectedRun?.duration ?? ""),
+                    ].map((item) => (
+                      <div key={item} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区环境配置" : "Workspace environment"}</div>
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {[
+                      (isCn ? "部署" : "Deploy") + ": " + workspaceConfig.deploymentTarget,
+                      (isCn ? "数据库" : "Database") + ": " + workspaceConfig.databaseTarget,
+                      (isCn ? "可见性" : "Visibility") + ": " + workspaceConfig.visibility,
+                      (isCn ? "发布通道" : "Publish lane") + ": " + workspaceConfig.publishChannel,
+                    ].map((item) => (
+                      <div key={item} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.22)", padding: 14 }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "下一步动作" : "Next actions"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {deliverySteps.map((item, index) => (
+                      <div key={item} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前日志片段" : "Current log excerpt"}</div>
+                  <pre style={{ margin: "10px 0 0", whiteSpace: "pre-wrap", color: "#cbd5e1", fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: 12, lineHeight: 1.7 }}>
+                    {selectedLogLines.join("\\n")}
+                  </pre>
+                </div>
               </div>
             </div>
-          </section>
+          </div>
         </div>
       </div>
     </main>
@@ -6578,10 +7591,56 @@ import { useEffect, useState } from "react";
 export default function TemplatesPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
   const rows = ${JSON.stringify(visibleRows, null, 2)} as const;
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/editor", label: "Code", active: true },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs" },
+    { href: "/templates", label: isCn ? "模板库" : "Templates", active: true },
+    { href: "/settings", label: isCn ? "设置" : "Settings" },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
+    ...(${spec.planTier === "elite" ? "true" : "false"}
+      ? [
+          { href: "/reports", label: isCn ? "汇报" : "Reports" },
+          { href: "/team", label: isCn ? "团队" : "Team" },
+        ]
+      : []),
+  ] as const;
   const acceptanceTracks = ${JSON.stringify(acceptanceTracks, null, 2)} as const;
   const groups = isCn ? ["全部模板", "官网与落地页", "管理后台", "数据平台", "社区与运营", "营销工具"] : ["All", "Sites", "Admin", "Data", "Community", "Marketing"];
   const featuredBundles = ${JSON.stringify(featuredBundles, null, 2)} as const;
+  const activityRail = [
+    { icon: "▦", label: isCn ? "模板" : "Templates", active: true },
+    { icon: "◎", label: "Overview" },
+    { icon: "</>", label: "Code" },
+    { icon: "⚙", label: isCn ? "环境" : "Env" },
+  ] as const;
+  const copilotNotes = isCn
+    ? [
+        "左侧 AI 会把模板选择和当前工作区上下文绑在一起，而不是只做图库浏览。",
+        "切换模板后，右侧 overview、当前套餐和下一步生成动作都会同步变化。",
+        "这一页要像应用生成器的模板轨道，而不是孤立的卡片墙。"
+      ]
+    : [
+        "The left copilot keeps template selection tied to the active workspace instead of showing a static gallery.",
+        "Switching templates should update the overview rail, current tier, and the next generation action together.",
+        "This page should feel like a template rail for an app generator, not a disconnected card wall."
+      ];
+  const nextSteps = isCn
+    ? [
+        "1. 在模板轨道里确认 archetype 与当前套餐匹配",
+        "2. 把选中的模板带回 Code 或 Dashboard 继续做厚",
+        "3. 再用 Runs / Settings 验证发布与环境路径",
+      ]
+    : [
+        "1. Match the archetype against the active plan in the template rail",
+        "2. Bring the selected template back into Code or Dashboard for depth work",
+        "3. Validate release and environment paths through Runs and Settings",
+      ];
   const [activeGroup, setActiveGroup] = useState(groups[0]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState(rows[0]?.title ?? "");
@@ -6590,6 +7649,14 @@ export default function TemplatesPage() {
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
     publishChannel: "preview",
   });
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateName: rows[0]?.title ?? "",
+    selectedPlanName: ${JSON.stringify(getCodePlatformPlanLabel(spec.planTier, spec.region))},
+    routeLabel: isCn ? "模板轨道" : "Template rails",
+    filePath: "app/templates/page.tsx",
+    lastAction: isCn ? "等待模板选择" : "Waiting for template selection",
+    lastChangedAt: isCn ? "未写入" : "No draft yet",
+  });
 
   useEffect(() => {
     try {
@@ -6597,6 +7664,16 @@ export default function TemplatesPage() {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       setWorkspaceConfig((current) => ({ ...current, ...parsed }));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setWorkspaceSession((current) => ({ ...current, ...parsed }));
+      if (parsed.selectedTemplateName) setSelectedTemplateId(parsed.selectedTemplateName);
     } catch {}
   }, []);
   const filteredRows = rows.filter((row) => {
@@ -6611,129 +7688,136 @@ export default function TemplatesPage() {
     return matchesGroup && matchesSearch;
   });
   const selectedTemplate = filteredRows.find((row) => row.title === selectedTemplateId) ?? filteredRows[0] ?? rows[0];
+  const visibleTemplateRows = filteredRows;
+  const sessionContext = [
+    { label: isCn ? "当前页面" : "Current page", value: workspaceSession.routeLabel },
+    { label: isCn ? "目标文件" : "Target file", value: workspaceSession.filePath },
+    { label: isCn ? "当前套餐" : "Current plan", value: workspaceSession.selectedPlanName },
+    { label: isCn ? "最近动作" : "Last action", value: workspaceSession.lastAction },
+    { label: isCn ? "最近写入" : "Last write", value: workspaceSession.lastChangedAt },
+  ];
+  const templateSignals = [
+    { label: isCn ? "当前模板" : "Selected template", value: selectedTemplate?.title ?? rows[0]?.title ?? "", tone: "#8b5cf6" },
+    { label: isCn ? "部署" : "Deploy", value: workspaceConfig.deploymentTarget, tone: "#22c55e" },
+    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget, tone: "#38bdf8" },
+    { label: isCn ? "发布通道" : "Publish lane", value: workspaceConfig.publishChannel, tone: "#f59e0b" },
+  ];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          selectedTemplateName: selectedTemplate?.title ?? rows[0]?.title ?? workspaceSession.selectedTemplateName,
+          routeId: "templates",
+          routeLabel: isCn ? "模板轨道" : "Template rails",
+          filePath: "app/templates/page.tsx",
+          lastAction:
+            (isCn ? "查看模板 " : "Inspecting template ") +
+            (selectedTemplate?.title ?? rows[0]?.title ?? ""),
+        })
+      );
+    } catch {}
+  }, [SESSION_KEY, isCn, rows, selectedTemplate?.title, workspaceSession]);
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 1460, margin: "0 auto", borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
-            <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {[
-              { href: "/", label: isCn ? "总览" : "Overview" },
-              { href: "/editor", label: isCn ? "编辑器" : "Editor" },
-              { href: "/runs", label: isCn ? "运行" : "Runs" },
-              { href: "/templates", label: isCn ? "模板库" : "Templates", active: true },
-              { href: "/settings", label: isCn ? "设置" : "Settings" },
-              { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
-              ...(${spec.planTier === "elite" ? "true" : "false"}
-                ? [
-                    { href: "/reports", label: isCn ? "汇报" : "Reports" },
-                    { href: "/team", label: isCn ? "团队" : "Team" },
-                  ]
-                : []),
-            ].map((item) => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div style={{ padding: 22, display: "grid", gap: 18 }}>
-          <section style={{ borderRadius: 24, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 32%), #1b1827", padding: 26 }}>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900 }}>{isCn ? "模板库" : "Templates"}</h1>
-            <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.54)", fontSize: 15 }}>{isCn ? "精选项目模板，覆盖官网、后台、数据平台、社区等场景。AI 辅助快速搭建。" : "Curated templates across websites, admin tools, data platforms, and communities."}</p>
-            <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder={isCn ? "搜索模板..." : "Search templates..."} style={{ marginTop: 18, width: "100%", borderRadius: 16, background: "rgba(255,255,255,0.04)", padding: "16px 18px", color: "#f8fafc", border: "1px solid rgba(255,255,255,0.08)", outline: "none" }} />
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "验收模板轨道" : "Acceptance rails"}</div>
-              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                {acceptanceTracks.map((item, index) => (
-                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 13, fontWeight: 700 }}>
-                    {item}
-                  </div>
-                ))}
+      <div style={{ maxWidth: 1500, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.08)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 28%), #17181f", padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(124,58,237,0.2)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "模板轨道" : "Template rail"}
               </div>
-            </div>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "模板策略" : "Template strategy"}</div>
-              <p style={{ margin: "12px 0 0", color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
-                {isCn ? "这里不是一套壳反复复用，而是按产品类型分成官网、CRM、数据平台、社区、营销工具等不同生成轨道。" : "This should not be one repeated shell. It should branch into distinct product archetypes across websites, CRM, data platforms, community, and marketing tools."}
+              <h1 style={{ margin: "14px 0 8px", fontSize: 30, fontWeight: 900 }}>
+                {isCn ? "把模板选择也纳入统一工作区上下文" : "Bring template selection into the shared workspace context"}
+              </h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                {isCn ? "这里不是静态图库，而是和 Preview、Dashboard、Code 一起联动的 archetype 轨道。切换模板时，工作区叙事、套餐深度和下一步生成动作都应该一起变化。" : "This should not be a static gallery. It is an archetype rail connected to Preview, Dashboard, and Code, where changing the template shifts workspace narrative, plan depth, and the next generation action together."}
               </p>
-              <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
-                {[
-                  (isCn ? "部署" : "Deploy") + ": " + workspaceConfig.deploymentTarget,
-                  (isCn ? "数据库" : "Database") + ": " + workspaceConfig.databaseTarget,
-                  (isCn ? "发布通道" : "Publish lane") + ": " + workspaceConfig.publishChannel,
-                ].map((item) => (
-                  <div key={item} style={{ borderRadius: 12, background: "#232533", padding: "10px 12px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
-                    {item}
-                  </div>
-                ))}
-              </div>
             </div>
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
-            {featuredBundles.map((item) => (
-              <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 800 }}>{item.title}</div>
-                  <div style={{ color: item.color, fontSize: 12 }}>●</div>
-                </div>
-                <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link href="/editor" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>
+                {isCn ? "回到 Code" : "Return to Code"}
+              </Link>
+              <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>
+                Dashboard
+              </Link>
+            </div>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+            {templateSignals.map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, fontSize: 22, fontWeight: 900, color: item.tone }}>{item.value}</div>
               </div>
-            ))}
-          </section>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {groups.map((item) => (
-              <button key={item} onClick={() => setActiveGroup(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeGroup === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeGroup === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>{item}</button>
             ))}
           </div>
-          <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 18 }}>
-            {filteredRows.map((row) => (
-              <button key={row.title} onClick={() => setSelectedTemplateId(row.title)} style={{ borderRadius: 22, overflow: "hidden", border: selectedTemplate?.title === row.title ? "1px solid rgba(124,58,237,0.38)" : "1px solid rgba(255,255,255,0.07)", background: "#17181f", padding: 0, cursor: "pointer", textAlign: "left" }}>
-                <div style={{ height: 150, background: row.color, opacity: 0.85 }} />
-                <div style={{ padding: 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                    <div style={{ fontSize: 16, fontWeight: 900 }}>{row.title}</div>
-                    <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 700 }}>{row.badge}</div>
-                  </div>
-                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.56)", fontSize: 14, lineHeight: 1.7 }}>{row.note}</div>
-                  <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {row.tags.map((tag) => (
-                      <div key={tag} style={{ borderRadius: 10, background: "rgba(255,255,255,0.06)", padding: "4px 8px", color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{tag}</div>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <Link href={row.title.includes("官网") || row.title.includes("Company") ? "/" : row.title.includes("销售") || row.title.includes("CRM") ? "/dashboard" : row.title.includes("API") ? "/runs" : "/templates"} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontSize: 12, fontWeight: 700 }}>
-                      {isCn ? "打开模板" : "Open template"}
-                    </Link>
-                    <Link href="/settings" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
-                      {isCn ? "查看环境设置" : "View settings"}
-                    </Link>
-                  </div>
-                  <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14, color: "rgba(255,255,255,0.44)", fontSize: 13 }}>{row.stats}</div>
-                </div>
-              </button>
-            ))}
+        </section>
+
+        <div style={{ borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
             </div>
-            <div style={{ display: "grid", gap: 16 }}>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "模板详情" : "Template details"}</div>
-                  <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedTemplate?.badge}</div>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "模板、运行、设置与升级已收进 Overview，避免打散主工作区。" : "Templates, runs, settings, and pricing are moved into Overview to keep the main surface focused."}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "40px 320px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
+              {activityRail.map((item) => (
+                <div key={item.label} title={item.label} style={{ width: 28, height: 28, borderRadius: 9, background: item.active ? "rgba(124,58,237,0.22)" : "transparent", color: item.active ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13 }}>
+                  {item.icon}
                 </div>
-                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                  {[
-                    { label: isCn ? "名称" : "Name", value: selectedTemplate?.title },
-                    { label: isCn ? "说明" : "Summary", value: selectedTemplate?.note },
-                    { label: isCn ? "技术标签" : "Tags", value: selectedTemplate?.tags.join(" / ") },
-                    { label: isCn ? "使用热度" : "Usage", value: selectedTemplate?.stats },
-                  ].map((item) => (
+              ))}
+            </div>
+
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{isCn ? "模板策略" : "Template strategy"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {copilotNotes.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "验收轨道" : "Acceptance rails"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {acceptanceTracks.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, fontWeight: 700, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {sessionContext.map((item) => (
                     <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
                       <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
                       <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
@@ -6741,27 +7825,209 @@ export default function TemplatesPage() {
                   ))}
                 </div>
               </div>
-              <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "预期生成结果" : "Expected output"}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                  {(selectedTemplate?.tags ?? []).map((tag, index) => (
-                    <div key={tag} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12 }}>
-                      {(isCn ? "将优先补强: " : "Will prioritize: ") + tag}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", minHeight: 0 }}>
+              <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
+                <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
+                  <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "模板库" : "Templates"}</div>
+                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "按 archetype 分化生成路径，而不是重复一套壳" : "Branch the generator by archetype instead of repeating one shell"}</div>
+                  <input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder={isCn ? "搜索模板..." : "Search templates..."} style={{ marginTop: 16, width: "100%", borderRadius: 16, background: "rgba(255,255,255,0.04)", padding: "16px 18px", color: "#f8fafc", border: "1px solid rgba(255,255,255,0.08)", outline: "none" }} />
+                  <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {groups.map((item) => (
+                      <button key={item} onClick={() => setActiveGroup(item)} style={{ borderRadius: 12, padding: "10px 16px", background: activeGroup === item ? "rgba(124,58,237,0.2)" : "#1f212c", color: activeGroup === item ? "#e9d5ff" : "rgba(255,255,255,0.62)", fontWeight: 700, border: "none", cursor: "pointer" }}>
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+                  {featuredBundles.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 20, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ color: item.color, fontSize: 12 }}>●</div>
+                      </div>
+                      <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
                     </div>
                   ))}
-                  <div style={{ borderRadius: 14, background: "#232533", padding: 12, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
-                    {isCn
-                      ? "模板不只是换皮，而是会带出对应 scaffold、页面结构和控制台重点。"
-                      : "Templates should influence scaffold, route structure, and console emphasis instead of only changing visuals."}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 18 }}>
+                    {visibleTemplateRows.length > 0 ? visibleTemplateRows.map((row) => (
+                      <button key={row.title} onClick={() => setSelectedTemplateId(row.title)} style={{ borderRadius: 22, overflow: "hidden", border: selectedTemplate?.title === row.title ? "1px solid rgba(124,58,237,0.38)" : "1px solid rgba(255,255,255,0.07)", background: "#17181f", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                        <div style={{ height: 150, background: row.color, opacity: 0.85 }} />
+                        <div style={{ padding: 20 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                            <div style={{ fontSize: 16, fontWeight: 900 }}>{row.title}</div>
+                            <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 700 }}>{row.badge}</div>
+                          </div>
+                          <div style={{ marginTop: 10, color: "rgba(255,255,255,0.56)", fontSize: 14, lineHeight: 1.7 }}>{row.note}</div>
+                          <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {row.tags.map((tag) => (
+                              <div key={tag} style={{ borderRadius: 10, background: "rgba(255,255,255,0.06)", padding: "4px 8px", color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{tag}</div>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <Link href={row.title.includes("官网") || row.title.includes("Company") ? "/" : row.title.includes("销售") || row.title.includes("CRM") ? "/dashboard" : row.title.includes("API") ? "/runs" : "/templates"} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontSize: 12, fontWeight: 700 }}>
+                              {isCn ? "打开模板" : "Open template"}
+                            </Link>
+                            <Link href="/settings" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "#232533", color: "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                              {isCn ? "查看环境设置" : "View settings"}
+                            </Link>
+                          </div>
+                          <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14, color: "rgba(255,255,255,0.44)", fontSize: 13 }}>{row.stats}</div>
+                        </div>
+                      </button>
+                    )) : (
+                      <div style={{ gridColumn: "1 / -1", borderRadius: 22, border: "1px dashed rgba(124,58,237,0.28)", background: "#17181f", padding: 24 }}>
+                        <div style={{ fontWeight: 800 }}>{isCn ? "当前筛选下暂无模板" : "No templates match the current filter"}</div>
+                        <div style={{ marginTop: 8, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                          {isCn ? "可以切回全部模板，或换一个关键词继续搜索。" : "Try returning to All templates or adjust the search query."}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "模板详情" : "Template details"}</div>
+                        <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedTemplate?.badge}</div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {[
+                          { label: isCn ? "名称" : "Name", value: selectedTemplate?.title },
+                          { label: isCn ? "说明" : "Summary", value: selectedTemplate?.note },
+                          { label: isCn ? "技术标签" : "Tags", value: selectedTemplate?.tags.join(" / ") },
+                          { label: isCn ? "使用热度" : "Usage", value: selectedTemplate?.stats },
+                        ].map((item) => (
+                          <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                            <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                            <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "预期生成结果" : "Expected output"}</div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {(selectedTemplate?.tags ?? []).map((tag, index) => (
+                          <div key={tag} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12 }}>
+                            {(isCn ? "将优先补强: " : "Will prioritize: ") + tag}
+                          </div>
+                        ))}
+                        <div style={{ borderRadius: 14, background: "#232533", padding: 12, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                          {isCn
+                            ? "模板会继续影响 scaffold、页面结构、工作区重点与演示路径，而不只是视觉换皮。"
+                            : "Templates continue shaping scaffold, page structure, workspace emphasis, and demo flow instead of merely changing visuals."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                    <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                      {isCn ? "Preview、Dashboard 与 Templates 共用同一条工作区线索" : "Preview, Dashboard, and Templates stay on one workspace thread"}
+                    </div>
+                  </div>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {workspaceSurfaceLinks.map((item) => (
+                    <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspacePanelLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: item.active ? "rgba(124,58,237,0.18)" : "#232533", color: item.active ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
                   </div>
                 </div>
-                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "基于模板生成" : "Generate from template"}</button>
-                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", color: "#f8fafc", padding: "10px 14px", fontWeight: 700 }}>{isCn ? "带到编辑器" : "Open in editor"}</Link>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前模板联动" : "Current template sync"}</div>
+                  <div style={{ marginTop: 8, fontWeight: 800 }}>{selectedTemplate?.title}</div>
+                  <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                    {selectedTemplate?.note}
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {[
+                      (isCn ? "当前套餐" : "Current plan") + ": " + workspaceSession.selectedPlanName,
+                      (isCn ? "部署" : "Deploy") + ": " + workspaceConfig.deploymentTarget,
+                      (isCn ? "发布通道" : "Publish lane") + ": " + workspaceConfig.publishChannel,
+                    ].map((item) => (
+                      <div key={item} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {sessionContext.map((item) => (
+                      <div key={item.label} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{item.label}</div>
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 1.7 }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.22)", padding: 14 }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "下一步动作" : "Next actions"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {nextSteps.map((item, index) => (
+                      <div key={item} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <button onClick={() => {
+                    try {
+                      window.localStorage.setItem(
+                        SESSION_KEY,
+                        JSON.stringify({
+                          ...workspaceSession,
+                          selectedTemplateName: selectedTemplate?.title ?? rows[0]?.title ?? workspaceSession.selectedTemplateName,
+                          routeId: "templates",
+                          routeLabel: isCn ? "模板轨道" : "Template rails",
+                          filePath: "app/templates/page.tsx",
+                          lastAction:
+                            (isCn ? "基于模板继续生成: " : "Continue generation from template: ") +
+                            (selectedTemplate?.title ?? rows[0]?.title ?? ""),
+                        })
+                      );
+                    } catch {}
+                  }} style={{ borderRadius: 12, border: "none", background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, cursor: "pointer" }}>{isCn ? "基于模板生成" : "Generate from template"}</button>
+                  <Link href="/editor" style={{ textDecoration: "none", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, textAlign: "center" }}>{isCn ? "带到编辑器" : "Open in editor"}</Link>
                 </div>
               </div>
             </div>
-          </section>
+          </div>
         </div>
       </div>
     </main>
@@ -6775,45 +8041,104 @@ function renderCodePricingPage(spec: AppSpec) {
   const brand = spec.title
   const plans = isCn
     ? [
-        { name: "免费版", sub: "Free", price: "¥0", desc: "个人开发者与学习者", cta: "免费开始", featured: false, points: ["核心 IDE 编辑器", "AI 代码补全 (每日 50 次)", "3 个项目空间", "基础模板", "单人使用"] },
-        { name: "专业版", sub: "Pro", price: "¥99", desc: "中小团队与专业开发者", cta: "立即升级", featured: true, points: ["核心 IDE 编辑器", "AI 代码补全 (无限次)", "20 个项目空间", "全部模板库", "构建 / 测试 / 部署面板", "Git 集成与 CI/CD"] },
-        { name: "精英版", sub: "Elite", price: "¥299", desc: "大型团队与企业级交付", cta: "立即升级", featured: false, points: ["全部专业版功能", "无限项目空间", "50 人团队协作", "5 类验收项目管理", "汇报中心与周报自动生成", "宣传资产联动与销售闭环"] },
+        { name: "免费版", sub: "Free", price: "¥0", desc: "个人开发者与学习者", cta: "免费开始", featured: false, points: ["核心 IDE 编辑器", "AI 代码补全 (每日 50 次)", "3 个项目空间", "代码在线查看，不可导出", "数据库仅在线试用"] },
+        { name: "专业版", sub: "Pro", price: "¥99", desc: "中小团队与专业开发者", cta: "立即升级", featured: true, points: ["核心 IDE 编辑器", "AI 代码补全 (无限次)", "20 个项目空间", "代码可导出", "数据库可连接正式环境", "构建 / 测试 / 部署面板"] },
+        { name: "精英版", sub: "Elite", price: "¥299", desc: "大型团队与企业级交付", cta: "立即升级", featured: false, points: ["全部专业版功能", "无限项目空间", "50 人团队协作", "团队级代码导出与交接", "数据库权限分层与资源配额", "汇报中心与宣传资产联动"] },
       ]
     : [
-        { name: "Free", sub: "Free", price: "$0", desc: "For solo developers", cta: "Start free", featured: false, points: ["Core IDE shell", "AI completions", "3 projects", "Starter templates", "Single user"] },
-        { name: "Pro", sub: "Pro", price: "$19", desc: "For serious builders", cta: "Upgrade now", featured: true, points: ["Unlimited AI assists", "20 projects", "Full template library", "Build and deploy panel", "Git and CI/CD"] },
-        { name: "Elite", sub: "Elite", price: "$59", desc: "For teams and delivery", cta: "Upgrade now", featured: false, points: ["Everything in Pro", "Unlimited projects", "Team collaboration", "Acceptance suites", "Reporting center"] },
+        { name: "Free", sub: "Free", price: "$0", desc: "For solo developers", cta: "Start free", featured: false, points: ["Core IDE shell", "AI completions", "3 projects", "Code stays in-browser, no export", "Database stays online-only"] },
+        { name: "Pro", sub: "Pro", price: "$19", desc: "For serious builders", cta: "Upgrade now", featured: true, points: ["Unlimited AI assists", "20 projects", "Full template library", "Code export enabled", "Production database access", "Build and deploy panel"] },
+        { name: "Elite", sub: "Elite", price: "$59", desc: "For teams and delivery", cta: "Upgrade now", featured: false, points: ["Everything in Pro", "Unlimited projects", "Team collaboration", "Team handoff and code export", "Database quotas and role controls", "Reporting center"] },
       ]
   return `// @ts-nocheck
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function PricingPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
   const plans = ${JSON.stringify(plans, null, 2)} as const;
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/editor", label: "Code", active: true },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs" },
+    { href: "/templates", label: isCn ? "模板库" : "Templates" },
+    { href: "/settings", label: isCn ? "设置" : "Settings" },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade", active: true },
+    ...(${spec.planTier === "elite" ? "true" : "false"}
+      ? [
+          { href: "/reports", label: isCn ? "汇报" : "Reports" },
+          { href: "/team", label: isCn ? "团队" : "Team" },
+        ]
+      : []),
+  ] as const;
   const comparisons = ${JSON.stringify(
     isCn
       ? [
           { label: "AI 生成次数", free: "50 / 天", pro: "无限", elite: "无限 + 团队队列" },
           { label: "工作区数量", free: "3", pro: "20", elite: "无限" },
+          { label: "代码导出", free: "不可导出", pro: "可导出", elite: "团队级导出与交接" },
+          { label: "数据库使用", free: "仅在线试用", pro: "正式环境连接", elite: "配额与角色控制" },
           { label: "验收项目", free: "1 类", pro: "4 类", elite: "5 类全量" },
           { label: "汇报与宣传", free: "无", pro: "基础", elite: "完整联动" },
         ]
       : [
           { label: "AI generations", free: "50 / day", pro: "Unlimited", elite: "Unlimited + team queues" },
           { label: "Workspaces", free: "3", pro: "20", elite: "Unlimited" },
+          { label: "Code export", free: "Not available", pro: "Enabled", elite: "Team handoff ready" },
+          { label: "Database access", free: "Online only", pro: "Production ready", elite: "Quota + role controls" },
           { label: "Acceptance tracks", free: "1 type", pro: "4 types", elite: "5 full types" },
           { label: "Reporting and promo", free: "None", pro: "Basic", elite: "Full linkage" },
         ],
     null,
     2
   )} as const;
+  const activityRail = [
+    { icon: "$", label: isCn ? "套餐" : "Pricing", active: true },
+    { icon: "◎", label: "Overview" },
+    { icon: "</>", label: "Code" },
+    { icon: "⚙", label: isCn ? "环境" : "Env" },
+  ] as const;
+  const copilotNotes = isCn
+    ? [
+        "套餐不是单纯价格文案，而是直接决定生成器能交付多深的工作区、数据库能力和导出权限。",
+        "免费版保留在线体验，专业版开始开放代码导出与正式数据库，精英版再补协作与交付闭环。",
+        "这一页要像控制平面里的权限模型，而不是单独的营销页。"
+      ]
+    : [
+        "Tiers are not just pricing copy. They define how much workspace depth, database access, and export capability the generator can deliver.",
+        "Free stays focused on the online experience, Pro opens code export and production DB access, and Elite adds collaboration and delivery closure.",
+        "This page should read like a permissions model inside the control plane, not a standalone marketing screen."
+      ];
+  const nextSteps = isCn
+    ? [
+        "1. 先确认当前套餐是否匹配这次交付深度",
+        "2. 再把套餐能力同步到 Templates、Runs 和 Settings",
+        "3. 最后再推进导出、数据库与发布权限的真实实现",
+      ]
+    : [
+        "1. Confirm the active plan matches the intended delivery depth",
+        "2. Propagate tier capabilities into Templates, Runs, and Settings",
+        "3. Then implement export, database, and publishing permissions for real",
+      ];
   const [workspaceConfig, setWorkspaceConfig] = useState({
     deploymentTarget: isCn ? "cloudbase" : "vercel",
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
     loginPolicy: "hybrid",
+  });
+  const [selectedPlanName, setSelectedPlanName] = useState(plans[1]?.name ?? plans[0]?.name ?? "");
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateName: isCn ? "官网与下载站" : "Website + downloads",
+    selectedPlanName: plans[1]?.name ?? plans[0]?.name ?? "",
+    routeLabel: isCn ? "套餐与升级" : "Plans and upgrades",
+    filePath: "app/pricing/page.tsx",
+    lastAction: isCn ? "等待套餐选择" : "Waiting for plan selection",
+    lastChangedAt: isCn ? "未写入" : "No draft yet",
   });
 
   useEffect(() => {
@@ -6824,111 +8149,345 @@ export default function PricingPage() {
       setWorkspaceConfig((current) => ({ ...current, ...parsed }));
     } catch {}
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setWorkspaceSession((current) => ({ ...current, ...parsed }));
+      if (parsed.selectedPlanName) setSelectedPlanName(parsed.selectedPlanName);
+    } catch {}
+  }, []);
+
+  const selectedPlan = useMemo(() => plans.find((plan) => plan.name === selectedPlanName) ?? plans[0], [plans, selectedPlanName]);
+  const sessionContext = [
+    { label: isCn ? "当前模板" : "Current template", value: workspaceSession.selectedTemplateName },
+    { label: isCn ? "最近页面" : "Recent page", value: workspaceSession.routeLabel },
+    { label: isCn ? "目标文件" : "Target file", value: workspaceSession.filePath },
+    { label: isCn ? "最近动作" : "Last action", value: workspaceSession.lastAction },
+    { label: isCn ? "当前套餐" : "Current plan", value: selectedPlan?.name },
+  ];
+  const planSignals = [
+    { label: isCn ? "当前套餐" : "Selected plan", value: selectedPlan?.name ?? plans[0]?.name ?? "", tone: "#8b5cf6" },
+    { label: isCn ? "部署" : "Deploy", value: workspaceConfig.deploymentTarget, tone: "#22c55e" },
+    { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget, tone: "#38bdf8" },
+    { label: isCn ? "登录策略" : "Login", value: workspaceConfig.loginPolicy, tone: "#f59e0b" },
+  ];
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          selectedPlanName: selectedPlan?.name ?? plans[0]?.name ?? workspaceSession.selectedPlanName,
+          routeId: "pricing",
+          routeLabel: isCn ? "套餐与升级" : "Plans and upgrades",
+          filePath: "app/pricing/page.tsx",
+          lastAction:
+            (isCn ? "查看套餐 " : "Reviewing plan ") +
+            (selectedPlan?.name ?? plans[0]?.name ?? ""),
+        })
+      );
+    } catch {}
+  }, [SESSION_KEY, isCn, plans, selectedPlan?.name, workspaceSession]);
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 1460, margin: "0 auto", borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
-            <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {[
-              { href: "/", label: isCn ? "总览" : "Overview" },
-              { href: "/editor", label: isCn ? "编辑器" : "Editor" },
-              { href: "/runs", label: isCn ? "运行" : "Runs" },
-              { href: "/templates", label: isCn ? "模板库" : "Templates" },
-              { href: "/settings", label: isCn ? "设置" : "Settings" },
-              { href: "/pricing", label: isCn ? "升级" : "Upgrade", active: true },
-              ...(${spec.planTier === "elite" ? "true" : "false"}
-                ? [
-                    { href: "/reports", label: isCn ? "汇报" : "Reports" },
-                    { href: "/team", label: isCn ? "团队" : "Team" },
-                  ]
-                : []),
-            ].map((item) => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-        <div style={{ padding: 28 }}>
-          <div style={{ textAlign: "center", maxWidth: 860, margin: "0 auto 28px" }}>
-            <h1 style={{ margin: 0, fontSize: 48, fontWeight: 900 }}>{isCn ? "选择适合你的方案" : "Choose your plan"}</h1>
-            <p style={{ marginTop: 16, color: "rgba(255,255,255,0.56)", fontSize: 16 }}>{isCn ? ${JSON.stringify(`${brand} 从个人学习到企业交付，为每个阶段提供精准方案`)} : ${JSON.stringify(`${brand} scales from solo use to enterprise delivery.`)}}</p>
-          </div>
-          <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, marginBottom: 18 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 32%), #1b1827", padding: 22 }}>
-              <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "套餐差异" : "Tier differentiation"}</div>
-              <h2 style={{ margin: "10px 0 8px", fontSize: 24, fontWeight: 900 }}>{isCn ? "免费先给 IDE 壳，专业补运行链路，精英补验收与汇报层" : "Free ships the shell, Pro adds runtime depth, Elite adds acceptance and reporting"}</h2>
-              <p style={{ margin: 0, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
-                {isCn ? "这页要直接说明为什么三档生成结果会明显不同，而不是只改价格文案。" : "This page should make it obvious why each tier produces meaningfully different product depth."}
+      <div style={{ maxWidth: 1500, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.08)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 28%), #17181f", padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(124,58,237,0.2)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "套餐与权限" : "Plans and permissions"}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 30, fontWeight: 900 }}>
+                {isCn ? "把套餐差异明确成真实工作区权限模型" : "Turn tier differences into a real workspace permission model"}
+              </h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                {isCn ? ${JSON.stringify(`${brand} 现在不只是写价格，而是开始把代码导出、数据库使用、工作区深度这些差异收进套餐模型里。`)} : ${JSON.stringify(`${brand} now starts turning code export, database access, and workspace depth into concrete tier differences instead of just pricing copy.`)}}
               </p>
             </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              {[
-                isCn ? "Free: 核心编辑器 + 少量模板 + 基础 AI" : "Free: core editor + fewer templates + basic AI",
-                isCn ? "Pro: 运行面板 + 全模板库 + 登录与工作区访问链路" : "Pro: runs + full template library + auth and workspace access flow",
-                isCn ? "Elite: 五类验收项目 + 汇报层 + admin/market 联动" : "Elite: five acceptance tracks + reporting + admin/market linkage",
-              ].map((item, index) => (
-                <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 1 ? "rgba(124,58,237,0.18)" : "#1b1c24", border: "1px solid rgba(255,255,255,0.07)", color: index === 1 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 13 }}>
-                  {item}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link href="/settings" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>
+                {isCn ? "同步到设置" : "Sync to settings"}
+              </Link>
+              <Link href="/templates" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>
+                {isCn ? "回到模板轨道" : "Back to templates"}
+              </Link>
+            </div>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+            {planSignals.map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, fontSize: 22, fontWeight: 900, color: item.tone }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div style={{ borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+            </div>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "套餐、运行、模板与设置已收进 Overview，避免打散主工作区。" : "Pricing, runs, templates, and settings are moved into Overview to keep the main surface focused."}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "40px 320px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
+              {activityRail.map((item) => (
+                <div key={item.label} title={item.label} style={{ width: 28, height: 28, borderRadius: 9, background: item.active ? "rgba(124,58,237,0.22)" : "transparent", color: item.active ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13 }}>
+                  {item.icon}
                 </div>
               ))}
             </div>
-          </section>
-          <section style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18, marginBottom: 18 }}>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前工作区配置" : "Current workspace profile"}</div>
-            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
-              {[
-                { label: isCn ? "部署" : "Deploy", value: workspaceConfig.deploymentTarget },
-                { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
-                { label: isCn ? "登录策略" : "Login", value: workspaceConfig.loginPolicy },
-              ].map((item) => (
-                <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
-                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
-                  <div style={{ marginTop: 8, fontWeight: 800 }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
-          </section>
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 18 }}>
-            {plans.map((plan, index) => (
-              <div key={plan.name} style={{ borderRadius: 24, border: plan.featured ? "1px solid rgba(124,58,237,0.55)" : "1px solid rgba(255,255,255,0.08)", background: "#1a1b22", padding: 24, boxShadow: plan.featured ? "0 0 0 1px rgba(124,58,237,0.28) inset" : "none" }}>
-                {plan.featured ? <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 18 }}>{isCn ? "✦ 最受欢迎" : "✦ Most popular"}</div> : <div style={{ height: 24 }} />}
-                <div style={{ fontSize: 16, fontWeight: 900 }}>{plan.name}</div>
-                <div style={{ marginTop: 6, color: "rgba(255,255,255,0.48)" }}>{plan.sub}</div>
-                <div style={{ marginTop: 18, display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontSize: 46, fontWeight: 900 }}>{plan.price}</span>
-                  <span style={{ color: "rgba(255,255,255,0.42)" }}>/月</span>
-                </div>
-                <div style={{ marginTop: 10, color: "rgba(255,255,255,0.54)" }}>{plan.desc}</div>
-                <Link href={index === 0 ? "/login?redirect=/editor" : index === 1 ? "/login?redirect=/runs" : "/login?redirect=/reports"} style={{ marginTop: 24, borderRadius: 14, background: plan.featured ? "linear-gradient(135deg,#8b5cf6,#a855f7)" : "#242633", color: "#fff", padding: "14px 16px", textAlign: "center", fontWeight: 800, textDecoration: "none", display: "block" }}>{plan.cta}</Link>
-                <div style={{ marginTop: 22, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 18, display: "grid", gap: 12 }}>
-                  {plan.points.map((item) => (
-                    <div key={item} style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "rgba(255,255,255,0.74)", lineHeight: 1.8 }}>
-                      <span style={{ color: "#34d399" }}>✓</span>
-                      <span>{item}</span>
+
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{isCn ? "套餐分层" : "Tier differentiation"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {copilotNotes.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
                     </div>
                   ))}
                 </div>
               </div>
-            ))}
-          </section>
-          <section style={{ marginTop: 18, borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "能力对比" : "Capability comparison"}</div>
-            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-              {comparisons.map((row) => (
-                <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(3,minmax(0,1fr))", gap: 10, alignItems: "center", borderRadius: 14, background: "#232533", padding: "12px 14px", fontSize: 13 }}>
-                  <div style={{ fontWeight: 800 }}>{row.label}</div>
-                  <div style={{ color: "rgba(255,255,255,0.7)" }}>{row.free}</div>
-                  <div style={{ color: "#e9d5ff" }}>{row.pro}</div>
-                  <div style={{ color: "#c4f5d1" }}>{row.elite}</div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前工作区联动" : "Current workspace linkage"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {sessionContext.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "套餐会影响什么" : "What tiers change"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {[
+                    isCn ? "代码是否允许导出与交接" : "Whether code can be exported and handed off",
+                    isCn ? "数据库是在线试用还是正式连接" : "Whether databases stay online-only or connect to production",
+                    isCn ? "工作区是否开放更深的运行与汇报能力" : "How much runtime and reporting depth the workspace unlocks",
+                  ].map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </section>
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", minHeight: 0 }}>
+              <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
+                <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
+                  <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "套餐差异" : "Tier differentiation"}</div>
+                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "免费保留在线体验，Pro 开始交付，Elite 进入团队化交接" : "Free keeps the online experience, Pro starts delivery depth, and Elite moves into team handoff"}</div>
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {[
+                      isCn ? "Free: 核心编辑器 + 在线代码 + 在线数据库试用" : "Free: core editor + online code + online DB trial",
+                      isCn ? "Pro: 运行面板 + 代码导出 + 正式数据库连接" : "Pro: runs + code export + production DB access",
+                      isCn ? "Elite: 汇报层 + 团队协作 + 权限与配额" : "Elite: reporting + collaboration + quotas and roles",
+                    ].map((item, index) => (
+                      <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 1 ? "rgba(124,58,237,0.18)" : "#1b1c24", border: "1px solid rgba(255,255,255,0.07)", color: index === 1 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前工作区配置" : "Current workspace profile"}</div>
+                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+                    {[
+                      { label: isCn ? "部署" : "Deploy", value: workspaceConfig.deploymentTarget },
+                      { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
+                      { label: isCn ? "登录策略" : "Login", value: workspaceConfig.loginPolicy },
+                    ].map((item) => (
+                      <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                        <div style={{ marginTop: 8, fontWeight: 800 }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 18 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 18 }}>
+                    {plans.map((plan, index) => (
+                      <button key={plan.name} type="button" onClick={() => setSelectedPlanName(plan.name)} style={{ borderRadius: 24, border: selectedPlan?.name === plan.name || plan.featured ? "1px solid rgba(124,58,237,0.55)" : "1px solid rgba(255,255,255,0.08)", background: "#1a1b22", padding: 24, boxShadow: selectedPlan?.name === plan.name || plan.featured ? "0 0 0 1px rgba(124,58,237,0.28) inset" : "none", cursor: "pointer", textAlign: "left" }}>
+                        {plan.featured ? <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 18 }}>{isCn ? "✦ 最受欢迎" : "✦ Most popular"}</div> : <div style={{ height: 24 }} />}
+                        <div style={{ fontSize: 16, fontWeight: 900 }}>{plan.name}</div>
+                        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.48)" }}>{plan.sub}</div>
+                        <div style={{ marginTop: 18, display: "flex", alignItems: "baseline", gap: 8 }}>
+                          <span style={{ fontSize: 46, fontWeight: 900 }}>{plan.price}</span>
+                          <span style={{ color: "rgba(255,255,255,0.42)" }}>{isCn ? "/月" : "/mo"}</span>
+                        </div>
+                        <div style={{ marginTop: 10, color: "rgba(255,255,255,0.54)" }}>{plan.desc}</div>
+                        <Link href={index === 0 ? "/login?redirect=/editor" : index === 1 ? "/login?redirect=/runs" : "/login?redirect=/reports"} style={{ marginTop: 24, borderRadius: 14, background: plan.featured ? "linear-gradient(135deg,#8b5cf6,#a855f7)" : "#242633", color: "#fff", padding: "14px 16px", textAlign: "center", fontWeight: 800, textDecoration: "none", display: "block" }}>{plan.cta}</Link>
+                        <div style={{ marginTop: 22, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 18, display: "grid", gap: 12 }}>
+                          {plan.points.map((item) => (
+                            <div key={item} style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "rgba(255,255,255,0.74)", lineHeight: 1.8 }}>
+                              <span style={{ color: "#34d399" }}>✓</span>
+                              <span>{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 16 }}>
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前方案详情" : "Selected plan"}</div>
+                        <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(124,58,237,0.18)", color: "#d8b4fe", fontSize: 11, fontWeight: 800 }}>{selectedPlan?.sub}</div>
+                      </div>
+                      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                        {[
+                          { label: isCn ? "方案" : "Plan", value: selectedPlan?.name },
+                          { label: isCn ? "价格" : "Price", value: selectedPlan?.price + (isCn ? " /月" : " /month") },
+                          { label: isCn ? "定位" : "Positioning", value: selectedPlan?.desc },
+                          { label: isCn ? "推荐环境" : "Suggested environment", value: workspaceConfig.deploymentTarget + " + " + workspaceConfig.databaseTarget },
+                        ].map((item) => (
+                          <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                            <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                            <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "为什么推荐这个方案" : "Why this tier fits"}</div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                        {(selectedPlan?.points ?? []).slice(0, 5).map((item, index) => (
+                          <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 1.7 }}>
+                            {item}
+                          </div>
+                        ))}
+                        <div style={{ borderRadius: 14, background: "#232533", padding: "12px 14px", color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                          {isCn
+                            ? "这里开始明确 free / paid 在代码导出和数据库使用上的真实差异。"
+                            : "This starts making the free / paid differences around code export and database access explicit."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "能力对比" : "Capability comparison"}</div>
+                  <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                    {comparisons.map((row) => (
+                      <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(3,minmax(0,1fr))", gap: 10, alignItems: "center", borderRadius: 14, background: "#232533", padding: "12px 14px", fontSize: 13 }}>
+                        <div style={{ fontWeight: 800 }}>{row.label}</div>
+                        <div style={{ color: "rgba(255,255,255,0.7)" }}>{row.free}</div>
+                        <div style={{ color: "#e9d5ff" }}>{row.pro}</div>
+                        <div style={{ color: "#c4f5d1" }}>{row.elite}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                    <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                      {isCn ? "Preview、Dashboard 与 Pricing 共用同一条工作区线索" : "Preview, Dashboard, and Pricing stay on one workspace thread"}
+                    </div>
+                  </div>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {workspaceSurfaceLinks.map((item) => (
+                    <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspacePanelLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: item.active ? "rgba(124,58,237,0.18)" : "#232533", color: item.active ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前方案联动" : "Current tier linkage"}</div>
+                  <div style={{ marginTop: 8, fontWeight: 800 }}>{selectedPlan?.name}</div>
+                  <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
+                    {(isCn ? "当前套餐会继续影响模板深度、运行链路和权限模型。" : "The selected plan keeps shaping template depth, runtime tooling, and the permissions model.")}
+                  </div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {[
+                      (isCn ? "当前模板" : "Current template") + ": " + workspaceSession.selectedTemplateName,
+                      (isCn ? "部署" : "Deploy") + ": " + workspaceConfig.deploymentTarget,
+                      (isCn ? "数据库" : "Database") + ": " + workspaceConfig.databaseTarget,
+                    ].map((item) => (
+                      <div key={item} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.22)", padding: 14 }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "下一步动作" : "Next actions"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {nextSteps.map((item, index) => (
+                      <div key={item} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <Link href={selectedPlan?.name === plans[0]?.name ? "/login?redirect=/editor" : selectedPlan?.name === plans[1]?.name ? "/login?redirect=/runs" : "/login?redirect=/reports"} style={{ textDecoration: "none", borderRadius: 12, background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, textAlign: "center" }}>
+                    {isCn ? "按当前方案继续" : "Continue with this plan"}
+                  </Link>
+                  <Link href="/settings" style={{ textDecoration: "none", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, textAlign: "center" }}>
+                    {isCn ? "调整环境配置" : "Adjust environment"}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -6975,14 +8534,63 @@ import { useEffect, useMemo, useState } from "react";
 export default function SettingsPage() {
   const isCn = ${isCn ? "true" : "false"};
   const STORAGE_KEY = "mornstack-generated-workspace-config";
+  const SESSION_KEY = "mornstack-generated-workspace-session";
   const deployments = ${JSON.stringify(deployments, null, 2)} as const;
   const databases = ${JSON.stringify(databases, null, 2)} as const;
+  const workspaceSurfaceLinks = [
+    { href: "/", label: isCn ? "预览" : "Preview" },
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/editor", label: "Code", active: true },
+  ] as const;
+  const workspacePanelLinks = [
+    { href: "/runs", label: isCn ? "运行" : "Runs" },
+    { href: "/templates", label: isCn ? "模板库" : "Templates" },
+    { href: "/settings", label: isCn ? "设置" : "Settings", active: true },
+    { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
+    ...(${spec.planTier === "elite" ? "true" : "false"} ? [{ href: "/reports", label: isCn ? "汇报" : "Reports" }, { href: "/team", label: isCn ? "团队" : "Team" }] : []),
+  ] as const;
+  const activityRail = [
+    { icon: "⚙", label: isCn ? "设置" : "Settings", active: true },
+    { icon: "◎", label: "Overview" },
+    { icon: "</>", label: "Code" },
+    { icon: "⛁", label: isCn ? "发布" : "Publish" },
+  ] as const;
+  const copilotNotes = isCn
+    ? [
+        "这里决定生成器默认走哪套部署、数据库、访问权限和发布通道。",
+        "切换环境不只是改文案，还会影响 Runs、Templates、Pricing 和后续发布路径的叙事。",
+        "这一页要像控制平面的策略中心，而不是单独的设置表单。"
+      ]
+    : [
+        "This surface decides which deployment, database, access policy, and publish lane the generator should default to.",
+        "Changing environment choices should affect Runs, Templates, Pricing, and the later publishing story instead of just editing copy.",
+        "This page should feel like the policy center of the control plane, not a standalone settings form."
+      ];
+  const nextSteps = isCn
+    ? [
+        "1. 先锁定部署目标、数据库与发布通道",
+        "2. 再让 Templates、Runs 与 Pricing 读取同一份环境叙事",
+        "3. 最后补正式地址、子域名和权限控制的真实实现",
+      ]
+    : [
+        "1. Lock deployment target, database, and publish lane first",
+        "2. Keep Templates, Runs, and Pricing reading the same environment story",
+        "3. Then implement real address, subdomain, and permission controls",
+      ];
   const [deploymentTarget, setDeploymentTarget] = useState(deployments[0].id);
   const [databaseTarget, setDatabaseTarget] = useState(databases[0].id);
   const [visibility, setVisibility] = useState<"private" | "team" | "public">("team");
   const [loginPolicy, setLoginPolicy] = useState<"password" | "oauth" | "hybrid">("hybrid");
   const [publishChannel, setPublishChannel] = useState<"preview" | "staging" | "production">("preview");
   const [savedNote, setSavedNote] = useState(isCn ? "尚未同步" : "Not synced yet");
+  const [workspaceSession, setWorkspaceSession] = useState({
+    selectedTemplateName: isCn ? "官网与下载站" : "Website + downloads",
+    selectedPlanName: ${JSON.stringify(getCodePlatformPlanLabel(spec.planTier, spec.region))},
+    routeLabel: isCn ? "环境设置" : "Environment settings",
+    filePath: "app/settings/page.tsx",
+    lastAction: isCn ? "等待环境调整" : "Waiting for environment updates",
+    lastChangedAt: isCn ? "未写入" : "No draft yet",
+  });
 
   const deploymentCard = useMemo(() => deployments.find((item) => item.id === deploymentTarget) ?? deployments[0], [deploymentTarget]);
   const databaseCard = useMemo(() => databases.find((item) => item.id === databaseTarget) ?? databases[0], [databaseTarget]);
@@ -7003,166 +8611,358 @@ export default function SettingsPage() {
 
   useEffect(() => {
     try {
+      const raw = window.localStorage.getItem(SESSION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setWorkspaceSession((current) => ({ ...current, ...parsed }));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({ deploymentTarget, databaseTarget, visibility, loginPolicy, publishChannel })
       );
+      window.localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({
+          ...workspaceSession,
+          routeId: "settings",
+          routeLabel: isCn ? "环境设置" : "Environment settings",
+          filePath: "app/settings/page.tsx",
+          lastAction: isCn ? "更新部署、数据库与权限策略" : "Updated deployment, database, and access policy",
+          readiness: publishChannel,
+        })
+      );
       setSavedNote(isCn ? "已同步到工作区" : "Synced to workspace");
     } catch {}
-  }, [databaseTarget, deploymentTarget, loginPolicy, publishChannel, visibility]);
+  }, [SESSION_KEY, STORAGE_KEY, databaseTarget, deploymentTarget, isCn, loginPolicy, publishChannel, visibility, workspaceSession]);
+
+  const sessionContext = [
+    { label: isCn ? "当前模板" : "Current template", value: workspaceSession.selectedTemplateName },
+    { label: isCn ? "当前套餐" : "Current plan", value: workspaceSession.selectedPlanName },
+    { label: isCn ? "最近页面" : "Recent page", value: workspaceSession.routeLabel },
+    { label: isCn ? "最近动作" : "Last action", value: workspaceSession.lastAction },
+    { label: isCn ? "目标文件" : "Target file", value: workspaceSession.filePath },
+  ];
+  const envSignals = [
+    { label: isCn ? "部署" : "Deploy", value: deploymentCard.name, tone: "#8b5cf6" },
+    { label: isCn ? "数据库" : "Database", value: databaseCard.name, tone: "#22c55e" },
+    { label: isCn ? "发布通道" : "Publish lane", value: publishChannel, tone: "#38bdf8" },
+    { label: isCn ? "可见性" : "Visibility", value: visibility, tone: "#f59e0b" },
+  ];
 
   return (
     <main style={{ minHeight: "100vh", background: "#12131a", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
-      <div style={{ maxWidth: 1460, margin: "0 auto", borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
-            <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {[
-              { href: "/", label: isCn ? "总览" : "Overview" },
-              { href: "/editor", label: isCn ? "编辑器" : "Editor" },
-              { href: "/runs", label: isCn ? "运行" : "Runs" },
-              { href: "/templates", label: isCn ? "模板库" : "Templates" },
-              { href: "/settings", label: isCn ? "设置" : "Settings", active: true },
-              { href: "/pricing", label: isCn ? "升级" : "Upgrade" },
-              ...(${spec.planTier === "elite" ? "true" : "false"} ? [{ href: "/reports", label: isCn ? "汇报" : "Reports" }, { href: "/team", label: isCn ? "团队" : "Team" }] : []),
-            ].map((item) => (
-              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 14px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.54)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 700 }}>
-                {item.label}
+      <div style={{ maxWidth: 1500, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 24, border: "1px solid rgba(255,255,255,0.08)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 28%), #17181f", padding: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(124,58,237,0.2)", color: "#d8b4fe", fontSize: 12, fontWeight: 800 }}>
+                {isCn ? "环境策略中心" : "Environment policy center"}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 30, fontWeight: 900 }}>
+                {isCn ? "把部署、数据库与发布策略放回统一控制平面" : "Bring deployment, database, and release strategy back into the shared control plane"}
+              </h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
+                {isCn ? "环境配置不该只是单页表单，而要和 Preview、Dashboard、Code、Runs 一起讲同一条应用生成与发布故事。" : "Environment settings should not live as a standalone form. They need to stay aligned with Preview, Dashboard, Code, and Runs inside the same app-generation and release story."}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link href="/runs" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", background: "#8b5cf6", color: "#ffffff", fontWeight: 800 }}>
+                {isCn ? "查看运行链路" : "Open runs"}
               </Link>
+              <Link href="/pricing" style={{ textDecoration: "none", borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,0.08)", color: "#f8fafc", fontWeight: 700 }}>
+                {isCn ? "同步套餐策略" : "Sync pricing"}
+              </Link>
+            </div>
+          </div>
+          <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
+            {envSignals.map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.06)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ color: "rgba(255,255,255,0.48)", fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, fontSize: 22, fontWeight: 900, color: item.tone }}>{item.value}</div>
+              </div>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div style={{ padding: 22, display: "grid", gap: 18 }}>
-          <section style={{ borderRadius: 24, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.18), transparent 32%), #1b1827", padding: 24 }}>
-            <h1 style={{ margin: 0, fontSize: 30, fontWeight: 900 }}>{isCn ? "环境与权限设置" : "Environment and access settings"}</h1>
-            <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.56)", lineHeight: 1.8 }}>
-              {isCn ? "这里用来决定生成出来的全栈应用默认走哪套部署、数据库、访问权限和发布通道。这样产物更像完整应用，而不是几张页面。" : "Use this surface to decide which deployment target, database, access policy, and publish lane the generated app should follow."}
-            </p>
-            <div style={{ marginTop: 14, display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(255,255,255,0.08)", color: "#e9d5ff", fontSize: 12, fontWeight: 700 }}>
-              {savedNote}
+        <div style={{ borderRadius: 24, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "#17181f" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
             </div>
-          </section>
-
-          <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "部署目标" : "Deployment target"}</div>
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {deployments.map((item) => (
-                  <button key={item.id} onClick={() => setDeploymentTarget(item.id)} style={{ borderRadius: 14, padding: "12px 14px", background: deploymentTarget === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: deploymentTarget === item.id ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                      <div style={{ fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ borderRadius: 999, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 11 }}>{item.badge}</div>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7 }}>{item.note}</div>
-                  </button>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
+                {workspaceSurfaceLinks.map((item) => (
+                  <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 16px", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.6)", background: item.active ? "rgba(124,58,237,0.22)" : "transparent", fontSize: 14, fontWeight: 800 }}>
+                    {item.label}
+                  </Link>
                 ))}
               </div>
-            </div>
-
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "数据库目标" : "Database target"}</div>
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {databases.map((item) => (
-                  <button key={item.id} onClick={() => setDatabaseTarget(item.id)} style={{ borderRadius: 14, padding: "12px 14px", background: databaseTarget === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: databaseTarget === item.id ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                      <div style={{ fontWeight: 800 }}>{item.name}</div>
-                      <div style={{ borderRadius: 999, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 11 }}>{item.badge}</div>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7 }}>{item.note}</div>
-                  </button>
-                ))}
+              <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 12 }}>
+                {isCn ? "设置、运行、模板与升级已收进 Overview，避免打散主工作区。" : "Settings, runs, templates, and pricing are moved into Overview to keep the main surface focused."}
               </div>
             </div>
-          </section>
+          </div>
 
-          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 16 }}>
-            {[
-              {
-                title: isCn ? "可见性" : "Visibility",
-                value: visibility,
-                options: [
-                  { key: "private", label: isCn ? "私有" : "Private" },
-                  { key: "team", label: isCn ? "团队" : "Team" },
-                  { key: "public", label: isCn ? "公开" : "Public" },
-                ],
-                action: setVisibility,
-              },
-              {
-                title: isCn ? "登录策略" : "Login policy",
-                value: loginPolicy,
-                options: [
-                  { key: "password", label: isCn ? "邮箱密码" : "Password" },
-                  { key: "oauth", label: "OAuth" },
-                  { key: "hybrid", label: isCn ? "混合" : "Hybrid" },
-                ],
-                action: setLoginPolicy,
-              },
-              {
-                title: isCn ? "发布通道" : "Publish lane",
-                value: publishChannel,
-                options: [
-                  { key: "preview", label: isCn ? "预览" : "Preview" },
-                  { key: "staging", label: "Staging" },
-                  { key: "production", label: isCn ? "生产" : "Production" },
-                ],
-                action: setPublishChannel,
-              },
-            ].map((group) => (
-              <div key={group.title} style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{group.title}</div>
-                <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                  {group.options.map((item) => (
-                    <button key={item.key} onClick={() => group.action(item.key)} style={{ borderRadius: 12, padding: "10px 12px", background: group.value === item.key ? "rgba(124,58,237,0.18)" : "#232533", color: group.value === item.key ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left", fontWeight: 700 }}>
-                      {item.label}
-                    </button>
+          <div style={{ display: "grid", gridTemplateColumns: "40px 320px minmax(0,1fr)", minHeight: "calc(100vh - 150px)" }}>
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#14151c", padding: "12px 0", display: "grid", alignContent: "start", gap: 10 }}>
+              {activityRail.map((item) => (
+                <div key={item.label} title={item.label} style={{ width: 28, height: 28, borderRadius: 9, background: item.active ? "rgba(124,58,237,0.22)" : "transparent", color: item.active ? "#c4b5fd" : "rgba(255,255,255,0.42)", margin: "0 auto", display: "grid", placeItems: "center", fontSize: 13 }}>
+                  {item.icon}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderRight: "1px solid rgba(255,255,255,0.06)", background: "#17181f", padding: 14, display: "grid", alignContent: "start", gap: 14, maxHeight: "calc(100vh - 150px)", overflowY: "auto" }}>
+              <div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "AI 助手" : "AI Assistant"}</div>
+                <div style={{ marginTop: 6, fontSize: 16, fontWeight: 900 }}>{isCn ? "左侧共创对话" : "Left copilot thread"}</div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#1f212c", padding: 16 }}>
+                <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 10 }}>{isCn ? "环境叙事" : "Environment narrative"}</div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {copilotNotes.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 12, display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(255,255,255,0.08)", color: "#e9d5ff", fontSize: 12, fontWeight: 700 }}>
+                  {savedNote}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "当前工作区联动" : "Current workspace linkage"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {sessionContext.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{item.label}</div>
+                      <div style={{ marginTop: 8, fontWeight: 800, lineHeight: 1.7 }}>{item.value}</div>
+                    </div>
                   ))}
                 </div>
               </div>
-            ))}
-          </section>
 
-          <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前生成决策" : "Current generation decision"}</div>
-              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                <div style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
-                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "部署" : "Deployment"}</div>
-                  <div style={{ marginTop: 6, fontWeight: 800 }}>{deploymentCard.name}</div>
-                  <div style={{ marginTop: 4, color: "rgba(255,255,255,0.56)", fontSize: 12, lineHeight: 1.7 }}>{deploymentCard.note}</div>
-                </div>
-                <div style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
-                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "数据库" : "Database"}</div>
-                  <div style={{ marginTop: 6, fontWeight: 800 }}>{databaseCard.name}</div>
-                  <div style={{ marginTop: 4, color: "rgba(255,255,255,0.56)", fontSize: 12, lineHeight: 1.7 }}>{databaseCard.note}</div>
-                </div>
-                <div style={{ borderRadius: 12, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.2)", padding: "12px 14px" }}>
-                  <div style={{ fontWeight: 800 }}>{isCn ? "生成结果预期" : "Expected output behavior"}</div>
-                  <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 13, lineHeight: 1.8 }}>
-                    {isCn ? "后续生成器应根据这里的选择决定默认登录链路、数据库适配、部署文案和发布路径。" : "The generator should use these choices to shape auth defaults, database assumptions, deployment copy, and publish flow."}
-                  </div>
+              <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 16 }}>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "环境会影响什么" : "What the environment changes"}</div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {[
+                    isCn ? "部署目标会影响 preview、runtime 和正式上线链路" : "Deployment target changes preview, runtime, and production release paths",
+                    isCn ? "数据库目标会改变 auth、结构化数据和演示数据假设" : "Database choice reshapes auth, structured data, and demo data assumptions",
+                    isCn ? "发布通道会继续影响独立访问地址与交付说明" : "Publish lane continues into app address strategy and delivery notes",
+                  ].map((item, index) => (
+                    <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 12, lineHeight: 1.7 }}>
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
 
-            <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
-              <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
-              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-                {[
-                  isCn ? "1. 先定部署环境与数据库" : "1. Lock deployment and database",
-                  isCn ? "2. 再生成 editor / runs / templates 一体化工作区" : "2. Generate the unified editor / runs / templates workspace",
-                  isCn ? "3. 最后接正式登录与支付参数" : "3. Connect production auth and billing later",
-                ].map((item, index) => (
-                  <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12 }}>
-                    {item}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 320px", minHeight: 0 }}>
+              <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
+                <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
+                  <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "环境与权限设置" : "Environment and access settings"}</div>
+                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "先锁环境策略，再生成可持续使用的应用" : "Lock environment policy first, then generate an app that can actually be used"}</div>
+                  <div style={{ marginTop: 10, color: "rgba(255,255,255,0.62)", lineHeight: 1.8 }}>
+                    {isCn ? "这里会继续决定默认部署、数据库、访问权限和发布路径，让产物更像真正应用，而不只是几张页面。" : "These choices shape deployment defaults, database assumptions, access policy, and release flow so the generated result behaves like a real app instead of just a few pages."}
                   </div>
-                ))}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "部署目标" : "Deployment target"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {deployments.map((item) => (
+                        <button key={item.id} onClick={() => setDeploymentTarget(item.id)} style={{ borderRadius: 14, padding: "12px 14px", background: deploymentTarget === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: deploymentTarget === item.id ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                            <div style={{ fontWeight: 800 }}>{item.name}</div>
+                            <div style={{ borderRadius: 999, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 11 }}>{item.badge}</div>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7 }}>{item.note}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "数据库目标" : "Database target"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {databases.map((item) => (
+                        <button key={item.id} onClick={() => setDatabaseTarget(item.id)} style={{ borderRadius: 14, padding: "12px 14px", background: databaseTarget === item.id ? "rgba(124,58,237,0.18)" : "#232533", color: databaseTarget === item.id ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                            <div style={{ fontWeight: 800 }}>{item.name}</div>
+                            <div style={{ borderRadius: 999, background: "rgba(255,255,255,0.08)", padding: "4px 8px", fontSize: 11 }}>{item.badge}</div>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7 }}>{item.note}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 16 }}>
+                  {[
+                    {
+                      title: isCn ? "可见性" : "Visibility",
+                      value: visibility,
+                      options: [
+                        { key: "private", label: isCn ? "私有" : "Private" },
+                        { key: "team", label: isCn ? "团队" : "Team" },
+                        { key: "public", label: isCn ? "公开" : "Public" },
+                      ],
+                      action: setVisibility,
+                    },
+                    {
+                      title: isCn ? "登录策略" : "Login policy",
+                      value: loginPolicy,
+                      options: [
+                        { key: "password", label: isCn ? "邮箱密码" : "Password" },
+                        { key: "oauth", label: "OAuth" },
+                        { key: "hybrid", label: isCn ? "混合" : "Hybrid" },
+                      ],
+                      action: setLoginPolicy,
+                    },
+                    {
+                      title: isCn ? "发布通道" : "Publish lane",
+                      value: publishChannel,
+                      options: [
+                        { key: "preview", label: isCn ? "预览" : "Preview" },
+                        { key: "staging", label: "Staging" },
+                        { key: "production", label: isCn ? "生产" : "Production" },
+                      ],
+                      action: setPublishChannel,
+                    },
+                  ].map((group) => (
+                    <div key={group.title} style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800 }}>{group.title}</div>
+                      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                        {group.options.map((item) => (
+                          <button key={item.key} onClick={() => group.action(item.key)} style={{ borderRadius: 12, padding: "10px 12px", background: group.value === item.key ? "rgba(124,58,237,0.18)" : "#232533", color: group.value === item.key ? "#e9d5ff" : "rgba(255,255,255,0.68)", border: "none", cursor: "pointer", textAlign: "left", fontWeight: 700 }}>
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+
+                <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前生成决策" : "Current generation decision"}</div>
+                    <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                      <div style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "部署" : "Deployment"}</div>
+                        <div style={{ marginTop: 6, fontWeight: 800 }}>{deploymentCard.name}</div>
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.56)", fontSize: 12, lineHeight: 1.7 }}>{deploymentCard.note}</div>
+                      </div>
+                      <div style={{ borderRadius: 12, background: "#232533", padding: "12px 14px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "数据库" : "Database"}</div>
+                        <div style={{ marginTop: 6, fontWeight: 800 }}>{databaseCard.name}</div>
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.56)", fontSize: 12, lineHeight: 1.7 }}>{databaseCard.note}</div>
+                      </div>
+                      <div style={{ borderRadius: 12, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.2)", padding: "12px 14px" }}>
+                        <div style={{ fontWeight: 800 }}>{isCn ? "生成结果预期" : "Expected output behavior"}</div>
+                        <div style={{ marginTop: 6, color: "rgba(255,255,255,0.62)", fontSize: 13, lineHeight: 1.8 }}>
+                          {isCn ? "后续生成器会根据这里的选择决定默认登录链路、数据库适配、部署文案、发布通道与独立访问地址策略。" : "The generator will continue using these choices to shape auth defaults, database assumptions, deployment copy, publish flow, and the future app-address strategy."}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      {nextSteps.map((item, index) => (
+                        <div key={item} style={{ borderRadius: 12, padding: "10px 12px", background: index === 0 ? "rgba(124,58,237,0.18)" : "#232533", color: index === 0 ? "#e9d5ff" : "rgba(255,255,255,0.66)", fontSize: 12, lineHeight: 1.8 }}>
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "#11131a", padding: 16, display: "grid", alignContent: "start", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.44)" }}>{isCn ? "Overview 总览" : "Overview"}</div>
+                    <div style={{ marginTop: 6, fontSize: 14, fontWeight: 800, color: "#f8fafc" }}>
+                      {isCn ? "Preview、Dashboard 与 Settings 共用同一条工作区线索" : "Preview, Dashboard, and Settings stay on one workspace thread"}
+                    </div>
+                  </div>
+                  <Link href="/dashboard" style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: "rgba(124,58,237,0.18)", color: "#e9d5ff", fontWeight: 800, fontSize: 12 }}>
+                    Dashboard
+                  </Link>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {workspaceSurfaceLinks.map((item) => (
+                    <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "rgba(124,58,237,0.22)" : "#1b1c24", color: item.active ? "#f8fafc" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "工作区面板" : "Workspace panels"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {workspacePanelLinks.map((item) => (
+                      <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 12, padding: "10px 12px", background: item.active ? "rgba(124,58,237,0.18)" : "#232533", color: item.active ? "#e9d5ff" : "rgba(255,255,255,0.72)", fontSize: 12, fontWeight: 700 }}>
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {sessionContext.map((item) => (
+                      <div key={item.label} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px" }}>
+                        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11 }}>{item.label}</div>
+                        <div style={{ marginTop: 4, color: "rgba(255,255,255,0.72)", fontSize: 12, lineHeight: 1.7 }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1b1c24", padding: 14 }}>
+                  <div style={{ color: "rgba(255,255,255,0.44)", fontSize: 12 }}>{isCn ? "当前发布策略" : "Current release policy"}</div>
+                  <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+                    {[
+                      (isCn ? "发布通道" : "Publish lane") + ": " + publishChannel,
+                      (isCn ? "可见性" : "Visibility") + ": " + visibility,
+                      (isCn ? "登录策略" : "Login") + ": " + loginPolicy,
+                      isCn ? "独立访问地址策略: 待继续实现" : "App address strategy: to be implemented next",
+                    ].map((item) => (
+                      <div key={item} style={{ borderRadius: 10, background: "#232533", padding: "8px 10px", fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ borderRadius: 14, background: "rgba(124,58,237,0.14)", border: "1px solid rgba(124,58,237,0.22)", padding: 14 }}>
+                  <div style={{ color: "#c4b5fd", fontWeight: 800, fontSize: 12 }}>{isCn ? "下一步动作" : "Next actions"}</div>
+                  <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    {nextSteps.map((item, index) => (
+                      <div key={item} style={{ borderRadius: 10, background: index === 0 ? "rgba(124,58,237,0.14)" : "#232533", padding: "8px 10px", color: "rgba(255,255,255,0.74)", fontSize: 12, lineHeight: 1.7 }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </section>
+          </div>
         </div>
       </div>
     </main>
