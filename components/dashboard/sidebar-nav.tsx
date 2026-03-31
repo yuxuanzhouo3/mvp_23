@@ -83,11 +83,11 @@ export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
     <aside
       className={cn(
         "sticky top-0 hidden h-screen flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar-background/92 transition-[width] duration-200 ease-in-out lg:flex",
-        collapsed ? "w-[4.75rem]" : "w-64"
+        collapsed ? "w-12" : "w-56"
       )}
     >
-      <div className={cn("flex shrink-0 items-center gap-3 py-5", collapsed ? "justify-center px-0" : "px-5")}>
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#4f7cff,#7c3aed)] text-sm font-semibold text-white shadow-[0_12px_30px_rgba(79,124,255,0.25)]">
+      <div className={cn("flex shrink-0 items-center gap-3 py-4", collapsed ? "justify-center px-0" : "px-4")}>
+        <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#4f7cff,#7c3aed)] text-sm font-semibold text-white shadow-[0_12px_30px_rgba(79,124,255,0.25)]">
           M
         </div>
         {!collapsed && (
@@ -101,7 +101,7 @@ export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
         <Button
           variant="ghost"
           size="icon"
-          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-8 w-8" : "w-full justify-start gap-2 rounded-xl border border-border/70")}
+          className={cn("text-muted-foreground hover:text-foreground", collapsed ? "h-7 w-7 rounded-lg" : "w-full justify-start gap-2 rounded-xl border border-border/70")}
           onClick={onToggleCollapsed}
           aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
           title={collapsed ? t("expandSidebar") : t("collapseSidebar")}

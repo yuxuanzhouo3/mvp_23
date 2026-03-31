@@ -1624,11 +1624,6 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     [project?.history]
   )
   const showPreviewDebug = searchParams.get("debug") === "1" && previewTab === "preview"
-  const workspaceSurfaceTabs = [
-    { key: "preview", label: copy.preview },
-    { key: "dashboard", label: "Dashboard" },
-    { key: "code", label: copy.code },
-  ] as const
   const overviewContextItems = [
     { label: copy.currentPath, value: currentPathLabel },
     { label: copy.buildAcceptance, value: buildAcceptanceLabel },
@@ -2565,6 +2560,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const overviewLaterControls = isCn
     ? ["Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API"]
     : ["Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API"]
+  const overviewPinnedControls = overviewPrimaryControls.slice(0, 4)
+  const overviewSecondaryControls = overviewPrimaryControls.slice(4)
+  const copilotThreadItems = conversationItems.slice(0, 8)
+  const copilotIntroPrompt = project.history?.[0]?.prompt || generateTask?.summary || projectName
 
   useEffect(() => {
     if (!project) return
@@ -2693,18 +2692,18 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="inline-flex items-center gap-2 rounded-full border border-border bg-background/80 px-3.5 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
         {isCn ? "返回 Dashboard" : "Back to Dashboard"}
       </Link>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_320px] 2xl:grid-cols-[360px_minmax(0,1fr)_340px]">
-      <div className="order-2 min-w-0 space-y-4 xl:order-2">
-        <Card className="border-border/70 bg-card/90">
+      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)_300px] 2xl:grid-cols-[380px_minmax(0,1fr)_320px]">
+      <div className="order-2 min-w-0 space-y-5 xl:order-2">
+        <Card className="overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,249,252,0.96))] shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
           <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -2758,10 +2757,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden border-border/70 bg-card/90">
-          <CardHeader className="gap-3 border-b border-border/70 bg-background/50">
+        <Card className="overflow-hidden rounded-[28px] border-border/70 bg-card/95 shadow-[0_20px_50px_rgba(15,23,42,0.06)]">
+          <CardHeader className="gap-4 border-b border-border/70 bg-background/80">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-secondary/30 p-1">
+              <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-secondary/40 p-1.5">
                 {[
                   { key: "preview", label: copy.preview },
                   { key: "dashboard", label: "Dashboard" },
@@ -2771,10 +2770,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     key={item.key}
                     type="button"
                     onClick={() => setPreviewTab(item.key as "preview" | "dashboard" | "code")}
-                    className={`rounded-xl px-3 py-2 text-sm transition ${
+                    className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                       previewTab === item.key
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
+                        ? "bg-background text-foreground shadow-sm ring-1 ring-border"
+                        : "text-muted-foreground hover:bg-background/80 hover:text-foreground"
                     }`}
                   >
                     {item.label}
@@ -4101,8 +4100,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
       <div className="order-1 min-w-0 xl:order-1">
         <div className="sticky top-24">
-          <Card className="border-border/70 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <CardHeader className="space-y-4 border-b border-border/70">
+          <Card className="overflow-hidden border-border/70 bg-card/95 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <CardHeader className="space-y-4 border-b border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-base">
@@ -4119,265 +4118,241 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 </Badge>
               </div>
 
-              <div className="grid gap-3 rounded-2xl border border-border bg-secondary/20 p-3">
+              <div className="grid gap-3 rounded-3xl border border-border bg-background/80 p-4">
                 <div>
-                  <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
-                  <div className="mt-1 text-sm font-semibold">{projectName}</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{copy.taskSummary}</div>
+                  <div className="mt-2 text-sm font-semibold text-foreground">{projectName}</div>
                   <div className="mt-1 text-xs text-muted-foreground">{projectSubtitle}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">{copy.taskSummary}</div>
-                  <div className="mt-1 text-sm text-foreground">{projectSummary}</div>
+                  <div className="mt-3 text-sm text-foreground">{projectSummary}</div>
                 </div>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-5 p-4">
-              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3">
-                <div className="text-xs font-medium text-primary">{copy.workspaceTitle}</div>
-                <div className="mt-2 text-sm text-foreground">{copy.applyHint}</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {workspaceSurfaceTabs.map((item) => (
-                    <button
-                      key={`copilot-${item.key}`}
-                      type="button"
-                      onClick={() => setPreviewTab(item.key)}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                        previewTab === item.key
-                          ? "border-primary/40 bg-primary/10 text-foreground"
-                          : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium">{copy.assistantMode}</div>
-                  <Badge variant="outline">{aiModeLabel}</Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { key: "explain", label: copy.explainMode },
-                    { key: "fix", label: copy.fixMode },
-                    { key: "generate", label: copy.generateMode },
-                    { key: "refactor", label: copy.refactorMode },
-                  ] as Array<{ key: AiMode; label: string }>).map((item) => (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => setAiMode(item.key)}
-                      className={`rounded-xl border px-3 py-2 text-sm ${
-                        aiMode === item.key
-                          ? "border-primary/40 bg-primary/10 text-foreground"
-                          : "border-border bg-background text-muted-foreground"
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                  <div className="text-xs text-muted-foreground">{copy.currentContext}</div>
-                  <div className="mt-2 text-sm font-medium text-foreground">{contextFile || (isCn ? "当前未选择文件" : "No active file selected")}</div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {copy.currentRoute}: {contextRoute || (isCn ? "未命中页面路由" : "No page route inferred")}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {contextSymbols.length
-                      ? `${copy.symbols}: ${contextSymbols.map((item) => item.name).slice(0, 4).join(", ")}`
-                      : copy.noSymbols}
-                  </div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "页面" : "Page"}</div>
-                      <div className="mt-1 text-xs font-medium text-foreground">{contextPage.label}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{contextPage.route}</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块" : "Module"}</div>
-                      <div className="mt-1 text-xs font-medium text-foreground">{contextModule.name}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{contextModule.source}</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素" : "Element"}</div>
-                      <div className="mt-1 text-xs font-medium text-foreground">{contextElement.name}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{contextElement.source}</div>
-                    </div>
-                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "会话" : "Session"}</div>
-                      <div className="mt-1 text-xs font-medium text-foreground">
-                        {contextSession?.workspaceSurface || previewTab}
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        {contextSession?.activeSection || activeSectionKey || contextPage.id}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-2">
+            <CardContent className="flex min-h-[calc(100vh-8.5rem)] max-h-[calc(100vh-8.5rem)] flex-col gap-0 p-0">
+              <div className="flex-1 space-y-4 overflow-auto p-4">
+                <div className="rounded-3xl border border-primary/15 bg-primary/5 p-4">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块锚点" : "Module anchors"}</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {availableAiSymbols.map((symbol) => (
-                          <button
-                            key={symbol}
-                            type="button"
-                            onClick={() => setAiTargetSymbol(symbol)}
-                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                              aiTargetSymbol === symbol
-                                ? "border-primary/40 bg-primary/10 text-foreground"
-                                : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
-                            }`}
-                          >
-                            {symbol}
-                          </button>
-                        ))}
-                      </div>
+                      <div className="text-xs font-medium uppercase tracking-[0.16em] text-primary">{copy.conversationHistory}</div>
+                      <div className="mt-2 text-sm text-foreground">{copy.applyHint}</div>
                     </div>
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素锚点" : "Element anchors"}</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {availableAiElements.map((element) => (
-                          <button
-                            key={element}
-                            type="button"
-                            onClick={() => setAiTargetElement(element)}
-                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                              aiTargetElement === element
-                                ? "border-primary/40 bg-primary/10 text-foreground"
-                                : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
-                            }`}
-                          >
-                            {element}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => setGeneratePanelOpen((open) => !open)}>
+                      {generatePanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
-                <div className="text-sm font-medium">{copy.queuedChanges}</div>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={copy.continuePrompt}
-                  className="min-h-[120px] w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none"
-                />
-                {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
-                {iterateResult?.summary ? <p className="text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
-                {iterateResult?.warning ? <p className="text-xs text-amber-600">{iterateResult.warning}</p> : null}
-                {iterateResult?.thinking ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.modelOutput}</div>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{iterateResult.thinking}</pre>
-                  </div>
-                ) : null}
-                {iterateResult?.changedFiles?.length ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
-                    <div className="max-h-32 overflow-auto">
-                      {renderSelectableFileTree(iterateTree, selectedCodeFile, (filePath) => {
-                        setSelectedCodeFile(filePath)
-                        setPreviewTab("code")
-                        setEditorRail("explorer")
-                        setFocusedLine(null)
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-                {iterateResult?.build?.logs?.length ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.buildAcceptance}</div>
-                    <div className="mb-2 text-xs text-muted-foreground">
-                      {iterateResult.build.status === "ok"
-                        ? copy.buildPassed
-                        : iterateResult.build.status === "failed"
-                          ? copy.buildFailed
-                          : copy.buildPending}
-                    </div>
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
-                      {iterateResult.build.logs.join("\n")}
-                    </pre>
-                  </div>
-                ) : null}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button onClick={iterate} disabled={iterating} className="w-full">
-                    <Wand2 className="mr-2 h-4 w-4" />
-                    {iterating ? copy.applying : aiMode === "explain" ? copy.explainMode : copy.applyChange}
-                  </Button>
-                  <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
-                    <Undo2 className="mr-2 h-4 w-4" />
-                    {revertBusy ? copy.reverting : copy.revert}
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-3 text-sm font-medium">{copy.quickSuggestions}</div>
-                <div className="flex flex-wrap gap-2">
-                  {quickSuggestions.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setPrompt(item)}
-                      className="rounded-full border border-border bg-background px-3 py-2 text-xs text-foreground hover:border-primary/30 hover:bg-primary/5"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="text-sm font-medium">{copy.conversationHistory}</div>
-                  <Button variant="ghost" size="sm" onClick={() => setGeneratePanelOpen((open) => !open)}>
-                    {generatePanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
+                <div className="rounded-3xl border border-border bg-background/80 p-4">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{copy.initialRequest}</div>
+                  <div className="text-sm leading-7 text-foreground">{copilotIntroPrompt}</div>
                 </div>
 
-                <div className="max-h-[42vh] space-y-3 overflow-auto pr-1">
-                  <div className="rounded-2xl border border-border bg-background/80 p-3">
-                    <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.initialRequest}</div>
-                    <div className="text-sm line-clamp-6">{project.history?.[0]?.prompt || generateTask?.summary || projectName}</div>
-                  </div>
-
-                  {generatePanelOpen && generateTask?.logs?.length ? (
-                    <div className="rounded-2xl border border-border bg-secondary/20 p-3">
-                      <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.runLogs}</div>
-                      <div className="space-y-2">
-                        {generateTask.logs.slice(-6).map((line, index) => (
-                          <div key={`${index}-${line}`} className="flex gap-2 text-xs">
-                            <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
-                            <span className="text-muted-foreground">{line}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {conversationItems.length ? (
-                    conversationItems.map((item) => (
-                      <div key={item.id} className="rounded-2xl border border-border bg-background/80 p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.type}</div>
-                          <Badge variant={item.status === "done" ? "secondary" : "destructive"}>{item.status}</Badge>
+                {generatePanelOpen && generateTask?.logs?.length ? (
+                  <div className="rounded-3xl border border-border bg-secondary/20 p-4">
+                    <div className="mb-3 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{copy.runLogs}</div>
+                    <div className="space-y-2">
+                      {generateTask.logs.slice(-6).map((line, index) => (
+                        <div key={`${index}-${line}`} className="flex gap-2 text-xs">
+                          <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-primary" />
+                          <span className="text-muted-foreground">{line}</span>
                         </div>
-                        <div className="text-sm font-medium text-foreground line-clamp-4">{item.prompt}</div>
-                        {item.summary ? <div className="mt-2 text-sm text-muted-foreground">{item.summary}</div> : null}
-                        <div className="mt-3 text-xs text-muted-foreground">{item.time}</div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                      {copy.noConversation}
+                      ))}
                     </div>
-                  )}
+                  </div>
+                ) : null}
+
+                {copilotThreadItems.length ? (
+                  copilotThreadItems.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className={`rounded-3xl border p-4 ${
+                        index === 0 ? "border-primary/20 bg-primary/5" : "border-border bg-background/85"
+                      }`}
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{item.type}</div>
+                        <Badge variant={item.status === "done" ? "secondary" : "destructive"}>{item.status}</Badge>
+                      </div>
+                      <div className="text-sm font-medium leading-6 text-foreground">{item.prompt}</div>
+                      {item.summary ? <div className="mt-2 text-sm leading-6 text-muted-foreground">{item.summary}</div> : null}
+                      <div className="mt-3 text-xs text-muted-foreground">{item.time}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    {copy.noConversation}
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-border/70 bg-background/95 p-4">
+                <div className="space-y-4">
+                  <div className="rounded-3xl border border-border bg-background/80 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-foreground">{copy.assistantMode}</div>
+                      <Badge variant="outline">{aiModeLabel}</Badge>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {([
+                        { key: "explain", label: copy.explainMode },
+                        { key: "fix", label: copy.fixMode },
+                        { key: "generate", label: copy.generateMode },
+                        { key: "refactor", label: copy.refactorMode },
+                      ] as Array<{ key: AiMode; label: string }>).map((item) => (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setAiMode(item.key)}
+                          className={`rounded-2xl border px-3 py-2 text-sm transition ${
+                            aiMode === item.key
+                              ? "border-primary/40 bg-primary/10 text-foreground"
+                              : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-border bg-background/80 p-4">
+                    <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{copy.currentContext}</div>
+                    <div className="mt-2 text-sm font-semibold text-foreground">{contextFile || (isCn ? "当前未选择文件" : "No active file selected")}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {copy.currentRoute}: {contextRoute || (isCn ? "未命中页面路由" : "No page route inferred")}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-border bg-secondary/20 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "页面" : "Page"}</div>
+                        <div className="mt-1 text-xs font-medium text-foreground">{contextPage.label}</div>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-secondary/20 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块" : "Module"}</div>
+                        <div className="mt-1 text-xs font-medium text-foreground">{contextModule.name}</div>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-secondary/20 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素" : "Element"}</div>
+                        <div className="mt-1 text-xs font-medium text-foreground">{contextElement.name}</div>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-secondary/20 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "会话" : "Session"}</div>
+                        <div className="mt-1 text-xs font-medium text-foreground">{contextSession?.activeSection || activeSectionKey || contextPage.id}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块锚点" : "Module anchors"}</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {availableAiSymbols.map((symbol) => (
+                            <button
+                              key={symbol}
+                              type="button"
+                              onClick={() => setAiTargetSymbol(symbol)}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                                aiTargetSymbol === symbol
+                                  ? "border-primary/40 bg-primary/10 text-foreground"
+                                  : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                              }`}
+                            >
+                              {symbol}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素锚点" : "Element anchors"}</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {availableAiElements.map((element) => (
+                            <button
+                              key={element}
+                              type="button"
+                              onClick={() => setAiTargetElement(element)}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                                aiTargetElement === element
+                                  ? "border-primary/40 bg-primary/10 text-foreground"
+                                  : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                              }`}
+                            >
+                              {element}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-3 text-sm font-medium text-foreground">{copy.quickSuggestions}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {quickSuggestions.map((item) => (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => setPrompt(item)}
+                          className="rounded-full border border-border bg-background px-3 py-2 text-xs text-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                        >
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-border bg-background/80 p-4">
+                    <div className="text-sm font-medium text-foreground">{copy.queuedChanges}</div>
+                    <textarea
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      placeholder={copy.continuePrompt}
+                      className="mt-3 min-h-[120px] w-full resize-none rounded-2xl border border-border bg-background px-3 py-3 text-sm outline-none"
+                    />
+                    {iterateStatus ? <p className="mt-3 text-xs text-muted-foreground">{iterateStatus}</p> : null}
+                    {iterateResult?.summary ? <p className="mt-2 text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
+                    {iterateResult?.warning ? <p className="mt-2 text-xs text-amber-600">{iterateResult.warning}</p> : null}
+                    {iterateResult?.thinking ? (
+                      <div className="mt-3 rounded-2xl border border-border bg-secondary/20 p-3">
+                        <div className="mb-2 text-xs font-medium">{copy.modelOutput}</div>
+                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{iterateResult.thinking}</pre>
+                      </div>
+                    ) : null}
+                    {iterateResult?.changedFiles?.length ? (
+                      <div className="mt-3 rounded-2xl border border-border bg-secondary/20 p-3">
+                        <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
+                        <div className="max-h-28 overflow-auto">
+                          {renderSelectableFileTree(iterateTree, selectedCodeFile, (filePath) => {
+                            setSelectedCodeFile(filePath)
+                            setPreviewTab("code")
+                            setEditorRail("explorer")
+                            setFocusedLine(null)
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    {iterateResult?.build?.logs?.length ? (
+                      <div className="mt-3 rounded-2xl border border-border bg-secondary/20 p-3">
+                        <div className="mb-2 text-xs font-medium">{copy.buildAcceptance}</div>
+                        <div className="mb-2 text-xs text-muted-foreground">
+                          {iterateResult.build.status === "ok"
+                            ? copy.buildPassed
+                            : iterateResult.build.status === "failed"
+                              ? copy.buildFailed
+                              : copy.buildPending}
+                        </div>
+                        <pre className="max-h-32 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                          {iterateResult.build.logs.join("\n")}
+                        </pre>
+                      </div>
+                    ) : null}
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <Button onClick={iterate} disabled={iterating} className="w-full">
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        {iterating ? copy.applying : aiMode === "explain" ? copy.explainMode : copy.applyChange}
+                      </Button>
+                      <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
+                        <Undo2 className="mr-2 h-4 w-4" />
+                        {revertBusy ? copy.reverting : copy.revert}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -4387,11 +4362,11 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
       <div className="order-3 min-w-0 xl:order-3">
         <div className="sticky top-24">
-          <Card className="border-border/70 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <CardHeader className="space-y-4 border-b border-border/70">
+          <Card className="overflow-hidden border-border/70 bg-card/95 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <CardHeader className="space-y-4 border-b border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs text-muted-foreground">{isCn ? "Overview 总览" : "Overview"}</div>
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "Overview 总览" : "Overview"}</div>
                   <CardTitle className="mt-1 text-base">
                     {isCn ? "把高频入口收进同一条工作区线索" : "Keep the high-frequency controls on one workspace thread"}
                   </CardTitle>
@@ -4409,30 +4384,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                   Dashboard
                 </Button>
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                {workspaceSurfaceTabs.map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setPreviewTab(item.key)}
-                    className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
-                      previewTab === item.key
-                        ? "border-primary/40 bg-primary/10 text-foreground"
-                        : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
             </CardHeader>
 
             <CardContent className="space-y-4 p-4">
-              <div className="rounded-2xl border border-border bg-secondary/20 p-3">
-                <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
-                <div className="mt-2 text-sm font-semibold text-foreground">{projectName}</div>
-                <div className="mt-2 text-sm text-muted-foreground">{projectSummary}</div>
+              <div className="rounded-3xl border border-border bg-secondary/20 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{copy.projectOverview}</div>
+                <div className="mt-2 text-lg font-semibold text-foreground">{projectName}</div>
+                <div className="mt-2 text-sm leading-6 text-muted-foreground">{projectSummary}</div>
                 {pageManifest.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {pageManifest.slice(0, 6).map((item) => (
@@ -4444,27 +4402,15 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 ) : null}
               </div>
 
-              <div className="rounded-2xl border border-border bg-background/80 p-3">
-                <div className="text-xs text-muted-foreground">{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+              <div className="rounded-3xl border border-border bg-background/80 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "Pinned controls" : "Pinned controls"}</div>
                 <div className="mt-3 space-y-2">
-                  {overviewContextItems.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
-                      <div className="text-[11px] text-muted-foreground">{item.label}</div>
-                      <div className="mt-1 text-sm text-foreground">{item.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-background/80 p-3">
-                <div className="text-xs text-muted-foreground">{isCn ? "核心控制区" : "Core controls"}</div>
-                <div className="mt-3 space-y-2">
-                  {overviewPrimaryControls.map((item) => (
+                  {overviewPinnedControls.map((item) => (
                     <button
                       key={item.key}
                       type="button"
                       onClick={item.action}
-                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                      className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
                         item.active
                           ? "border-primary/40 bg-primary/10"
                           : "border-border bg-secondary/20 hover:border-primary/20 hover:bg-primary/5"
@@ -4477,15 +4423,27 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border bg-background/80 p-3">
-                <div className="text-xs text-muted-foreground">{isCn ? "打开与交付" : "Open and delivery"}</div>
+              <div className="rounded-3xl border border-border bg-background/80 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                <div className="mt-3 space-y-2">
+                  {overviewContextItems.map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-border bg-secondary/20 px-3 py-2">
+                      <div className="text-[11px] text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 text-sm text-foreground">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-border bg-background/80 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "打开与交付" : "Open and delivery"}</div>
                 <div className="mt-3 space-y-2">
                   {dashboardActions.slice(0, 4).map((action) => (
                     <button
                       key={action.label}
                       type="button"
                       onClick={action.onClick}
-                      className="flex w-full items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                      className="flex w-full items-center justify-between rounded-2xl border border-border bg-secondary/20 px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/20 hover:bg-primary/5"
                     >
                       <span>{action.label}</span>
                       <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
@@ -4494,8 +4452,29 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-dashed border-border bg-background/70 p-3">
-                <div className="text-xs text-muted-foreground">{isCn ? "后续再看" : "Later"}</div>
+              <div className="rounded-3xl border border-border bg-background/80 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "Secondary controls" : "Secondary controls"}</div>
+                <div className="mt-3 space-y-2">
+                  {overviewSecondaryControls.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={item.action}
+                      className={`w-full rounded-2xl border px-3 py-3 text-left transition ${
+                        item.active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-border bg-secondary/20 hover:border-primary/20 hover:bg-primary/5"
+                      }`}
+                    >
+                      <div className="text-sm font-medium text-foreground">{item.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{item.note}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-dashed border-border bg-background/70 p-4">
+                <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "后续再看" : "Later"}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {overviewLaterControls.map((item) => (
                     <span
