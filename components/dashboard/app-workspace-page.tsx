@@ -2563,7 +2563,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const overviewPinnedControls = overviewPrimaryControls.slice(0, 4)
   const overviewSecondaryControls = overviewPrimaryControls.slice(4)
   const copilotThreadItems = conversationItems.slice(0, 8)
-  const copilotIntroPrompt = project.history?.[0]?.prompt || generateTask?.summary || projectName
+  const copilotIntroPrompt = project?.history?.[0]?.prompt || generateTask?.summary || projectName
 
   useEffect(() => {
     if (!project) return
