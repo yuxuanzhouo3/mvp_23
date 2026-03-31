@@ -1431,17 +1431,6 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     }
     return items
   }, [codeDiagnostics, iterateResult?.build?.logs, iterateResult?.build?.status, isCn, runStatus, runtime?.lastError])
-  const editorTerminalLines = useMemo(() => {
-    const lines = [
-      `${isCn ? "工作区" : "workspace"}> ${selectedCodeFile || "app/editor/page.tsx"}`,
-      `${isCn ? "预览状态" : "preview"}: ${workspaceStatus.label}`,
-      `${isCn ? "运行态" : "runtime"}: ${runtime?.status || (isCn ? "未启动" : "stopped")}`,
-      runStatus || "",
-      ...(generateTask?.logs?.slice(-3) ?? []),
-      ...(iterateResult?.build?.logs?.slice(-3) ?? []),
-    ].filter(Boolean)
-    return lines.slice(-8)
-  }, [generateTask?.logs, isCn, iterateResult?.build?.logs, runStatus, runtime?.status, selectedCodeFile, workspaceStatus.label])
   const selectedFileSummary = useMemo(() => {
     if (!selectedCodeFile) return ""
     const typeLabel =
@@ -1591,6 +1580,17 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           : "Cloud Dataset"
         : "Supabase"
   }`
+  const editorTerminalLines = useMemo(() => {
+    const lines = [
+      `${isCn ? "工作区" : "workspace"}> ${selectedCodeFile || "app/editor/page.tsx"}`,
+      `${isCn ? "预览状态" : "preview"}: ${workspaceStatus.label}`,
+      `${isCn ? "运行态" : "runtime"}: ${runtime?.status || (isCn ? "未启动" : "stopped")}`,
+      runStatus || "",
+      ...(generateTask?.logs?.slice(-3) ?? []),
+      ...(iterateResult?.build?.logs?.slice(-3) ?? []),
+    ].filter(Boolean)
+    return lines.slice(-8)
+  }, [generateTask?.logs, isCn, iterateResult?.build?.logs, runStatus, runtime?.status, selectedCodeFile, workspaceStatus.label])
   const quickSuggestions = isCn
     ? [
         "把首页改成深色科技风",
@@ -4344,7 +4344,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 <div className="max-h-[42vh] space-y-3 overflow-auto pr-1">
                   <div className="rounded-2xl border border-border bg-background/80 p-3">
                     <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.initialRequest}</div>
-                    <div className="text-sm line-clamp-6">{project.history[0]?.prompt || generateTask?.summary || projectName}</div>
+                    <div className="text-sm line-clamp-6">{project.history?.[0]?.prompt || generateTask?.summary || projectName}</div>
                   </div>
 
                   {generatePanelOpen && generateTask?.logs?.length ? (
