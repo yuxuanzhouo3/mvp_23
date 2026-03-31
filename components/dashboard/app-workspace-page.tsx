@@ -1,8 +1,10 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import {
+  ArrowLeft,
   Bot,
   ChevronDown,
   ChevronUp,
@@ -20,12 +22,33 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import {
+  getDatabaseEnvGuide,
+  getDatabaseOption,
+  getDeploymentEnvGuide,
+  getDeploymentOption,
+  normalizeDatabaseTarget,
+  normalizeDeploymentTarget,
+} from "@/lib/fullstack-targets"
+import { getPlanPriceLabel, PLAN_CATALOG, type PlanTier } from "@/lib/plan-catalog"
 import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl, getResolvedPreviewUrl } from "@/lib/preview-url"
 import {
   PREVIEW_SNAPSHOT_STORAGE_KEY,
   buildPreviewSnapshotAliases,
   type PreviewSnapshot,
 } from "@/lib/preview-snapshot"
+import { isWorkspaceEditorAiSource } from "@/lib/workspace-editor-link"
+import {
+  buildCodePlatformContextRoutes,
+  inferCodePlatformElementContext,
+  inferCodePlatformModuleContext,
+  inferCodePlatformPageContext,
+  type WorkspaceElementContext,
+  type WorkspaceModuleContext,
+  type WorkspacePageContext,
+  type WorkspaceSessionContext,
+  type WorkspaceSymbolRef,
+} from "@/lib/workspace-ai-context"
 
 type RuntimeState = {
   status: "stopped" | "starting" | "running" | "error"
@@ -114,6 +137,19 @@ type IterateResp = {
   thinking?: string
   changedFiles?: string[]
   build?: { status: "ok" | "failed" | "skipped"; logs?: string[] }
+  warning?: string
+  context?: {
+    currentFilePath?: string
+    currentRoute?: string
+    focusedLine?: number
+    currentFileSymbols?: WorkspaceSymbolRef[]
+    currentPage?: WorkspacePageContext
+    currentModule?: WorkspaceModuleContext
+    currentElement?: WorkspaceElementContext
+    sharedSession?: WorkspaceSessionContext
+    openTabs?: string[]
+    relatedPaths?: string[]
+  }
   error?: string
 }
 
@@ -259,10 +295,14 @@ function inferRouteFromFilePath(filePath: string) {
   return `/${match[1]}`
 }
 
+function normalizeWorkspaceQueryPath(filePath?: string | null) {
+  return String(filePath ?? "").replace(/\\/g, "/").replace(/^\/+/, "").trim()
+}
+
 function resolveInitialWorkspaceTab(section?: string | null) {
   const normalized = String(section ?? "").trim().toLowerCase()
-  if (["code", "logs", "api"].includes(normalized)) return "code" as const
-  if (["analytics", "domains", "integrations", "security", "agents", "automations", "settings"].includes(normalized)) {
+  if (["code", "editor", "logs", "api"].includes(normalized)) return "code" as const
+  if (["dashboard", "runs", "templates", "pricing", "users", "data", "analytics", "domains", "integrations", "security", "agents", "automations", "settings"].includes(normalized)) {
     return "dashboard" as const
   }
   return "preview" as const
@@ -273,6 +313,13 @@ function resolveSectionPreferredFile(section?: string | null) {
   if (normalized === "api") return "app/api/items/route.ts"
   if (normalized === "logs") return "app/runs/page.tsx"
   if (normalized === "code") return "app/editor/page.tsx"
+  if (normalized === "editor") return "app/editor/page.tsx"
+  if (normalized === "dashboard") return "app/dashboard/page.tsx"
+  if (normalized === "runs") return "app/runs/page.tsx"
+  if (normalized === "templates") return "app/templates/page.tsx"
+  if (normalized === "pricing") return "app/pricing/page.tsx"
+  if (normalized === "users") return "app/dashboard/page.tsx"
+  if (normalized === "data") return "app/dashboard/page.tsx"
   if (normalized === "settings") return "app/settings/page.tsx"
   if (normalized === "analytics") return "app/analytics/page.tsx"
   if (normalized === "integrations") return "app/templates/page.tsx"
@@ -354,6 +401,51 @@ function renderSelectableFileTree(
       {!child.isFile ? renderSelectableFileTree(child, selectedPath, onSelect, depth + 1) : null}
     </div>
   ))
+}
+
+function buildParentPaths(filePath: string) {
+  const parts = String(filePath).split("/").filter(Boolean)
+  return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join("/"))
+}
+
+function renderInteractiveFileTree(
+  node: FileTreeNode,
+  selectedPath: string,
+  expandedPaths: string[],
+  onSelect: (path: string) => void,
+  onToggleFolder: (path: string) => void,
+  depth = 0
+): ReactNode {
+  const children = Array.from(node.children.values()).sort((a, b) => {
+    if (a.isFile === b.isFile) return a.name.localeCompare(b.name)
+    return a.isFile ? 1 : -1
+  })
+
+  return children.map((child) => {
+    const expanded = child.isFile ? false : expandedPaths.includes(child.path)
+    return (
+      <div key={child.path}>
+        <button
+          type="button"
+          onClick={() => (child.isFile ? onSelect(child.path) : onToggleFolder(child.path))}
+          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition hover:bg-secondary/60 ${
+            child.path === selectedPath ? "bg-background text-foreground" : "text-muted-foreground"
+          }`}
+          style={{ paddingLeft: `${8 + depth * 14}px` }}
+        >
+          <span className={child.isFile ? "text-foreground/80" : "font-medium text-foreground"}>
+            {child.isFile ? "•" : expanded ? "▾" : "▸"} {child.name}
+          </span>
+          {!child.isFile ? (
+            <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">
+              {Array.from(child.children.values()).length}
+            </span>
+          ) : null}
+        </button>
+        {!child.isFile && expanded ? renderInteractiveFileTree(child, selectedPath, expandedPaths, onSelect, onToggleFolder, depth + 1) : null}
+      </div>
+    )
+  })
 }
 
 function StructuredPreviewFallback({
@@ -509,6 +601,15 @@ function StructuredPreviewFallback({
 export function AppWorkspacePage({ projectId, initialSection }: { projectId: string; initialSection?: string }) {
   const searchParams = useSearchParams()
   const jobId = searchParams.get("jobId") || projectId
+  const requestedCodeFile = normalizeWorkspaceQueryPath(searchParams.get("file"))
+  const requestedAiSymbol = String(searchParams.get("symbol") ?? "").trim()
+  const requestedAiElement = String(searchParams.get("element") ?? "").trim()
+  const requestedEditorSource = String(searchParams.get("from") ?? "").trim()
+  const requestedContextPageId = String(searchParams.get("page") ?? "").trim()
+  const requestedContextRoute = String(searchParams.get("route") ?? "").trim()
+  const requestedCodeLine = Number(searchParams.get("line") ?? "")
+  const hasRequestedCodeLine = Number.isFinite(requestedCodeLine) && requestedCodeLine > 0
+  const openedFromAi = isWorkspaceEditorAiSource(requestedEditorSource)
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [projectMissing, setProjectMissing] = useState(false)
@@ -541,6 +642,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0)
   const [previewProbe, setPreviewProbe] = useState<PreviewProbeState | null>(null)
   const [aiMode, setAiMode] = useState<AiMode>("generate")
+  const [aiTargetSymbol, setAiTargetSymbol] = useState("")
+  const [aiTargetElement, setAiTargetElement] = useState("")
+  const [editorRail, setEditorRail] = useState<"explorer" | "search" | "routes" | "runtime">("explorer")
+  const [editorBottomTab, setEditorBottomTab] = useState<"terminal" | "problems" | "output">("terminal")
+  const [expandedCodeFolders, setExpandedCodeFolders] = useState<string[]>(["app", "components", "lib"])
+  const [templateLibraryQuery, setTemplateLibraryQuery] = useState("")
 
   function persistPreviewSnapshot(snapshot: PreviewSnapshot) {
     if (typeof window === "undefined") return
@@ -594,8 +701,21 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     const json = (await res.json()) as ProjectFilesResp
     const prioritized = prioritizeCodeFiles(json.files)
     setCodeFiles(prioritized)
-    setSelectedCodeFile((current) => current || prioritized[0] || "")
-    setCodeTabs((current) => (current.length ? current : prioritized.slice(0, 4)))
+    setSelectedCodeFile((current) => (current && prioritized.includes(current) ? current : prioritized[0] || ""))
+    setCodeTabs((current) => {
+      const nextTabs = current.filter((item) => prioritized.includes(item))
+      return nextTabs.length ? nextTabs : prioritized.slice(0, 4)
+    })
+    setExpandedCodeFolders((current) =>
+      Array.from(
+        new Set([
+          ...current,
+          ...prioritized
+            .slice(0, 18)
+            .flatMap((item) => buildParentPaths(item).slice(0, 2)),
+        ])
+      )
+    )
   }
 
   async function loadCodeFile(filePath: string) {
@@ -651,6 +771,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       }
       return nextTabs
     })
+  }
+
+  function toggleCodeFolder(path: string) {
+    setExpandedCodeFolders((current) =>
+      current.includes(path) ? current.filter((item) => item !== path) : [...current, path]
+    )
   }
 
   async function loadWorkspaceSearch(query: string) {
@@ -726,8 +852,30 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           currentFileContent: selectedCodeFile ? draftCodeContent : undefined,
           currentFileSymbols: selectedCodeSymbols,
           focusedLine,
-          currentRoute: inferRouteFromFilePath(selectedCodeFile) || undefined,
-          relatedPaths: Array.from(new Set([selectedCodeFile, ...codeTabs].filter(Boolean))).slice(0, 8),
+          currentRoute: aiPageContext.route || currentCodeRoute || undefined,
+          currentPage: aiPageContext,
+          currentModule: aiModuleContext,
+          currentElement: aiElementContext,
+          sharedSession: {
+            projectName,
+            specKind: project?.spec?.kind || "workspace",
+            workspaceSurface: previewTab,
+            activeSection: activeSectionKey || aiPageContext.id,
+            deploymentTarget: normalizedDeploymentTarget,
+            databaseTarget: normalizedDatabaseTarget,
+            region: workspaceRegion,
+            selectedTemplate: generateTask?.templateTitle || undefined,
+            workspaceStatus: workspaceStatus.label,
+          },
+          openTabs: codeTabs.slice(0, 8),
+          relatedPaths: Array.from(
+            new Set([
+              selectedCodeFile,
+              aiPageContext.filePath,
+              ...codeTabs,
+              ...routeFileEntries.slice(0, 6).map((entry) => entry.filePath),
+            ].filter(Boolean))
+          ).slice(0, 12),
         }),
         signal: iterateCtrl.signal,
       })
@@ -739,6 +887,23 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       } else {
         setIterateStatus(aiMode === "explain" ? "Context explanation ready" : "Iteration completed")
         if (aiMode !== "explain") {
+          if (json.changedFiles?.length) {
+            setCodeFiles((current) =>
+              prioritizeCodeFiles(Array.from(new Set([...json.changedFiles!, ...current])))
+            )
+            setExpandedCodeFolders((current) =>
+              Array.from(new Set([...current, ...json.changedFiles!.flatMap((item) => buildParentPaths(item))]))
+            )
+          }
+          const firstChangedFile = json.changedFiles?.[0] || json.context?.currentFilePath
+          if (firstChangedFile) {
+            setSelectedCodeFile(firstChangedFile)
+            setCodeTabs((current) => (current.includes(firstChangedFile) ? current : [firstChangedFile, ...current].slice(0, 6)))
+            setPreviewTab("code")
+            setFocusedLine(null)
+            setEditorRail("explorer")
+          }
+          setEditorBottomTab(json.build?.status === "failed" ? "problems" : "output")
           setPrompt("")
           // Do not block UI on restart: trigger in background with timeout.
           const restartCtrl = new AbortController()
@@ -756,6 +921,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         }
       }
       await loadProject()
+      if (json.changedFiles?.length) {
+        await loadCodeFiles()
+      }
     } catch (e: any) {
       setIterateStatus(e?.message || "Iteration failed")
     } finally {
@@ -783,6 +951,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         })
       }
       await loadProject()
+      await loadCodeFiles()
     } finally {
       setRevertBusy(false)
     }
@@ -801,15 +970,22 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }, [initialSection])
 
   useEffect(() => {
+    if (!codeFiles.length) return
+    const requestedMatch = requestedCodeFile
+      ? codeFiles.find((item) => item === requestedCodeFile) ||
+        codeFiles.find((item) => item.endsWith(requestedCodeFile.split("/").slice(-1)[0]))
+      : ""
     const preferredFile = resolveSectionPreferredFile(initialSection)
-    if (!preferredFile || !codeFiles.length) return
-    const match = codeFiles.find((item) => item === preferredFile) || codeFiles.find((item) => item.endsWith(preferredFile.split("/").slice(-1)[0]))
+    const preferredMatch = preferredFile
+      ? codeFiles.find((item) => item === preferredFile) || codeFiles.find((item) => item.endsWith(preferredFile.split("/").slice(-1)[0]))
+      : ""
+    const match = requestedMatch || preferredMatch
     if (!match) return
     setSelectedCodeFile(match)
-    if (resolveInitialWorkspaceTab(initialSection) === "code") {
+    if (requestedMatch || resolveInitialWorkspaceTab(initialSection) === "code") {
       setPreviewTab("code")
     }
-  }, [codeFiles, initialSection])
+  }, [codeFiles, initialSection, requestedCodeFile])
 
   useEffect(() => {
     if (!project) return
@@ -868,6 +1044,25 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     void loadCodeFile(selectedCodeFile)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewTab, selectedCodeFile])
+
+  useEffect(() => {
+    if (!requestedCodeFile || requestedCodeFile !== selectedCodeFile || !hasRequestedCodeLine) return
+    setFocusedLine(requestedCodeLine)
+  }, [hasRequestedCodeLine, requestedCodeFile, requestedCodeLine, selectedCodeFile])
+
+  useEffect(() => {
+    if (!requestedAiSymbol || hasRequestedCodeLine || requestedCodeFile !== selectedCodeFile) return
+    const matchedSymbol = selectedCodeSymbols.find((item) => item.name === requestedAiSymbol)
+    if (!matchedSymbol) return
+    setFocusedLine(matchedSymbol.line)
+    setEditorRail("explorer")
+    setPreviewTab("code")
+  }, [hasRequestedCodeLine, requestedAiSymbol, requestedCodeFile, selectedCodeFile, selectedCodeSymbols])
+
+  useEffect(() => {
+    if (!selectedCodeFile) return
+    setExpandedCodeFolders((current) => Array.from(new Set([...current, ...buildParentPaths(selectedCodeFile)])))
+  }, [selectedCodeFile])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -988,7 +1183,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     loginProviders: isCn ? "邮箱 / 微信 / Google / Facebook" : "Email / Google / Facebook / WeChat",
     standaloneSurfaces: isCn ? "admin、market、文档与演示资产均作为独立入口维护" : "admin, market, docs, and demo assets are maintained as standalone entry surfaces",
     workspaceTitle: isCn ? "AI 产品工作台" : "AI Product Workspace",
-    workspaceSubtitle: isCn ? "左侧查看结果，右侧持续驱动 AI 修改。" : "Review results on the left and keep iterating with AI on the right.",
+    workspaceSubtitle: isCn ? "左侧持续共创，中间主工作区承接结果，右侧保留 Overview 控制。" : "Keep the AI copilot on the left, the main workspace in the middle, and Overview controls on the right.",
     projectOverview: isCn ? "项目概览" : "Project Overview",
     aiStudio: isCn ? "AI 共创助手" : "AI Co-Creation",
     taskSummary: isCn ? "当前任务摘要" : "Current task summary",
@@ -996,7 +1191,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     quickSuggestions: isCn ? "快捷修改建议" : "Quick suggestions",
     continuePrompt: isCn ? "继续告诉 AI 你要改什么..." : "Tell AI what to change next...",
     queuedChanges: isCn ? "待应用修改" : "Queued change",
-    applyHint: isCn ? "右侧输入修改建议后，左侧工作区会继续承接最新结果。" : "Add a change request on the right and the left workspace will keep reflecting the latest result.",
+    applyHint: isCn ? "左侧输入修改需求后，中间主工作区会继续承接最新结果，右侧 Overview 保持当前上下文。" : "Use the left copilot to request changes, let the main workspace reflect the result, and keep current context in the right Overview rail.",
     currentPath: isCn ? "当前路径" : "Current path",
     deploymentTarget: isCn ? "部署环境" : "Deployment target",
     dataTarget: isCn ? "数据 / 文档方案" : "Data / document path",
@@ -1079,6 +1274,24 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     return codeFiles.filter((item) => item.toLowerCase().includes(query))
   }, [codeFiles, codeQuery])
   const filteredCodeTree = useMemo(() => buildFileTree(filteredCodeFiles), [filteredCodeFiles])
+  const recentCodeFiles = useMemo(() => codeTabs.slice().reverse(), [codeTabs])
+  const routeFileEntries = useMemo(
+    () =>
+      pageManifest.map((item) => ({
+        route: item.route,
+        filePath: item.filePath,
+      })),
+    [pageManifest]
+  )
+  const editorRailItems = useMemo(
+    () => [
+      { key: "explorer" as const, label: isCn ? "文件" : "Files", short: "F" },
+      { key: "search" as const, label: isCn ? "搜索" : "Search", short: "S" },
+      { key: "routes" as const, label: isCn ? "页面" : "Pages", short: "P" },
+      { key: "runtime" as const, label: isCn ? "输出" : "Output", short: "O" },
+    ],
+    [isCn]
+  )
   const hasUnsavedChanges = selectedCodeFile && draftCodeContent !== selectedCodeContent
   const codeLineNumbers = useMemo(() => {
     const lineCount = Math.max(1, draftCodeContent.split(/\r?\n/).length)
@@ -1197,6 +1410,38 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     }
     return diagnostics
   }, [selectedCodeFile, hasUnsavedChanges, selectedCodeSymbols.length, copy.unsavedChanges, copy.routeEntryFile, copy.backendApiHandler, copy.noSymbols])
+  const editorProblemItems = useMemo(() => {
+    const items = codeDiagnostics.map((diagnostic, index) => ({
+      id: `diagnostic-${index}`,
+      level: diagnostic.level,
+      text: diagnostic.text,
+    }))
+    if (runStatus) {
+      items.unshift({ id: "runtime-status", level: "warn" as const, text: runStatus })
+    }
+    if (runtime?.lastError) {
+      items.unshift({ id: "runtime-error", level: "warn" as const, text: runtime.lastError })
+    }
+    if (iterateResult?.build?.status === "failed") {
+      items.unshift({
+        id: "iterate-build",
+        level: "warn" as const,
+        text: iterateResult.build.logs?.[0] || (isCn ? "最近一次修改的 build 未通过" : "The latest iteration build did not pass"),
+      })
+    }
+    return items
+  }, [codeDiagnostics, iterateResult?.build?.logs, iterateResult?.build?.status, isCn, runStatus, runtime?.lastError])
+  const editorTerminalLines = useMemo(() => {
+    const lines = [
+      `${isCn ? "工作区" : "workspace"}> ${selectedCodeFile || "app/editor/page.tsx"}`,
+      `${isCn ? "预览状态" : "preview"}: ${workspaceStatus.label}`,
+      `${isCn ? "运行态" : "runtime"}: ${runtime?.status || (isCn ? "未启动" : "stopped")}`,
+      runStatus || "",
+      ...(generateTask?.logs?.slice(-3) ?? []),
+      ...(iterateResult?.build?.logs?.slice(-3) ?? []),
+    ].filter(Boolean)
+    return lines.slice(-8)
+  }, [generateTask?.logs, isCn, iterateResult?.build?.logs, runStatus, runtime?.status, selectedCodeFile, workspaceStatus.label])
   const selectedFileSummary = useMemo(() => {
     if (!selectedCodeFile) return ""
     const typeLabel =
@@ -1214,6 +1459,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     return `${typeLabel} · ${selectedCodeSymbols.length} ${isCn ? "个符号" : "symbols"} · ${draftCodeContent.split(/\r?\n/).length} ${isCn ? "行" : "lines"}`
   }, [copy.backendApiHandler, copy.routeEntryFile, draftCodeContent, isCn, selectedCodeFile, selectedCodeSymbols.length])
   const currentCodeRoute = useMemo(() => inferRouteFromFilePath(selectedCodeFile), [selectedCodeFile])
+  const activeSectionKey = String(initialSection ?? "").trim().toLowerCase()
   const focusedSectionLabel = initialSection ? initialSection.replace(/[-_]+/g, " ") : ""
   const aiModeLabel =
     aiMode === "explain"
@@ -1231,13 +1477,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         : copy.buildPending
   const dashboardActions = useMemo(
     () => [
-      { label: "Open App", onClick: () => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer") },
-      { label: "Open Files", onClick: () => window.open(`/api/projects/${encodeURIComponent(projectId)}/files`, "_blank", "noopener,noreferrer") },
-      { label: "Open Docs", onClick: () => window.open("/api-docs", "_blank", "noopener,noreferrer") },
-      ...(project?.preview?.supportsDynamicRuntime && runtimePreviewUrl ? [{ label: "Open Runtime", onClick: () => window.open(runtimePreviewUrl, "_blank", "noopener,noreferrer") }] : []),
-      ...(project?.preview?.supportsSandboxRuntime && sandboxPreviewUrl ? [{ label: "Open Sandbox", onClick: () => window.open(sandboxPreviewUrl, "_blank", "noopener,noreferrer") }] : []),
+      { label: isCn ? "打开应用" : "Open App", onClick: () => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer") },
+      { label: isCn ? "打开文件" : "Open Files", onClick: () => window.open(`/api/projects/${encodeURIComponent(projectId)}/files`, "_blank", "noopener,noreferrer") },
+      { label: isCn ? "打开文档" : "Open Docs", onClick: () => window.open("/api-docs", "_blank", "noopener,noreferrer") },
+      ...(project?.preview?.supportsDynamicRuntime && runtimePreviewUrl ? [{ label: isCn ? "打开运行态" : "Open Runtime", onClick: () => window.open(runtimePreviewUrl, "_blank", "noopener,noreferrer") }] : []),
+      ...(project?.preview?.supportsSandboxRuntime && sandboxPreviewUrl ? [{ label: isCn ? "打开沙箱预览" : "Open Sandbox", onClick: () => window.open(sandboxPreviewUrl, "_blank", "noopener,noreferrer") }] : []),
     ],
-    [resolvedPreviewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
+    [isCn, resolvedPreviewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
   )
   const latestHistoryItem = project?.history?.length ? project.history[project.history.length - 1] : null
   const projectName =
@@ -1377,6 +1623,948 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         })),
     [project?.history]
   )
+  const showPreviewDebug = searchParams.get("debug") === "1" && previewTab === "preview"
+  const workspaceSurfaceTabs = [
+    { key: "preview", label: copy.preview },
+    { key: "dashboard", label: "Dashboard" },
+    { key: "code", label: copy.code },
+  ] as const
+  const overviewContextItems = [
+    { label: copy.currentPath, value: currentPathLabel },
+    { label: copy.buildAcceptance, value: buildAcceptanceLabel },
+    { label: copy.currentContext, value: selectedCodeFile || (isCn ? "当前未选择文件" : "No active file selected") },
+    { label: copy.currentRoute, value: currentCodeRoute || (focusedSectionLabel || (isCn ? "当前工作区根页" : "Workspace root")) },
+  ]
+  const workspaceRootHref = `/apps/${encodeURIComponent(projectId)}`
+  const normalizedDeploymentTarget = normalizeDeploymentTarget(
+    project?.deploymentTarget || (workspaceRegion === "cn" ? "cloudbase" : "vercel"),
+    workspaceRegion
+  )
+  const normalizedDatabaseTarget = normalizeDatabaseTarget(project?.databaseTarget || workspaceDatabase, workspaceRegion)
+  const deploymentOption = getDeploymentOption(normalizedDeploymentTarget)
+  const databaseOption = getDatabaseOption(normalizedDatabaseTarget)
+  const deploymentEnvGuide = getDeploymentEnvGuide(normalizedDeploymentTarget)
+  const databaseEnvGuide = getDatabaseEnvGuide(normalizedDatabaseTarget)
+  const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
+  const moduleCount = project?.spec?.modules?.length ?? 0
+  const featureCount = project?.spec?.features?.length ?? 0
+  const recentRunItems = useMemo(
+    () =>
+      (project?.history ?? [])
+        .slice(-4)
+        .reverse()
+        .map((item) => ({
+          id: item.id,
+          status: item.status,
+          type: item.type,
+          prompt: item.prompt,
+          summary: item.summary || (item.type === "generate" ? (isCn ? "生成工作区" : "Workspace generation") : (isCn ? "应用修改" : "Workspace iteration")),
+          time: new Date(item.createdAt).toLocaleString(),
+        })),
+    [isCn, project?.history]
+  )
+  const editorOutputItems = useMemo(
+    () => [
+      `${isCn ? "当前预览" : "Preview"}: ${resolvedPreviewUrl || (isCn ? "未就绪" : "pending")}`,
+      `${isCn ? "部署" : "Deployment"}: ${isCn ? deploymentOption.nameCn : deploymentOption.nameEn}`,
+      `${isCn ? "数据库" : "Database"}: ${isCn ? databaseOption.nameCn : databaseOption.nameEn}`,
+      `${isCn ? "最近更新" : "Latest update"}: ${latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}`,
+    ],
+    [
+      copy.applyHint,
+      databaseOption.nameCn,
+      databaseOption.nameEn,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      generateTask?.summary,
+      isCn,
+      latestHistoryItem?.summary,
+      resolvedPreviewUrl,
+    ]
+  )
+  const planShowcase = useMemo(
+    () =>
+      (["free", "pro", "elite"] as PlanTier[]).map((planId) => {
+        const plan = PLAN_CATALOG[planId]
+        const policy =
+          planId === "free"
+            ? isCn
+              ? "代码不可导出，数据库仅限在线使用"
+              : "Code export locked, database stays online-only"
+            : planId === "pro"
+              ? isCn
+                ? "开放导出、更多生成质量与更强交付能力"
+                : "Unlock export, stronger generation quality, and fuller delivery"
+              : isCn
+                ? "更适合复杂工作区、客户提案和展示级交付"
+                : "Best for complex workspaces, client demos, and showcase delivery"
+        return {
+          id: planId,
+          name: isCn ? plan.nameCn : plan.nameEn,
+          price: getPlanPriceLabel(planId, isCn ? "zh" : "en"),
+          summary: isCn ? plan.summaryCn : plan.summaryEn,
+          policy,
+          deliverables: isCn ? plan.deliverablesCn : plan.deliverablesEn,
+          badge: isCn ? plan.badgeCn : plan.badgeEn,
+        }
+      }),
+    [isCn]
+  )
+  const activeDashboardSection = activeSectionKey || "dashboard"
+  const sectionPageHeader = useMemo(() => {
+    switch (activeDashboardSection) {
+      case "runs":
+        return {
+          eyebrow: isCn ? "Runs workspace" : "Runs workspace",
+          title: isCn ? "构建、预览和 runtime 的运行控制台" : "An operating console for build, preview, and runtime",
+          summary: isCn ? "这一页应该像流水线和交付后台，而不是几张摘要卡。" : "This page should feel like a pipeline and delivery console, not a few summary cards.",
+        }
+      case "templates":
+        return {
+          eyebrow: isCn ? "Template library" : "Template library",
+          title: isCn ? "把模板、模块和页面结构拉成可复用资产" : "Turn templates, modules, and routes into reusable assets",
+          summary: isCn ? "这里应该像模板库入口，支持搜索、分类和直接复用。" : "This should feel like a template library entry with search, categories, and direct reuse.",
+        }
+      case "pricing":
+        return {
+          eyebrow: isCn ? "Pricing workspace" : "Pricing workspace",
+          title: isCn ? "让免费与付费差异一眼就能讲清楚" : "Make the free-vs-paid differences legible at a glance",
+          summary: isCn ? "这里不只是价格，而是资源、导出和交付能力的差异说明。" : "This is not only pricing. It explains resource, export, and delivery differences.",
+        }
+      case "settings":
+        return {
+          eyebrow: isCn ? "Settings workspace" : "Settings workspace",
+          title: isCn ? "把环境、权限、发布和资源控制放进同一页" : "Keep environment, access, publish, and resource control on one page",
+          summary: isCn ? "这里应该像交付配置台，便于上线前统一检查。" : "This should feel like a delivery configuration console before launch.",
+        }
+      default:
+        return {
+          eyebrow: isCn ? "Dashboard workspace" : "Dashboard workspace",
+          title: isCn ? "当前应用的控制平面总览" : "The current app control-plane overview",
+          summary: isCn ? "工作区的主状态、主要入口和交付检查都集中在这里。" : "The workspace’s main state, entrypoints, and delivery checks stay concentrated here.",
+        }
+    }
+  }, [activeDashboardSection, isCn])
+  const runHistoryRows = useMemo(
+    () =>
+      recentRunItems.map((item, index) => ({
+        id: item.id,
+        branch: item.type === "generate" ? "main" : isCn ? "workspace-change" : "workspace-change",
+        action: item.type === "generate" ? (isCn ? "生成工作区" : "Generate workspace") : isCn ? "应用修改" : "Apply change",
+        status: item.status,
+        duration: item.type === "generate" ? `${2 + index}m ${12 + index * 7}s` : `${38 + index * 9}s`,
+        time: item.time,
+        summary: item.summary,
+      })),
+    [isCn, recentRunItems]
+  )
+  const dashboardPriorityCards = useMemo(
+    () => [
+      {
+        id: "delivery",
+        label: isCn ? "交付状态" : "Delivery state",
+        value: workspaceStatus.label,
+        note:
+          buildAcceptanceLabel === (isCn ? "已通过" : "Passed")
+            ? isCn
+              ? "Build 已过，可以继续讲预览和交付。"
+              : "Build is clear, so preview and delivery can stay in focus."
+            : isCn
+              ? "先把 build、preview 和 runtime 的状态讲清楚。"
+              : "Clarify build, preview, and runtime before going wider.",
+        href: `${workspaceRootHref}/runs`,
+      },
+      {
+        id: "workspace-depth",
+        label: isCn ? "工作区厚度" : "Workspace depth",
+        value: `${generatedRouteCount} / ${moduleCount} / ${featureCount}`,
+        note: isCn ? "页面、模块和能力已经能支撑一套像样的产品工作区。" : "Routes, modules, and features now support a more product-like workspace shell.",
+        href: `${workspaceRootHref}/dashboard`,
+      },
+      {
+        id: "editor-lane",
+        label: isCn ? "当前编辑焦点" : "Editor focus",
+        value: selectedCodeFile || (isCn ? "等待选择文件" : "Waiting for file selection"),
+        note: currentCodeRoute || (isCn ? "把当前文件继续拉近真实 IDE 使用节奏。" : "Keep pulling the active file into a more real IDE rhythm."),
+        href: `${workspaceRootHref}/editor`,
+      },
+      {
+        id: "resource-policy",
+        label: isCn ? "资源策略" : "Resource policy",
+        value: isCn ? "免费 / Pro / Elite" : "Free / Pro / Elite",
+        note: isCn ? "免费用户代码不可导出，数据库保持在线使用。" : "Free users keep code export locked while database usage stays online-first.",
+        href: `${workspaceRootHref}/pricing`,
+      },
+    ],
+    [
+      buildAcceptanceLabel,
+      currentCodeRoute,
+      featureCount,
+      generatedRouteCount,
+      isCn,
+      moduleCount,
+      selectedCodeFile,
+      workspaceRootHref,
+      workspaceStatus.label,
+    ]
+  )
+  const dashboardOperatorQueue = useMemo(
+    () => [
+      {
+        id: "preview-story",
+        title: isCn ? "预览叙事" : "Preview narrative",
+        summary: resolvedPreviewUrl || (isCn ? "当前等待预览地址解析" : "Waiting for the preview address to resolve"),
+        href: workspaceRootHref,
+        actionLabel: copy.preview,
+      },
+      {
+        id: "code-lane",
+        title: isCn ? "代码工作区" : "Code lane",
+        summary: selectedFileSummary || (isCn ? "继续从 Editor 路由讲当前文件、页面映射和终端输出。" : "Use the Editor route to narrate the active file, route map, and terminal output."),
+        href: `${workspaceRootHref}/editor`,
+        actionLabel: copy.code,
+      },
+      {
+        id: "runtime-lane",
+        title: isCn ? "运行与交付" : "Runtime and delivery",
+        summary:
+          recentRunItems[0]?.summary ||
+          (isCn ? "继续从 Runs 路由讲 build、preview 和 runtime 的最新状态。" : "Use the Runs route to narrate the latest build, preview, and runtime state."),
+        href: `${workspaceRootHref}/runs`,
+        actionLabel: isCn ? "查看 Runs" : "Open runs",
+      },
+      {
+        id: "settings-lane",
+        title: isCn ? "环境与数据" : "Environment and data",
+        summary: `${isCn ? deploymentOption.nameCn : deploymentOption.nameEn} / ${isCn ? databaseOption.nameCn : databaseOption.nameEn}`,
+        href: `${workspaceRootHref}/settings`,
+        actionLabel: isCn ? "查看 Settings" : "Open settings",
+      },
+    ],
+    [
+      copy.code,
+      copy.preview,
+      databaseOption.nameCn,
+      databaseOption.nameEn,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      isCn,
+      recentRunItems,
+      resolvedPreviewUrl,
+      selectedFileSummary,
+      workspaceRootHref,
+    ]
+  )
+  const runPipelineStages = useMemo(
+    () => [
+      {
+        id: "spec",
+        label: isCn ? "Spec" : "Spec",
+        state: recentRunItems.length ? (isCn ? "已同步" : "synced") : (isCn ? "待生成" : "pending"),
+        note: isCn ? "最近一次生成或修改已经进入工作区记录。" : "The latest generation or iteration is already recorded in the workspace.",
+        tone: recentRunItems.length ? "ready" : "pending",
+      },
+      {
+        id: "build",
+        label: "Build",
+        state: buildAcceptanceLabel,
+        note: project?.generation?.summary || (isCn ? "继续把 build 结果作为交付准入门槛。" : "Keep build acceptance as the delivery gate."),
+        tone: project?.generation?.buildStatus === "ok" ? "ready" : project?.generation?.buildStatus === "failed" ? "warning" : "pending",
+      },
+      {
+        id: "preview",
+        label: isCn ? "Preview" : "Preview",
+        state: workspaceStatus.label,
+        note: fallbackReason || (isCn ? "当前优先使用已解析的 preview 地址。" : "The resolved preview address stays in focus right now."),
+        tone: workspaceStatus.key === "ready" || workspaceStatus.key === "sandbox" ? "ready" : workspaceStatus.key === "fallback" ? "warning" : "pending",
+      },
+      {
+        id: "runtime",
+        label: isCn ? "Runtime" : "Runtime",
+        state: runtime?.status || (isCn ? "未启动" : "stopped"),
+        note: runtime?.lastError || (isCn ? "运行态状态继续作为交付链最后一跳。" : "Runtime remains the final hop in the delivery chain."),
+        tone: runtime?.status === "running" ? "ready" : runtime?.status === "error" ? "warning" : "pending",
+      },
+    ],
+    [
+      buildAcceptanceLabel,
+      fallbackReason,
+      isCn,
+      project?.generation?.buildStatus,
+      project?.generation?.summary,
+      recentRunItems.length,
+      runtime?.lastError,
+      runtime?.status,
+      workspaceStatus.key,
+      workspaceStatus.label,
+    ]
+  )
+  const runControlNotes = useMemo(
+    () => [
+      `${isCn ? "预览模式" : "Preview mode"}: ${project?.preview?.activeMode || "static_ssr"}`,
+      `${isCn ? "最近任务" : "Latest task"}: ${latestHistoryItem?.type || (isCn ? "暂无" : "none")}`,
+      `${isCn ? "数据 / 部署" : "Data / deployment"}: ${isCn ? deploymentOption.nameCn : deploymentOption.nameEn} / ${isCn ? databaseOption.nameCn : databaseOption.nameEn}`,
+    ],
+    [
+      databaseOption.nameCn,
+      databaseOption.nameEn,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      isCn,
+      latestHistoryItem?.type,
+      project?.preview?.activeMode,
+    ]
+  )
+  const editorBreadcrumbs = useMemo(
+    () => [isCn ? "工作区" : "Workspace", ...(selectedCodeFile || "app/editor/page.tsx").split("/")],
+    [isCn, selectedCodeFile]
+  )
+  const editorStatusItems = useMemo(
+    () => [
+      { label: isCn ? "状态" : "State", value: workspaceStatus.label },
+      { label: isCn ? "Build" : "Build", value: buildAcceptanceLabel },
+      { label: isCn ? "Route" : "Route", value: currentCodeRoute || (isCn ? "未命中" : "not inferred") },
+      { label: isCn ? "行数" : "Lines", value: `${codeLineNumbers.length}` },
+      { label: isCn ? "标签" : "Tabs", value: `${codeTabs.length}` },
+      { label: isCn ? "未保存" : "Unsaved", value: hasUnsavedChanges ? (isCn ? "是" : "yes") : (isCn ? "否" : "no") },
+    ],
+    [
+      buildAcceptanceLabel,
+      codeLineNumbers.length,
+      codeTabs.length,
+      currentCodeRoute,
+      hasUnsavedChanges,
+      isCn,
+      workspaceStatus.label,
+    ]
+  )
+  const templateLibraryCards = useMemo(() => {
+    const cards = [
+      {
+        id: "current-workspace",
+        title: generateTask?.templateTitle || (isCn ? "当前工作区模板" : "Current workspace template"),
+        category: isCn ? "生成中模板" : "Generated template",
+        note: projectSummary,
+        tags: [project?.spec?.kind || "workspace", ...(project?.spec?.modules ?? []).slice(0, 3)],
+      },
+      {
+        id: "ops-control",
+        title: isCn ? "Control Plane" : "Control Plane",
+        category: isCn ? "后台工作台" : "Back office",
+        note: isCn ? "适合继续延展 dashboard、runs、settings 这些管理型页面。" : "Useful for extending dashboard, runs, and settings surfaces.",
+        tags: ["dashboard", "runs", "settings"],
+      },
+      {
+        id: "product-launch",
+        title: isCn ? "Launch Surface" : "Launch Surface",
+        category: isCn ? "对外展示" : "Go-to-market",
+        note: isCn ? "适合首页、定价页、下载页和模板展示入口。" : "Useful for landing, pricing, download, and showcase entrypoints.",
+        tags: ["landing", "pricing", "templates"],
+      },
+    ]
+    const query = templateLibraryQuery.trim().toLowerCase()
+    if (!query) return cards
+    return cards.filter((card) =>
+      `${card.title} ${card.category} ${card.note} ${card.tags.join(" ")}`.toLowerCase().includes(query)
+    )
+  }, [generateTask?.templateTitle, isCn, project?.spec?.kind, project?.spec?.modules, projectSummary, templateLibraryQuery])
+  const pricingComparisonRows = useMemo(
+    () => [
+      {
+        label: isCn ? "代码导出" : "Code export",
+        explorer: isCn ? "不可导出" : "Locked",
+        pro: isCn ? "可导出" : "Included",
+        elite: isCn ? "可导出 + 更完整交付" : "Included + fuller delivery",
+      },
+      {
+        label: isCn ? "数据库使用" : "Database usage",
+        explorer: isCn ? "仅在线使用" : "Online only",
+        pro: isCn ? "在线 + 更完整配置" : "Online + fuller configuration",
+        elite: isCn ? "在线 + 更强资源能力" : "Online + stronger resource room",
+      },
+      {
+        label: isCn ? "工作区厚度" : "Workspace depth",
+        explorer: isCn ? "演示级首版" : "Demo-ready first version",
+        pro: isCn ? "MVP 级控制台" : "MVP-grade control plane",
+        elite: isCn ? "展示级多模块工作区" : "Showcase-grade multi-module workspace",
+      },
+    ],
+    [isCn]
+  )
+  const settingsSurfaceCards = useMemo(
+    () => [
+      {
+        title: isCn ? "权限与分享" : "Access and sharing",
+        summary: isCn ? "控制公开/私有、邀请对象和老板查看入口。" : "Control public/private state, invite targets, and stakeholder access.",
+        items: [isCn ? "公开 / 私有" : "Public / Private", isCn ? "成员邀请" : "Member invites", isCn ? "查看权限" : "View access"],
+      },
+      {
+        title: isCn ? "发布与预览" : "Publish and preview",
+        summary: isCn ? "统一处理 canonical preview、runtime 和后续独立访问入口。" : "Handle canonical preview, runtime, and future standalone access in one place.",
+        items: [resolvedPreviewUrl || (isCn ? "预览待解析" : "Preview pending"), isCn ? deploymentOption.nameCn : deploymentOption.nameEn, workspaceStatus.label],
+      },
+      {
+        title: isCn ? "环境与数据" : "Environment and data",
+        summary: isCn ? "部署变量、数据库接入和资源路径都收口到这一组。" : "Deployment env, database wiring, and resource paths converge here.",
+        items: [...deploymentEnvGuide.slice(0, 2), ...databaseEnvGuide.slice(0, 2)],
+      },
+      {
+        title: isCn ? "资源控制" : "Resource control",
+        summary: isCn ? "把免费/付费策略、导出规则和交付能力放到同一面板。" : "Keep tier policy, export rules, and delivery capability in one surface.",
+        items: [isCn ? "免费用户代码不可导出" : "Free users cannot export code", isCn ? "免费 DB 仅限在线使用" : "Free DB stays online-only", isCn ? "付费层开放更多资源" : "Paid tiers unlock more resources"],
+      },
+    ],
+    [
+      databaseEnvGuide,
+      deploymentEnvGuide,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      isCn,
+      resolvedPreviewUrl,
+      workspaceStatus.label,
+    ]
+  )
+  const showDefaultDashboardPanels = activeDashboardSection === "dashboard"
+  const editorBottomTabLabel = useMemo(
+    () =>
+      editorBottomTab === "terminal"
+        ? isCn
+          ? "终端"
+          : "Terminal"
+        : editorBottomTab === "problems"
+          ? isCn
+            ? "问题"
+            : "Problems"
+          : isCn
+            ? "输出"
+            : "Output",
+    [editorBottomTab, isCn]
+  )
+  const editorRailLabel = useMemo(
+    () => editorRailItems.find((item) => item.key === editorRail)?.label || editorRail,
+    [editorRail, editorRailItems]
+  )
+  const editorSummaryCards = useMemo(
+    () => [
+      {
+        label: isCn ? "当前文件" : "Active file",
+        value: selectedCodeFile || copy.noFileSelected,
+      },
+      {
+        label: isCn ? "页面映射" : "Route map",
+        value: currentCodeRoute || (isCn ? "未命中页面路由" : "No route inferred"),
+      },
+      {
+        label: isCn ? "打开标签" : "Open tabs",
+        value: `${codeTabs.length}`,
+      },
+      {
+        label: isCn ? "活动侧栏" : "Active rail",
+        value: editorRailLabel,
+      },
+      {
+        label: isCn ? "当前输出面板" : "Active output",
+        value: editorBottomTabLabel,
+      },
+    ],
+    [codeTabs.length, copy.noFileSelected, currentCodeRoute, editorBottomTabLabel, editorRailLabel, isCn, selectedCodeFile]
+  )
+  const workspaceAiRoutes = useMemo(
+    () =>
+      buildCodePlatformContextRoutes({
+        region: workspaceRegion,
+        features: project?.spec?.features ?? [],
+      }),
+    [project?.spec?.features, workspaceRegion]
+  )
+  const focusedSymbolName = useMemo(() => {
+    const focusedSymbol = focusedLine ? selectedCodeSymbols.find((item) => item.line === focusedLine)?.name : ""
+    return focusedSymbol || selectedCodeSymbols[0]?.name || ""
+  }, [focusedLine, selectedCodeSymbols])
+  const aiPageContext = useMemo(
+    () =>
+      inferCodePlatformPageContext({
+        routes: workspaceAiRoutes,
+        region: workspaceRegion,
+        currentFilePath: selectedCodeFile,
+        currentRoute: currentCodeRoute,
+        activeSection: activeSectionKey || undefined,
+        previewTab,
+      }),
+    [activeSectionKey, currentCodeRoute, previewTab, selectedCodeFile, workspaceAiRoutes, workspaceRegion]
+  )
+  const availableAiSymbols = useMemo(() => {
+    const fromFile = selectedCodeSymbols.map((item) => item.name).filter(Boolean)
+    return Array.from(new Set((fromFile.length ? fromFile : aiPageContext.symbols).filter(Boolean)))
+  }, [aiPageContext.symbols, selectedCodeSymbols])
+  const availableAiElements = useMemo(() => Array.from(new Set(aiPageContext.elements.filter(Boolean))), [aiPageContext.elements])
+  useEffect(() => {
+    setAiTargetSymbol((current) => (current && availableAiSymbols.includes(current) ? current : focusedSymbolName || availableAiSymbols[0] || ""))
+  }, [availableAiSymbols, focusedSymbolName])
+  useEffect(() => {
+    setAiTargetElement((current) => (current && availableAiElements.includes(current) ? current : availableAiElements[0] || ""))
+  }, [availableAiElements])
+  useEffect(() => {
+    if (!requestedAiSymbol || !availableAiSymbols.includes(requestedAiSymbol)) return
+    setAiTargetSymbol(requestedAiSymbol)
+  }, [availableAiSymbols, requestedAiSymbol])
+  useEffect(() => {
+    if (!requestedAiElement || !availableAiElements.includes(requestedAiElement)) return
+    setAiTargetElement(requestedAiElement)
+  }, [availableAiElements, requestedAiElement])
+  const aiModuleContext = useMemo(
+    () =>
+      inferCodePlatformModuleContext({
+        currentFilePath: selectedCodeFile,
+        currentFileSymbols: selectedCodeSymbols,
+        currentPage: aiPageContext,
+        activeSymbolName: aiTargetSymbol || focusedSymbolName,
+      }),
+    [aiPageContext, aiTargetSymbol, focusedSymbolName, selectedCodeFile, selectedCodeSymbols]
+  )
+  const aiElementContext = useMemo(
+    () =>
+      inferCodePlatformElementContext({
+        currentPage: aiPageContext,
+        activeElementName: aiTargetElement,
+        previewTab,
+        editorRailLabel,
+        editorBottomTabLabel,
+      }),
+    [aiPageContext, aiTargetElement, editorBottomTabLabel, editorRailLabel, previewTab]
+  )
+  const latestResolvedContext = iterateResult?.context
+  const contextPage = latestResolvedContext?.currentPage ?? aiPageContext
+  const contextModule = latestResolvedContext?.currentModule ?? aiModuleContext
+  const contextElement = latestResolvedContext?.currentElement ?? aiElementContext
+  const contextSession = latestResolvedContext?.sharedSession
+  const contextFile = latestResolvedContext?.currentFilePath || selectedCodeFile
+  const contextRoute = latestResolvedContext?.currentRoute || currentCodeRoute || aiPageContext.route
+  const contextSymbols = latestResolvedContext?.currentFileSymbols?.length
+    ? latestResolvedContext.currentFileSymbols
+    : selectedCodeSymbols
+  useEffect(() => {
+    if (!latestResolvedContext) return
+    if (latestResolvedContext.currentFilePath) {
+      setSelectedCodeFile(latestResolvedContext.currentFilePath)
+      setPreviewTab("code")
+      setEditorRail("explorer")
+      setExpandedCodeFolders((current) =>
+        Array.from(new Set([...current, ...buildParentPaths(latestResolvedContext.currentFilePath!)]))
+      )
+    }
+    if (typeof latestResolvedContext.focusedLine === "number" && latestResolvedContext.focusedLine > 0) {
+      setFocusedLine(latestResolvedContext.focusedLine)
+    }
+    if (latestResolvedContext.currentFileSymbols?.length) {
+      setSelectedCodeSymbols(latestResolvedContext.currentFileSymbols)
+    }
+    if (latestResolvedContext.currentModule?.name) {
+      setAiTargetSymbol(latestResolvedContext.currentModule.name)
+    }
+    if (latestResolvedContext.currentElement?.name) {
+      setAiTargetElement(latestResolvedContext.currentElement.name)
+    }
+    if (latestResolvedContext.openTabs?.length || latestResolvedContext.currentFilePath) {
+      setCodeTabs((current) =>
+        Array.from(
+          new Set([
+            latestResolvedContext.currentFilePath,
+            ...(latestResolvedContext.openTabs ?? []),
+            ...current,
+          ].filter(Boolean) as string[])
+        ).slice(0, 6)
+      )
+    }
+  }, [latestResolvedContext])
+  useEffect(() => {
+    const resolvedSymbol = latestResolvedContext?.currentModule?.name
+    if (!resolvedSymbol || typeof latestResolvedContext?.focusedLine === "number") return
+    const matchedSymbol = selectedCodeSymbols.find((item) => item.name === resolvedSymbol)
+    if (!matchedSymbol) return
+    setFocusedLine(matchedSymbol.line)
+  }, [latestResolvedContext?.currentModule?.name, latestResolvedContext?.focusedLine, selectedCodeSymbols])
+  const aiEntrySummary = useMemo(() => {
+    if (!openedFromAi) return []
+    return [
+      requestedContextPageId || contextPage.id,
+      requestedContextRoute || contextRoute,
+      requestedAiSymbol || contextModule.name,
+      requestedAiElement || contextElement.name,
+      hasRequestedCodeLine ? (isCn ? `第 ${requestedCodeLine} 行` : `Line ${requestedCodeLine}`) : "",
+    ].filter(Boolean)
+  }, [
+    contextElement.name,
+    contextModule.name,
+    contextPage.id,
+    contextRoute,
+    hasRequestedCodeLine,
+    isCn,
+    openedFromAi,
+    requestedAiElement,
+    requestedAiSymbol,
+    requestedCodeLine,
+    requestedContextPageId,
+    requestedContextRoute,
+  ])
+  const deliveryChecklist = useMemo(
+    () => [
+      {
+        label: isCn ? "Build 验收" : "Build acceptance",
+        value: buildAcceptanceLabel,
+        ready: project?.generation?.buildStatus === "ok",
+      },
+      {
+        label: isCn ? "Preview" : "Preview",
+        value: workspaceStatus.label,
+        ready: workspaceStatus.key === "ready" || workspaceStatus.key === "sandbox",
+      },
+      {
+        label: isCn ? "Runtime" : "Runtime",
+        value:
+          runtime?.status === "running"
+            ? isCn
+              ? "已启动"
+              : "running"
+            : runtime?.status === "starting"
+              ? isCn
+                ? "启动中"
+                : "starting"
+              : isCn
+                ? "未启动"
+                : "stopped",
+        ready: runtime?.status === "running",
+      },
+      {
+        label: isCn ? "部署路径" : "Deployment path",
+        value: isCn ? deploymentOption.nameCn : deploymentOption.nameEn,
+        ready: Boolean(normalizedDeploymentTarget),
+      },
+      {
+        label: isCn ? "数据方案" : "Data path",
+        value: isCn ? databaseOption.nameCn : databaseOption.nameEn,
+        ready: Boolean(normalizedDatabaseTarget),
+      },
+    ],
+    [
+      buildAcceptanceLabel,
+      databaseOption.nameCn,
+      databaseOption.nameEn,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      isCn,
+      normalizedDatabaseTarget,
+      normalizedDeploymentTarget,
+      project?.generation?.buildStatus,
+      runtime?.status,
+      workspaceStatus.key,
+      workspaceStatus.label,
+    ]
+  )
+  const focusedWorkspacePanel = useMemo(() => {
+    if (activeSectionKey === "editor") {
+      return {
+        eyebrow: isCn ? "Editor 控制区" : "Editor control plane",
+        title: isCn ? "把文件、页面和底部输出都收进真实 IDE 节奏" : "Bring files, routes, and bottom output into a more real IDE rhythm",
+        summary: isCn ? "这里不再只是代码文本区，而是当前文件、最近文件、页面映射和输出面板一起工作。" : "This is no longer only a code textarea. The active file, recent files, route mapping, and bottom output now work together.",
+        chips: [selectedCodeFile || (isCn ? "未选中文件" : "No active file"), `${codeTabs.length} ${isCn ? "个标签" : "tabs"}`, `${editorProblemItems.length} ${isCn ? "个问题" : "problems"}`],
+        points: [
+          `${isCn ? "当前文件" : "Active file"}: ${selectedCodeFile || (isCn ? "等待选择" : "Waiting for selection")}`,
+          `${isCn ? "页面映射" : "Route mapping"}: ${currentCodeRoute || (isCn ? "未命中页面路由" : "No route inferred yet")}`,
+          `${isCn ? "活动侧栏" : "Active rail"}: ${editorRailLabel}`,
+          `${isCn ? "底部输出" : "Bottom output"}: ${editorBottomTabLabel}`,
+        ],
+      }
+    }
+    if (activeSectionKey === "runs") {
+      return {
+        eyebrow: isCn ? "Runs 控制区" : "Runs control plane",
+        title: isCn ? "把 build、preview 和 runtime 放进一条交付线" : "Keep build, preview, and runtime on one delivery thread",
+        summary:
+          latestHistoryItem?.summary ||
+          (isCn ? "这里应该解释最近一次生成、预览回退和运行态状态，而不是只堆日志。" : "This area should explain the last generation, preview fallback, and runtime state instead of only dumping logs."),
+        chips: [buildAcceptanceLabel, workspaceStatus.label, runtime?.status || (isCn ? "未启动" : "stopped")],
+        points: [
+          `${isCn ? "最近任务" : "Latest task"}: ${latestHistoryItem?.type || (isCn ? "暂无" : "none")}`,
+          `${isCn ? "预览模式" : "Preview mode"}: ${project?.preview?.activeMode || "static_ssr"}`,
+          `${isCn ? "最近变更" : "Recent change"}: ${recentRunItems[0]?.summary || (isCn ? "等待新的操作记录" : "Waiting for the next operation")}`,
+        ],
+      }
+    }
+    if (activeSectionKey === "templates") {
+      return {
+        eyebrow: isCn ? "Templates 控制区" : "Templates control plane",
+        title: isCn ? "让模板、模块和页面结构看起来像可复用资产" : "Make templates, modules, and routes feel like reusable assets",
+        summary: isCn ? "这里不再只是模板名称，而是当前模板能带出哪些模块、功能和可演示页面。" : "This is no longer only a template name. It explains which modules, features, and demoable routes are already present.",
+        chips: [`${moduleCount} ${isCn ? "模块" : "modules"}`, `${featureCount} ${isCn ? "能力" : "features"}`, `${generatedRouteCount} ${isCn ? "页面" : "routes"}`],
+        points: [
+          `${isCn ? "模板标题" : "Template title"}: ${generateTask?.templateTitle || (isCn ? "当前由 prompt 推断" : "Currently inferred from the prompt")}`,
+          `${isCn ? "优先模块" : "Priority modules"}: ${(project?.spec?.modules ?? []).slice(0, 3).join(", ") || (isCn ? "等待模块填充" : "Waiting for module inventory")}`,
+          `${isCn ? "下一步" : "Next"}: ${isCn ? "继续把模块变成真正可点击的工作区入口" : "Keep turning modules into clickable workspace surfaces"}`,
+        ],
+      }
+    }
+    if (activeSectionKey === "pricing") {
+      return {
+        eyebrow: isCn ? "Pricing 控制区" : "Pricing control plane",
+        title: isCn ? "把免费与付费差异直接讲清楚" : "Make the free-vs-paid policy immediately clear",
+        summary: isCn ? "这里先用展示层把资源权限讲明白，为后面的真实权限系统留接口。" : "Use the product shell to make resource policy explicit now, while leaving room for the real permission system later.",
+        chips: [isCn ? "免费" : "Free", isCn ? "可升级" : "Upgradeable", isCn ? "资源策略" : "Resource policy"],
+        points: [
+          isCn ? "免费版代码不能导出" : "Free plan cannot export code",
+          isCn ? "免费版 DB 仅限在线使用" : "Free plan keeps DB usage online-only",
+          isCn ? "付费版逐步开放导出、更多资源与更强交付能力" : "Paid tiers progressively unlock export, more resources, and stronger delivery",
+        ],
+      }
+    }
+    if (activeSectionKey === "settings") {
+      return {
+        eyebrow: isCn ? "Settings 控制区" : "Settings control plane",
+        title: isCn ? "把部署、数据和发布入口收进同一块" : "Converge deployment, data, and release entrypoints in one place",
+        summary: isCn ? "这里应该像交付后台，而不是一堆没有顺序的开关。" : "This should feel like a delivery console, not a pile of unordered toggles.",
+        chips: [isCn ? deploymentOption.nameCn : deploymentOption.nameEn, isCn ? databaseOption.nameCn : databaseOption.nameEn, workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "Global"],
+        points: [
+          `${isCn ? "部署说明" : "Deployment"}: ${isCn ? deploymentOption.descriptionCn : deploymentOption.descriptionEn}`,
+          `${isCn ? "数据说明" : "Data"}: ${isCn ? databaseOption.descriptionCn : databaseOption.descriptionEn}`,
+          `${isCn ? "环境变量" : "Env guide"}: ${[...deploymentEnvGuide, ...databaseEnvGuide].slice(0, 3).join(", ")}`,
+        ],
+      }
+    }
+    if (activeSectionKey === "users") {
+      return {
+        eyebrow: isCn ? "Users 控制区" : "Users control plane",
+        title: isCn ? "把成员、分享和审批路径讲清楚" : "Clarify members, sharing, and approval paths",
+        summary: isCn ? "这一层先作为真实团队协作的前端骨架，方便后续接权限和计费。" : "This layer acts as the frontend skeleton for team collaboration before deeper permissions and billing arrive.",
+        chips: [isCn ? "成员" : "Members", isCn ? "分享" : "Sharing", isCn ? "审批" : "Approvals"],
+        points: [
+          isCn ? "老板看预览，交付成员看工作区，开发继续在代码区修改" : "Founders review preview, operators review workspace state, and builders keep editing in code",
+          isCn ? "免费用户默认只读分享，付费后逐步开放更深协作" : "Free users start with read-only sharing while paid plans unlock deeper collaboration",
+          isCn ? "后续权限、导出和资源额度都可以从这里继续接" : "Permissions, exports, and resource quotas can continue from here later",
+        ],
+      }
+    }
+    if (activeSectionKey === "data") {
+      return {
+        eyebrow: isCn ? "Data 控制区" : "Data control plane",
+        title: isCn ? "把数据库、资源限制和后续数据层留好位置" : "Reserve a real place for database state, resource policy, and the next data layer",
+        summary: isCn ? "这里现在先展示当前数据路径、连接变量和资源限制，不急着假装后端已经全部完成。" : "For now this explains the active data path, connection guide, and resource policy instead of pretending the backend is already complete.",
+        chips: [isCn ? databaseOption.nameCn : databaseOption.nameEn, `${databaseOption.engine}`, isCn ? "在线优先" : "Online first"],
+        points: [
+          `${isCn ? "当前数据库" : "Current database"}: ${isCn ? databaseOption.descriptionCn : databaseOption.descriptionEn}`,
+          `${isCn ? "连接指引" : "Connection guide"}: ${databaseEnvGuide.slice(0, 3).join(", ")}`,
+          isCn ? "免费层优先在线使用，后续再开放更多导出与迁移能力" : "The free layer stays online-first before more export and migration options arrive",
+        ],
+      }
+    }
+    return {
+      eyebrow: isCn ? "Dashboard 控制区" : "Dashboard control plane",
+      title: isCn ? "让老板第一眼看到的不是 demo 卡片，而是可交付工作台" : "Make the first glance feel like a deliverable control plane instead of a demo card grid",
+      summary: projectSummary,
+      chips: [workspaceStatus.label, `${generatedRouteCount} ${isCn ? "页面" : "routes"}`, `${moduleCount} ${isCn ? "模块" : "modules"}`],
+      points: [
+        isCn ? "左侧 AI 共创区持续承接修改需求" : "The left AI copilot keeps ongoing change requests visible",
+        isCn ? "中间主区承接 Preview、Dashboard 和 Code 三个一级入口" : "The middle surface keeps Preview, Dashboard, and Code as the top-level entrypoints",
+        isCn ? "右侧 Overview rail 只保留高频控制和当前上下文" : "The right Overview rail keeps only high-frequency controls and current context",
+      ],
+    }
+  }, [
+    activeSectionKey,
+    buildAcceptanceLabel,
+    codeTabs.length,
+    currentCodeRoute,
+    databaseEnvGuide,
+    databaseOption.descriptionCn,
+    databaseOption.descriptionEn,
+    databaseOption.engine,
+    databaseOption.nameCn,
+    databaseOption.nameEn,
+    deploymentEnvGuide,
+    deploymentOption.descriptionCn,
+    deploymentOption.descriptionEn,
+    deploymentOption.nameCn,
+    deploymentOption.nameEn,
+    featureCount,
+    generateTask?.templateTitle,
+    generatedRouteCount,
+    isCn,
+    latestHistoryItem?.summary,
+    latestHistoryItem?.type,
+    moduleCount,
+    editorBottomTabLabel,
+    editorProblemItems.length,
+    editorRailLabel,
+    project?.preview?.activeMode,
+    project?.spec?.modules,
+    projectSummary,
+    recentRunItems,
+    runtime?.status,
+    selectedCodeFile,
+    workspaceRegion,
+    workspaceStatus.label,
+  ])
+  const controlPlaneSections = useMemo(
+    () => [
+      {
+        key: "dashboard",
+        label: "Dashboard",
+        href: workspaceRootHref,
+        active: !activeSectionKey || activeSectionKey === "dashboard",
+        state: workspaceStatus.label,
+        summary: isCn ? "控制台、交付状态和工作区摘要" : "Control plane, delivery state, and workspace summary",
+        detail: projectSummary,
+        countLabel: `${generatedRouteCount} ${isCn ? "页面" : "routes"}`,
+      },
+      {
+        key: "editor",
+        label: isCn ? "Editor" : "Editor",
+        href: `${workspaceRootHref}/editor`,
+        active: activeSectionKey === "editor",
+        state: selectedCodeFile ? selectedCodeFile.split("/").slice(-1)[0] : (isCn ? "等待打开文件" : "Open a file"),
+        summary: isCn ? "多标签编辑器、文件树、页面映射和底部输出" : "Multi-tab editor, file tree, route map, and bottom output",
+        detail: selectedFileSummary || (isCn ? "继续把当前工作区拉近真实 IDE 使用节奏" : "Keep pulling the workspace closer to a real IDE flow"),
+        countLabel: `${codeTabs.length} ${isCn ? "个标签" : "tabs"}`,
+      },
+      {
+        key: "runs",
+        label: isCn ? "Runs" : "Runs",
+        href: `${workspaceRootHref}/runs`,
+        active: activeSectionKey === "runs",
+        state:
+          runtime?.status === "running"
+            ? isCn
+              ? "Runtime live"
+              : "Runtime live"
+            : buildAcceptanceLabel,
+        summary: isCn ? "生成记录、预览状态和 runtime 交付线" : "Generation history, preview state, and runtime delivery lane",
+        detail: recentRunItems[0]?.summary || (isCn ? "等待下一次运行记录" : "Waiting for the next runtime event"),
+        countLabel: `${recentRunItems.length} ${isCn ? "条记录" : "events"}`,
+      },
+      {
+        key: "templates",
+        label: isCn ? "Templates" : "Templates",
+        href: `${workspaceRootHref}/templates`,
+        active: activeSectionKey === "templates",
+        state: `${moduleCount} ${isCn ? "模块" : "modules"}`,
+        summary: isCn ? "模板基线、模块能力和复用入口" : "Template baselines, module inventory, and reuse entrypoints",
+        detail: (project?.spec?.modules ?? []).slice(0, 3).join(", ") || (isCn ? "等待模块 inventory" : "Waiting for module inventory"),
+        countLabel: `${featureCount} ${isCn ? "能力" : "features"}`,
+      },
+      {
+        key: "pricing",
+        label: isCn ? "Pricing" : "Pricing",
+        href: `${workspaceRootHref}/pricing`,
+        active: activeSectionKey === "pricing",
+        state: isCn ? "资源策略" : "Resource policy",
+        summary: isCn ? "免费/付费差异、导出策略和资源额度" : "Free vs paid tiers, export policy, and resource limits",
+        detail: isCn ? "免费层代码不可导出，DB 仅限在线使用" : "Free tier keeps code export locked and DB online-only",
+        countLabel: isCn ? "3 个核心档位" : "3 visible tiers",
+      },
+      {
+        key: "settings",
+        label: isCn ? "Settings" : "Settings",
+        href: `${workspaceRootHref}/settings`,
+        active: activeSectionKey === "settings",
+        state: `${isCn ? deploymentOption.nameCn : deploymentOption.nameEn} / ${isCn ? databaseOption.nameCn : databaseOption.nameEn}`,
+        summary: isCn ? "部署、数据库、发布和分享入口" : "Deployment, database, publish, and sharing controls",
+        detail: isCn ? deploymentOption.descriptionCn : deploymentOption.descriptionEn,
+        countLabel: `${deploymentEnvGuide.length + databaseEnvGuide.length} env`,
+      },
+    ],
+    [
+      activeSectionKey,
+      buildAcceptanceLabel,
+      codeTabs.length,
+      databaseEnvGuide.length,
+      selectedCodeFile,
+      selectedFileSummary,
+      databaseOption.nameCn,
+      databaseOption.nameEn,
+      deploymentEnvGuide.length,
+      deploymentOption.descriptionCn,
+      deploymentOption.descriptionEn,
+      deploymentOption.nameCn,
+      deploymentOption.nameEn,
+      featureCount,
+      generatedRouteCount,
+      isCn,
+      moduleCount,
+      project?.spec?.modules,
+      projectSummary,
+      recentRunItems,
+      runtime?.status,
+      workspaceRootHref,
+      workspaceStatus.label,
+      databaseOption.descriptionCn,
+    ]
+  )
+  const overviewPrimaryControls = [
+    {
+      key: "dashboard",
+      label: "Dashboard",
+      note: isCn ? "把控制台、交付状态和工作区摘要放在一个主入口" : "Keep the control plane, delivery state, and workspace summary together",
+      active: previewTab === "dashboard",
+      action: () => setPreviewTab("dashboard"),
+    },
+    {
+      key: "preview",
+      label: copy.preview,
+      note: isCn ? "优先看当前应用结果，不让杂项入口打散注意力" : "Keep the live app result in focus before secondary controls",
+      active: previewTab === "preview",
+      action: () => setPreviewTab("preview"),
+    },
+    {
+      key: "code",
+      label: copy.code,
+      note: isCn ? "打开文件、标签和终端，让修改路径更接近真实 IDE" : "Open files, tabs, and terminal in a more IDE-like flow",
+      active: previewTab === "code",
+      action: () => setPreviewTab("code"),
+    },
+    {
+      key: "runs",
+      label: isCn ? "Runs" : "Runs",
+      note: isCn ? "构建、preview 和 runtime 都收进同一块运行控制区" : "Keep build, preview, and runtime in one operating lane",
+      active: activeSectionKey === "runs",
+      action: () => window.location.assign(`${workspaceRootHref}/runs`),
+    },
+    {
+      key: "templates",
+      label: isCn ? "Templates" : "Templates",
+      note: isCn ? "把模板、模块和可复用入口拉成一条资产线" : "Turn templates, modules, and reuse entrypoints into one asset lane",
+      active: activeSectionKey === "templates",
+      action: () => window.location.assign(`${workspaceRootHref}/templates`),
+    },
+    {
+      key: "pricing",
+      label: isCn ? "Pricing" : "Pricing",
+      note: isCn ? "免费与付费差异先在展示层讲清楚" : "Make free-vs-paid differences obvious in the shell first",
+      active: activeSectionKey === "pricing",
+      action: () => window.location.assign(`${workspaceRootHref}/pricing`),
+    },
+    {
+      key: "users",
+      label: isCn ? "Users" : "Users",
+      note: isCn ? "成员、权限和访问入口统一看，不再散落在主区" : "Keep members, access, and sharing in one place instead of scattering the main surface",
+      active: activeSectionKey === "users",
+      action: () => window.location.assign(`${workspaceRootHref}/users`),
+    },
+    {
+      key: "data",
+      label: isCn ? "Data" : "Data",
+      note: isCn ? "把数据、部署和资源限制作为后续产品能力入口" : "Keep data, deployment, and resource policy ready for the next product layer",
+      active: activeSectionKey === "data",
+      action: () => window.location.assign(`${workspaceRootHref}/data`),
+    },
+    {
+      key: "settings",
+      label: isCn ? "Settings" : "Settings",
+      note: isCn ? "环境、发布和交付策略在这里收口" : "Converge environment, publish, and delivery policy here",
+      active: activeSectionKey === "settings",
+      action: () => window.location.assign(`${workspaceRootHref}/settings`),
+    },
+  ] as const
+  const overviewLaterControls = isCn
+    ? ["Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API"]
+    : ["Analytics", "Domains", "Integrations", "Security", "Agents", "Automations", "Logs", "API"]
 
   useEffect(() => {
     if (!project) return
@@ -1505,8 +2693,17 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="min-w-0 space-y-4">
+    <div className="space-y-4">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {isCn ? "返回 Dashboard" : "Back to Dashboard"}
+      </Link>
+
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_320px] 2xl:grid-cols-[360px_minmax(0,1fr)_340px]">
+      <div className="order-2 min-w-0 space-y-4 xl:order-2">
         <Card className="border-border/70 bg-card/90">
           <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">
@@ -1644,7 +2841,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 {isCn ? "当前聚焦控制区：" : "Focused control area: "} {focusedSectionLabel}
               </div>
             ) : null}
-            {process.env.NODE_ENV !== "production" && previewTab === "preview" ? (
+            {showPreviewDebug ? (
               <div className="mb-3 rounded-md border border-dashed border-border bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
                 <div>projectSlug: {previewProbe?.projectSlug ?? projectSlug}</div>
                 <div>storedProjectSlug: {project.projectSlug ?? "n/a"}</div>
@@ -1666,13 +2863,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
             {previewTab === "dashboard" ? (
               <div className="space-y-4">
-                <div className="grid gap-4 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                <div className="grid gap-4 xl:grid-cols-5">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
                     <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
                     <div className="mt-2 text-lg font-semibold">{projectName}</div>
                     <div className="mt-2 text-sm text-muted-foreground">{projectSubtitle}</div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
                     <div className="text-xs text-muted-foreground">{copy.generationStatus}</div>
                     <div className="mt-2 text-lg font-semibold">{workspaceStatus.label}</div>
                     <div className="mt-2 text-sm text-muted-foreground">
@@ -1683,186 +2880,945 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                           : copy.generationStatusDesc}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
                     <div className="text-xs text-muted-foreground">{copy.buildAcceptance}</div>
                     <div className="mt-2 text-lg font-semibold">{buildAcceptanceLabel}</div>
                     <div className="mt-2 text-sm text-muted-foreground">
-                      {project.generation?.buildStatus === "failed"
-                        ? fallbackReason || (isCn ? "当前项目已回退到自己的 fallback。" : "The project is currently using its own fallback.")
-                        : project.generation?.summary || copy.generationStatusDesc}
+                      {project.generation?.summary || fallbackReason || copy.generationStatusDesc}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
                     <div className="text-xs text-muted-foreground">{copy.deploymentTarget}</div>
-                    <div className="mt-2 text-lg font-semibold">{project.deploymentTarget || "vercel"}</div>
-                    <div className="mt-2 text-sm text-muted-foreground">{copy.currentPath}: {workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "International"}</div>
+                    <div className="mt-2 text-lg font-semibold">{isCn ? deploymentOption.nameCn : deploymentOption.nameEn}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "Global"}</div>
                   </div>
-                  <div className="rounded-2xl border border-border bg-background/80 p-4 xl:col-span-1">
+                  <div className="rounded-2xl border border-border bg-background/80 p-4">
                     <div className="text-xs text-muted-foreground">{copy.dataTarget}</div>
-                    <div className="mt-2 text-lg font-semibold">{project.databaseTarget || workspaceDatabase}</div>
-                    <div className="mt-2 text-sm text-muted-foreground">{copy.generatedFiles}: {codeFiles.length}</div>
+                    <div className="mt-2 text-lg font-semibold">{isCn ? databaseOption.nameCn : databaseOption.nameEn}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">{codeFiles.length} {isCn ? "个文件已同步到工作区" : "files synced into the workspace"}</div>
                   </div>
                 </div>
 
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)]">
-                  <div className="rounded-2xl border border-border bg-background/80 p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground">{isCn ? "产品概览" : "Product overview"}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">{projectSummary}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline">{workspaceRegion === "cn" ? (isCn ? "国内" : "China") : isCn ? "海外" : "Global"}</Badge>
-                        <Badge variant="outline">{project.deploymentTarget || "vercel"}</Badge>
-                        <Badge variant="outline">{project.databaseTarget || workspaceDatabase}</Badge>
-                      </div>
+                <div className="rounded-2xl border border-border bg-background/80 p-5">
+                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{sectionPageHeader.eyebrow}</div>
+                  <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <div className="text-xl font-semibold text-foreground">{sectionPageHeader.title}</div>
+                      <div className="mt-2 max-w-3xl text-sm text-muted-foreground">{sectionPageHeader.summary}</div>
                     </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                        <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
-                        <div className="mt-2 break-all text-sm">{resolvedPreviewUrl || "Not running"}</div>
-                      </div>
-                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                        <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
-                        <div className="mt-2 text-sm">{latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}</div>
-                      </div>
-                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                        <div className="text-xs text-muted-foreground">{copy.fallbackReason}</div>
-                        <div className="mt-2 text-sm">{fallbackReason || (isCn ? "当前预览没有触发 fallback。" : "No preview fallback is active right now.")}</div>
-                      </div>
-                      <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                        <div className="text-xs text-muted-foreground">{copy.buildAcceptance}</div>
-                        <div className="mt-2 text-sm">{buildAcceptanceLabel}</div>
-                      </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="outline">{workspaceStatus.label}</Badge>
+                      <Badge variant="outline">{generatedRouteCount} {isCn ? "页面" : "routes"}</Badge>
+                      <Badge variant="outline">{moduleCount} {isCn ? "模块" : "modules"}</Badge>
                     </div>
-                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-xl border border-border bg-secondary/20 p-4">
-                        <div className="text-xs text-muted-foreground">{isCn ? "页面结构" : "Generated pages"}</div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {pageManifest.length ? pageManifest.map((item) => (
-                            <Badge key={item.filePath} variant="outline">
-                              {item.route}
-                            </Badge>
-                          )) : <span className="text-sm text-muted-foreground">{isCn ? "等待脚手架生成页面" : "Waiting for scaffold pages"}</span>}
+                  </div>
+                </div>
+
+                {activeDashboardSection === "runs" ? (
+                  <div className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {runPipelineStages.map((stage) => (
+                        <div
+                          key={stage.id}
+                          className={`rounded-2xl border p-4 ${
+                            stage.tone === "ready"
+                              ? "border-emerald-500/25 bg-emerald-500/5"
+                              : stage.tone === "warning"
+                                ? "border-amber-500/25 bg-amber-500/5"
+                                : "border-border bg-background/80"
+                          }`}
+                        >
+                          <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{stage.label}</div>
+                          <div className="mt-2 text-lg font-semibold text-foreground">{stage.state}</div>
+                          <div className="mt-2 text-sm text-muted-foreground">{stage.note}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "运行历史" : "Run history"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">{isCn ? "按 branch / action / duration / time 展示最近的工作区运行记录。" : "Show the latest workspace runs by branch, action, duration, and time."}</div>
+                          </div>
+                          <Badge variant="outline">{runHistoryRows.length} {isCn ? "次运行" : "runs"}</Badge>
+                        </div>
+                        <div className="mt-4 overflow-hidden rounded-xl border border-border">
+                          <div className="grid grid-cols-[100px_minmax(0,1.2fr)_100px_100px_150px] gap-3 border-b border-border bg-secondary/30 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                            <span>Branch</span>
+                            <span>{isCn ? "Action" : "Action"}</span>
+                            <span>Status</span>
+                            <span>{isCn ? "Duration" : "Duration"}</span>
+                            <span>{isCn ? "Time" : "Time"}</span>
+                          </div>
+                          <div className="divide-y divide-border">
+                            {runHistoryRows.length ? runHistoryRows.map((item) => (
+                              <div key={item.id} className="grid grid-cols-[100px_minmax(0,1.2fr)_100px_100px_150px] gap-3 px-4 py-3 text-sm">
+                                <div className="font-medium text-foreground">{item.branch}</div>
+                                <div className="min-w-0">
+                                  <div className="truncate text-foreground">{item.action}</div>
+                                  <div className="mt-1 truncate text-xs text-muted-foreground">{item.summary}</div>
+                                </div>
+                                <div className="text-foreground">{item.status}</div>
+                                <div className="text-muted-foreground">{item.duration}</div>
+                                <div className="text-muted-foreground">{item.time}</div>
+                              </div>
+                            )) : (
+                              <div className="px-4 py-6 text-sm text-muted-foreground">
+                                {isCn ? "等待第一条运行记录写入。" : "Waiting for the first run to be recorded."}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="rounded-xl border border-border bg-secondary/20 p-4">
-                        <div className="text-xs text-muted-foreground">{isCn ? "结构化摘要" : "Structured summary"}</div>
-                        <div className="mt-3 space-y-2">
-                          {overviewPoints.map((item) => (
-                            <div key={item} className="text-sm text-foreground">
-                              {item}
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="text-sm font-semibold text-foreground">{isCn ? "运行流水线" : "Pipeline lanes"}</div>
+                        <div className="mt-4 space-y-3">
+                          {deliveryChecklist.map((item) => (
+                            <div key={item.label} className="rounded-xl border border-border bg-secondary/20 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-medium text-foreground">{item.label}</div>
+                                <Badge variant={item.ready ? "secondary" : "outline"}>{item.ready ? (isCn ? "已就绪" : "ready") : (isCn ? "待补" : "pending")}</Badge>
+                              </div>
+                              <div className="mt-2 text-sm text-muted-foreground">{item.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-4">
+                          <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{isCn ? "控制台注记" : "Control notes"}</div>
+                          <div className="mt-3 space-y-2">
+                            {runControlNotes.map((item) => (
+                              <div key={item} className="rounded-lg border border-border bg-background/70 px-3 py-2 text-sm text-foreground">
+                                {item}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeDashboardSection === "templates" ? (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                    <div className="rounded-2xl border border-border bg-background/80 p-5">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{isCn ? "模板库" : "Template library"}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{isCn ? "把当前工作区模板、复用模板和场景模板放进一个可搜索区域。" : "Put current, reusable, and scenario templates into one searchable area."}</div>
+                        </div>
+                        <Input
+                          value={templateLibraryQuery}
+                          onChange={(e) => setTemplateLibraryQuery(e.target.value)}
+                          placeholder={isCn ? "搜索模板、分类、标签..." : "Search templates, categories, tags..."}
+                          className="w-full lg:max-w-xs"
+                        />
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {templateLibraryCards.map((card) => (
+                          <div key={card.id} className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">{card.title}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">{card.category}</div>
+                              </div>
+                              <Badge variant="outline">{card.tags[0]}</Badge>
+                            </div>
+                            <div className="mt-3 text-sm text-foreground">{card.note}</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {card.tags.map((tag) => (
+                                <Badge key={tag} variant="secondary">{tag}</Badge>
+                              ))}
+                            </div>
+                            <div className="mt-4 flex justify-end">
+                              <Button variant="outline" size="sm">
+                                {isCn ? "使用模板" : "Use template"}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border bg-background/80 p-5">
+                      <div className="text-sm font-semibold text-foreground">{isCn ? "模板分类与标签" : "Categories and tags"}</div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {Array.from(new Set(templateLibraryCards.flatMap((item) => [item.category, ...item.tags]))).map((tag) => (
+                          <Badge key={tag} variant="outline">{tag}</Badge>
+                        ))}
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                          <div className="text-xs text-muted-foreground">{isCn ? "当前生成模板" : "Current generated template"}</div>
+                          <div className="mt-2 text-sm text-foreground">{generateTask?.templateTitle || (isCn ? "由 prompt 与 archetype 推断" : "Inferred from prompt and archetype")}</div>
+                        </div>
+                        <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                          <div className="text-xs text-muted-foreground">{isCn ? "模块来源" : "Module inventory"}</div>
+                          <div className="mt-2 text-sm text-foreground">{(project?.spec?.modules ?? []).join(", ") || (isCn ? "等待模块填充" : "Waiting for modules")}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeDashboardSection === "pricing" ? (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                    <div className="rounded-2xl border border-border bg-background/80 p-5">
+                      <div className="text-sm font-semibold text-foreground">{isCn ? "方案对比" : "Plan comparison"}</div>
+                      <div className="mt-4 overflow-hidden rounded-xl border border-border">
+                        <div className="grid grid-cols-[160px_repeat(3,minmax(0,1fr))] gap-3 border-b border-border bg-secondary/30 px-4 py-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                          <span>{isCn ? "权益" : "Capability"}</span>
+                          <span>{isCn ? "免费版" : "Explorer"}</span>
+                          <span>Pro</span>
+                          <span>Elite</span>
+                        </div>
+                        <div className="divide-y divide-border">
+                          {pricingComparisonRows.map((row) => (
+                            <div key={row.label} className="grid grid-cols-[160px_repeat(3,minmax(0,1fr))] gap-3 px-4 py-3 text-sm">
+                              <div className="font-medium text-foreground">{row.label}</div>
+                              <div className="text-muted-foreground">{row.explorer}</div>
+                              <div className="text-foreground">{row.pro}</div>
+                              <div className="text-foreground">{row.elite}</div>
                             </div>
                           ))}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="rounded-2xl border border-border bg-background/80 p-4">
-                    <div className="text-sm font-semibold text-foreground">{isCn ? "运行与交付" : "Runtime and delivery"}</div>
-                    <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                      {dashboardActions.map((action) => (
-                        <button
-                          key={action.label}
-                          type="button"
-                          onClick={action.onClick}
-                          className="flex w-full items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left hover:bg-secondary/30"
-                        >
-                          <span>{action.label}</span>
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
-                      <div className="text-xs text-muted-foreground">{isCn ? "预览状态" : "Preview status"}</div>
-                      <div className="mt-2 text-sm text-foreground">{workspaceStatus.label}</div>
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {project?.preview?.activeMode === "sandbox_runtime"
-                          ? project?.preview?.sandboxStatus === "running"
-                            ? (isCn ? "当前正在使用 Sandbox 高级预览。" : "Sandbox preview is active.")
-                            : (isCn ? "Sandbox 尚未就绪，已自动回退到 canonical preview。" : "Sandbox is not ready, so canonical preview is active.")
-                          : runtime?.lastError || runStatus || (previewStarting ? copy.previewStarting : isCn ? "当前默认使用站内 canonical preview，runtime 仅作为增强模式。" : "Canonical preview is active by default, with runtime only as an enhancement.")}
-                      </div>
-                    </div>
-                    {project?.preview?.supportsSandboxRuntime || project?.preview?.sandboxReadiness ? (
-                      <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
-                        <div className="text-xs text-muted-foreground">{isCn ? "Sandbox 就绪状态" : "Sandbox readiness"}</div>
-                        <div className="mt-2 text-sm text-foreground">
-                          {project.preview.sandboxReadiness?.supported
-                            ? isCn
-                              ? "可用"
-                              : "ready"
-                            : isCn
-                              ? "未配置完成"
-                              : "not configured"}
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          {project.preview.sandboxReadiness?.reason || (isCn ? "等待配置" : "Waiting for configuration")}
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="mt-4 rounded-xl border border-border bg-secondary/20 p-3">
-                      <div className="text-xs text-muted-foreground">{isCn ? "最近任务结果" : "Latest task result"}</div>
-                      <div className="mt-2 text-sm text-foreground">{projectSummary}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : previewTab === "code" ? (
-            <div className="grid min-h-[78vh] gap-3 xl:grid-cols-[320px_minmax(0,1fr)]">
-              <div className="rounded-md border border-border bg-secondary/20 p-3">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                  <Search className="h-4 w-4" />
-                  {copy.commandSearch}
-                </div>
-                <Input
-                  value={commandQuery}
-                  onChange={(e) => setCommandQuery(e.target.value)}
-                  placeholder={copy.commandSearchPlaceholder}
-                  className="mb-3"
-                />
-                <div className="mb-4 max-h-40 space-y-2 overflow-auto">
-                  {workspaceCommands.map((command) => (
-                    <button
-                      key={command.id}
-                      type="button"
-                      onClick={() => void handleWorkspaceCommand(command)}
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-left"
-                    >
-                      <div className="text-xs font-medium text-foreground">{command.label}</div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">{command.description}</div>
-                    </button>
-                  ))}
-                </div>
-                {searchResults.length ? (
-                  <div className="mb-4 rounded-md border border-border bg-background p-3">
-                    <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.searchResults}</div>
-                    <div className="max-h-48 space-y-2 overflow-auto">
-                      {searchResults.slice(0, 8).map((result) => (
-                        <button
-                          key={result.path}
-                          type="button"
-                          onClick={() => setSelectedCodeFile(result.path)}
-                          className="w-full rounded-md border border-border px-3 py-2 text-left"
-                        >
-                          <div className="text-xs font-medium text-foreground">{result.path}</div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            {result.symbols[0]?.name ? `symbol: ${result.symbols[0].name}` : result.matches[0]?.preview || "Open file"}
+                    <div className="rounded-2xl border border-border bg-background/80 p-5">
+                      <div className="text-sm font-semibold text-foreground">{isCn ? "当前资源策略" : "Current resource policy"}</div>
+                      <div className="mt-4 space-y-3">
+                        {planShowcase.map((plan) => (
+                          <div key={plan.id} className={`rounded-xl border p-4 ${plan.id === "pro" ? "border-primary/35 bg-primary/5" : "border-border bg-secondary/20"}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-foreground">{plan.name}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">{plan.summary}</div>
+                              </div>
+                              <div className="text-sm font-semibold text-foreground">{plan.price}</div>
+                            </div>
+                            <div className="mt-3 text-xs text-muted-foreground">{plan.policy}</div>
                           </div>
-                        </button>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : null}
-                <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{copy.codeFiles}</span>
-                  <span>{filteredCodeFiles.length}</span>
+
+                {activeDashboardSection === "settings" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {settingsSurfaceCards.map((card) => (
+                      <div key={card.title} className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="text-sm font-semibold text-foreground">{card.title}</div>
+                        <div className="mt-2 text-sm text-muted-foreground">{card.summary}</div>
+                        <div className="mt-4 space-y-2">
+                          {card.items.map((item) => (
+                            <div key={item} className="rounded-xl border border-border bg-secondary/20 px-3 py-2 text-sm text-foreground">
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {showDefaultDashboardPanels ? (
+                  <>
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "优先事项看板" : "Priority board"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn
+                                ? "先把老板最关心的交付、编辑器和资源策略集中到一排。"
+                                : "Keep the delivery, editor, and resource priorities in one visible row first."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{dashboardPriorityCards.length} {isCn ? "个重点" : "priorities"}</Badge>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {dashboardPriorityCards.map((item) => (
+                            <div key={item.id} className="rounded-xl border border-border bg-secondary/20 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{item.label}</div>
+                                  <div className="mt-2 text-lg font-semibold text-foreground">{item.value}</div>
+                                </div>
+                                <Link
+                                  href={item.href}
+                                  className="inline-flex items-center rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                                >
+                                  {isCn ? "进入" : "Open"}
+                                </Link>
+                              </div>
+                              <div className="mt-3 text-sm text-muted-foreground">{item.note}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "演示与交付队列" : "Demo and delivery queue"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn
+                                ? "把讲 Preview、讲 Code、讲 Runs、讲 Settings 的顺序排成一条线。"
+                                : "Lay out the order for preview, code, runs, and settings as one clear narrative."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{workspaceStatus.label}</Badge>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {dashboardOperatorQueue.map((item) => (
+                            <div key={item.id} className="rounded-xl border border-border bg-secondary/20 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                                  <div className="mt-2 text-sm text-muted-foreground">{item.summary}</div>
+                                </div>
+                                <Link
+                                  href={item.href}
+                                  className="inline-flex shrink-0 items-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                                >
+                                  {item.actionLabel}
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "Control plane" : "Control plane"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn
+                                ? "把 Dashboard、Runs、Templates、Pricing、Settings 串成一条真正可解释的工作区线。"
+                                : "Keep Dashboard, Runs, Templates, Pricing, and Settings on one explainable workspace thread."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{generatedRouteCount} {isCn ? "页面" : "routes"}</Badge>
+                        </div>
+
+                        <div className="mt-4 grid gap-3">
+                          {controlPlaneSections.map((section) => (
+                            <div
+                              key={section.key}
+                              className={`rounded-2xl border p-4 transition ${
+                                section.active ? "border-primary/35 bg-primary/5" : "border-border bg-secondary/20"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-foreground">{section.label}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">{section.summary}</div>
+                                </div>
+                                <Badge variant={section.active ? "default" : "outline"}>{section.state}</Badge>
+                              </div>
+                              <div className="mt-3 text-sm text-foreground">{section.detail}</div>
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-xs text-muted-foreground">{section.countLabel}</span>
+                                <Link
+                                  href={section.href}
+                                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                                >
+                                  {isCn ? "进入" : "Open"}
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="rounded-2xl border border-border bg-background/80 p-5">
+                          <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{focusedWorkspacePanel.eyebrow}</div>
+                          <div className="mt-2 text-lg font-semibold text-foreground">{focusedWorkspacePanel.title}</div>
+                          <div className="mt-2 text-sm text-muted-foreground">{focusedWorkspacePanel.summary}</div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {focusedWorkspacePanel.chips.map((chip) => (
+                              <Badge key={chip} variant="outline">
+                                {chip}
+                              </Badge>
+                            ))}
+                          </div>
+                          <div className="mt-4 space-y-2">
+                            {focusedWorkspacePanel.points.map((point) => (
+                              <div key={point} className="rounded-xl border border-border bg-secondary/20 px-3 py-2 text-sm text-foreground">
+                                {point}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-border bg-background/80 p-5">
+                          <div className="text-sm font-semibold text-foreground">{isCn ? "交付检查清单" : "Delivery checklist"}</div>
+                          <div className="mt-4 space-y-3">
+                            {deliveryChecklist.map((item) => (
+                              <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/20 px-3 py-2">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-medium text-foreground">{item.label}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">{item.value}</div>
+                                </div>
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${item.ready ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                                  {item.ready ? (isCn ? "就绪" : "ready") : (isCn ? "待补" : "pending")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "运行与交付" : "Runtime and delivery"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn ? "最近的生成、修改和预览状态不再只藏在日志里。" : "The latest generation, iteration, and preview state are no longer buried in logs."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{runtime?.status || (isCn ? "未启动" : "stopped")}</Badge>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {recentRunItems.length ? recentRunItems.map((item) => (
+                            <div key={item.id} className="rounded-xl border border-border bg-secondary/20 p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-medium text-foreground">{item.type === "generate" ? (isCn ? "生成" : "Generate") : (isCn ? "修改" : "Iterate")}</div>
+                                <Badge variant={item.status === "done" ? "secondary" : "destructive"}>{item.status}</Badge>
+                              </div>
+                              <div className="mt-2 text-sm text-foreground">{item.summary}</div>
+                              <div className="mt-2 text-xs text-muted-foreground">{item.time}</div>
+                            </div>
+                          )) : (
+                            <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                              {isCn ? "等待第一条运行记录进入控制区。" : "Waiting for the first runtime event to land in the control plane."}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                          {dashboardActions.slice(0, 4).map((action) => (
+                            <button
+                              key={action.label}
+                              type="button"
+                              onClick={action.onClick}
+                              className="flex items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                            >
+                              <span>{action.label}</span>
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "模板与模块资产" : "Template and module inventory"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn ? "模块、能力和页面结构一起描述模板厚度。" : "Modules, features, and routes now describe template depth together."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{generateTask?.templateTitle || (isCn ? "Prompt 推断" : "Prompt inferred")}</Badge>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                            <div className="text-xs text-muted-foreground">{isCn ? "模块" : "Modules"}</div>
+                            <div className="mt-2 text-lg font-semibold text-foreground">{moduleCount}</div>
+                            <div className="mt-2 text-xs text-muted-foreground">{(project?.spec?.modules ?? []).slice(0, 3).join(", ") || (isCn ? "等待模块填充" : "Waiting for modules")}</div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                            <div className="text-xs text-muted-foreground">{isCn ? "能力" : "Features"}</div>
+                            <div className="mt-2 text-lg font-semibold text-foreground">{featureCount}</div>
+                            <div className="mt-2 text-xs text-muted-foreground">{(project?.spec?.features ?? []).slice(0, 3).join(", ") || (isCn ? "等待能力填充" : "Waiting for features")}</div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                            <div className="text-xs text-muted-foreground">{isCn ? "页面" : "Routes"}</div>
+                            <div className="mt-2 text-lg font-semibold text-foreground">{generatedRouteCount}</div>
+                            <div className="mt-2 text-xs text-muted-foreground">{copy.generatedFiles}: {codeFiles.length}</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{isCn ? "结构化摘要" : "Structured summary"}</div>
+                            <div className="mt-3 space-y-2">
+                              {overviewPoints.map((item) => (
+                                <div key={item} className="text-sm text-foreground">
+                                  {item}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{isCn ? "页面结构" : "Generated pages"}</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {pageManifest.length ? pageManifest.map((item) => (
+                                <Badge key={item.filePath} variant="outline">
+                                  {item.route}
+                                </Badge>
+                              )) : <span className="text-sm text-muted-foreground">{isCn ? "等待脚手架生成页面" : "Waiting for scaffold pages"}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "Pricing 与资源权限" : "Pricing and resource policy"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn ? "先把免费与付费的能力边界在工作台里说清楚。" : "Make the free-vs-paid capability boundary explicit inside the workspace first."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{isCn ? "3 个展示档位" : "3 visible tiers"}</Badge>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                          {planShowcase.map((plan) => (
+                            <div key={plan.id} className={`rounded-xl border p-4 ${plan.id === "pro" ? "border-primary/35 bg-primary/5" : "border-border bg-secondary/20"}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-sm font-semibold text-foreground">{plan.name}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">{plan.summary}</div>
+                                </div>
+                                {plan.badge ? <Badge variant="secondary">{plan.badge}</Badge> : null}
+                              </div>
+                              <div className="mt-3 text-xl font-semibold text-foreground">{plan.price}</div>
+                              <div className="mt-3 text-xs text-muted-foreground">{plan.policy}</div>
+                              <div className="mt-3 space-y-2">
+                                {plan.deliverables.slice(0, 3).map((item) => (
+                                  <div key={item} className="rounded-lg border border-border bg-background/70 px-3 py-2 text-xs text-foreground">
+                                    {item}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{isCn ? "环境、预览与数据" : "Environment, preview, and data"}</div>
+                            <div className="mt-1 text-sm text-muted-foreground">
+                              {isCn ? "把部署说明、数据库说明和连接指引直接收口到设置层。" : "Converge deployment notes, database guidance, and connection hints into the settings layer."}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{resolvedPreviewUrl ? (isCn ? "预览已解析" : "Preview resolved") : (isCn ? "等待预览" : "Preview pending")}</Badge>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{copy.deploymentTarget}</div>
+                            <div className="mt-2 text-sm font-semibold text-foreground">{isCn ? deploymentOption.nameCn : deploymentOption.nameEn}</div>
+                            <div className="mt-2 text-sm text-muted-foreground">{isCn ? deploymentOption.descriptionCn : deploymentOption.descriptionEn}</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {deploymentEnvGuide.map((item) => (
+                                <Badge key={item} variant="outline">
+                                  {item}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{copy.dataTarget}</div>
+                            <div className="mt-2 text-sm font-semibold text-foreground">{isCn ? databaseOption.nameCn : databaseOption.nameEn}</div>
+                            <div className="mt-2 text-sm text-muted-foreground">{isCn ? databaseOption.descriptionCn : databaseOption.descriptionEn}</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {databaseEnvGuide.map((item) => (
+                                <Badge key={item} variant="outline">
+                                  {item}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{copy.previewUrl}</div>
+                            <div className="mt-2 break-all text-sm text-foreground">{resolvedPreviewUrl || (isCn ? "当前未就绪" : "Not ready yet")}</div>
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {fallbackReason || (isCn ? "当前没有触发 fallback，优先使用当前解析到的预览地址。" : "No fallback is active right now, so the resolved preview address stays in focus.")}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border bg-secondary/20 p-4">
+                            <div className="text-xs text-muted-foreground">{copy.latestAiUpdate}</div>
+                            <div className="mt-2 text-sm text-foreground">{latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}</div>
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {project?.preview?.sandboxReadiness?.reason || (isCn ? "后续子域名、数据库和权限都可以继续从这里接上。" : "Domains, database, and permissions can continue from here next.")}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                    <div className="rounded-2xl border border-border bg-background/80 p-5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{isCn ? "相关工作区" : "Related workspace surfaces"}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">
+                            {isCn
+                              ? "当前聚焦页保留自己的主内容，其余工作区入口收敛成辅助导航。"
+                              : "Let the focused page keep the main stage while the rest of the workspace becomes supporting navigation."}
+                          </div>
+                        </div>
+                        <Badge variant="outline">{controlPlaneSections.filter((section) => !section.active).length} {isCn ? "个关联页" : "linked views"}</Badge>
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        {controlPlaneSections
+                          .filter((section) => !section.active)
+                          .slice(0, 4)
+                          .map((section) => (
+                            <div key={section.key} className="rounded-2xl border border-border bg-secondary/20 p-4">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm font-semibold text-foreground">{section.label}</div>
+                                  <div className="mt-1 text-xs text-muted-foreground">{section.summary}</div>
+                                </div>
+                                <Badge variant="outline">{section.state}</Badge>
+                              </div>
+                              <div className="mt-3 text-sm text-foreground">{section.detail}</div>
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-xs text-muted-foreground">{section.countLabel}</span>
+                                <Link
+                                  href={section.href}
+                                  className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:border-primary/30 hover:bg-primary/5"
+                                >
+                                  {isCn ? "进入" : "Open"}
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{focusedWorkspacePanel.eyebrow}</div>
+                        <div className="mt-2 text-lg font-semibold text-foreground">{focusedWorkspacePanel.title}</div>
+                        <div className="mt-2 text-sm text-muted-foreground">{focusedWorkspacePanel.summary}</div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {focusedWorkspacePanel.chips.map((chip) => (
+                            <Badge key={chip} variant="outline">
+                              {chip}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="mt-4 space-y-2">
+                          {focusedWorkspacePanel.points.map((point) => (
+                            <div key={point} className="rounded-xl border border-border bg-secondary/20 px-3 py-2 text-sm text-foreground">
+                              {point}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="text-sm font-semibold text-foreground">{isCn ? "当前页检查点" : "Current page checkpoints"}</div>
+                        <div className="mt-4 space-y-3">
+                          {deliveryChecklist.slice(0, 4).map((item) => (
+                            <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/20 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-foreground">{item.label}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">{item.value}</div>
+                              </div>
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${item.ready ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                                {item.ready ? (isCn ? "就绪" : "ready") : (isCn ? "待补" : "pending")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-border bg-background/80 p-5">
+                        <div className="text-sm font-semibold text-foreground">{isCn ? "继续操作" : "Continue from here"}</div>
+                        <div className="mt-4 grid gap-2">
+                          {dashboardActions.slice(0, 3).map((action) => (
+                            <button
+                              key={action.label}
+                              type="button"
+                              onClick={action.onClick}
+                              className="flex items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                            >
+                              <span>{action.label}</span>
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : previewTab === "code" ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border bg-background/80 p-5">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{isCn ? "Editor workspace" : "Editor workspace"}</div>
+                    <div className="mt-2 text-xl font-semibold text-foreground">
+                      {isCn
+                        ? "把当前文件、页面映射和输出面板拉进同一个真实编辑区"
+                        : "Pull the active file, route map, and output panels into one real editing lane"}
+                    </div>
+                    <div className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                      {selectedFileSummary || (isCn ? "当前编辑区已经连上文件树、页面映射、符号导航和底部输出。" : "The editor now connects the file tree, route mapping, symbols, and bottom output in one place.")}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">{editorRailLabel}</Badge>
+                    <Badge variant="outline">{editorBottomTabLabel}</Badge>
+                    <Badge variant="outline">{editorProblemItems.length} {isCn ? "个问题" : "problems"}</Badge>
+                  </div>
                 </div>
-                <div className="max-h-[68vh] overflow-auto space-y-1">
-                  {renderSelectableFileTree(filteredCodeTree, selectedCodeFile, setSelectedCodeFile)}
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                  {editorSummaryCards.map((card) => (
+                    <div key={card.label} className="rounded-xl border border-border bg-secondary/20 p-4">
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">{card.label}</div>
+                      <div className="mt-2 text-sm font-medium text-foreground">{card.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`${workspaceRootHref}/dashboard`}>
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      {isCn ? "回到 Dashboard" : "Back to dashboard"}
+                    </Link>
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={refreshPreview} disabled={runBusy}>
+                    {copy.refreshPreview}
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={workspaceRootHref}>
+                      {isCn ? "切到 Preview" : "Switch to preview"}
+                    </Link>
+                  </Button>
                 </div>
               </div>
+
+            <div className="grid min-h-[78vh] gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
+              <div className="grid gap-3 xl:grid-cols-[56px_minmax(0,1fr)]">
+                <div className="rounded-md border border-border bg-secondary/20 p-2">
+                  <div className="space-y-2">
+                    {editorRailItems.map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setEditorRail(item.key)}
+                        className={`flex h-10 w-full items-center justify-center rounded-xl border text-[11px] font-medium transition ${
+                          editorRail === item.key
+                            ? "border-primary/35 bg-primary/10 text-foreground"
+                            : "border-transparent bg-background/70 text-muted-foreground hover:border-border hover:text-foreground"
+                        }`}
+                        title={item.label}
+                      >
+                        {item.short}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-border bg-secondary/20 p-3">
+                  {editorRail === "explorer" ? (
+                    <>
+                      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                        <Search className="h-4 w-4" />
+                        {isCn ? "Explorer" : "Explorer"}
+                      </div>
+                      <Input
+                        value={codeQuery}
+                        onChange={(e) => setCodeQuery(e.target.value)}
+                        placeholder={isCn ? "过滤文件..." : "Filter files..."}
+                        className="mb-3"
+                      />
+                      <div className="mb-3 rounded-xl border border-border bg-background p-3">
+                        <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{isCn ? "最近打开" : "Recent files"}</span>
+                          <span>{recentCodeFiles.length}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {recentCodeFiles.length ? recentCodeFiles.slice(0, 5).map((filePath) => (
+                            <button
+                              key={filePath}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCodeFile(filePath)
+                                setPreviewTab("code")
+                              }}
+                              className={`w-full rounded-md border px-3 py-2 text-left text-xs transition ${
+                                selectedCodeFile === filePath
+                                  ? "border-primary/30 bg-primary/5 text-foreground"
+                                  : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                              }`}
+                            >
+                              <div className="font-medium text-foreground">{filePath.split("/").slice(-1)[0]}</div>
+                              <div className="mt-1 truncate">{filePath}</div>
+                            </button>
+                          )) : (
+                            <div className="text-xs text-muted-foreground">
+                              {isCn ? "等待你打开第一个文件。" : "Open a file to build your recent stack."}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mb-3 rounded-xl border border-border bg-background p-3">
+                        <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{isCn ? "页面映射" : "Page map"}</span>
+                          <span>{routeFileEntries.length}</span>
+                        </div>
+                        <div className="space-y-2">
+                          {routeFileEntries.slice(0, 6).map((entry) => (
+                            <button
+                              key={entry.filePath}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCodeFile(entry.filePath)
+                                setPreviewTab("code")
+                              }}
+                              className="flex w-full items-center justify-between rounded-md border border-border bg-background px-3 py-2 text-left text-xs text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                            >
+                              <span>{entry.route}</span>
+                              <span className="truncate pl-3 text-muted-foreground">{entry.filePath.split("/").slice(-1)[0]}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{copy.codeFiles}</span>
+                        <span>{filteredCodeFiles.length}</span>
+                      </div>
+                      <div className="max-h-[45vh] overflow-auto space-y-1">
+                        {renderInteractiveFileTree(
+                          filteredCodeTree,
+                          selectedCodeFile,
+                          expandedCodeFolders,
+                          setSelectedCodeFile,
+                          toggleCodeFolder
+                        )}
+                      </div>
+                    </>
+                  ) : editorRail === "search" ? (
+                    <>
+                      <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                        <Search className="h-4 w-4" />
+                        {copy.commandSearch}
+                      </div>
+                      <Input
+                        value={commandQuery}
+                        onChange={(e) => setCommandQuery(e.target.value)}
+                        placeholder={copy.commandSearchPlaceholder}
+                        className="mb-3"
+                      />
+                      <div className="mb-4 max-h-48 space-y-2 overflow-auto">
+                        {workspaceCommands.map((command) => (
+                          <button
+                            key={command.id}
+                            type="button"
+                            onClick={() => void handleWorkspaceCommand(command)}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-left"
+                          >
+                            <div className="text-xs font-medium text-foreground">{command.label}</div>
+                            <div className="mt-1 text-[11px] text-muted-foreground">{command.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                      {searchResults.length ? (
+                        <div className="rounded-md border border-border bg-background p-3">
+                          <div className="mb-2 text-xs font-medium text-muted-foreground">{copy.searchResults}</div>
+                          <div className="max-h-[46vh] space-y-2 overflow-auto">
+                            {searchResults.slice(0, 10).map((result) => (
+                              <button
+                                key={result.path}
+                                type="button"
+                                onClick={() => setSelectedCodeFile(result.path)}
+                                className="w-full rounded-md border border-border px-3 py-2 text-left"
+                              >
+                                <div className="text-xs font-medium text-foreground">{result.path}</div>
+                                <div className="mt-1 text-[11px] text-muted-foreground">
+                                  {result.symbols[0]?.name ? `symbol: ${result.symbols[0].name}` : result.matches[0]?.preview || "Open file"}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-md border border-dashed border-border p-4 text-xs text-muted-foreground">
+                          {isCn ? "输入命令、文件名或符号后，这里会显示命中的工作区结果。" : "Search for a command, file, or symbol to surface workspace hits here."}
+                        </div>
+                      )}
+                    </>
+                  ) : editorRail === "routes" ? (
+                    <>
+                      <div className="mb-3 text-sm font-medium">{isCn ? "Route navigator" : "Route navigator"}</div>
+                      <div className="space-y-2">
+                        {routeFileEntries.map((entry) => (
+                          <button
+                            key={entry.filePath}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCodeFile(entry.filePath)
+                              setPreviewTab("code")
+                            }}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-3 text-left transition hover:border-primary/20 hover:bg-primary/5"
+                          >
+                            <div className="text-sm font-medium text-foreground">{entry.route}</div>
+                            <div className="mt-1 text-xs text-muted-foreground">{entry.filePath}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-3 text-sm font-medium">{isCn ? "Runtime output" : "Runtime output"}</div>
+                      <div className="space-y-2">
+                        {editorOutputItems.map((item) => (
+                          <div key={item} className="rounded-xl border border-border bg-background px-3 py-3 text-sm text-foreground">
+                            {item}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 rounded-xl border border-border bg-background p-3">
+                        <div className="mb-2 text-xs font-medium text-muted-foreground">{isCn ? "快速动作" : "Quick actions"}</div>
+                        <div className="grid gap-2">
+                          {dashboardActions.slice(0, 3).map((action) => (
+                            <button
+                              key={action.label}
+                              type="button"
+                              onClick={action.onClick}
+                              className="flex items-center justify-between rounded-md border border-border bg-secondary/20 px-3 py-2 text-left text-xs text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                            >
+                              <span>{action.label}</span>
+                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-md border border-border bg-black text-white">
                 <div className="flex gap-2 overflow-auto border-b border-white/10 px-4 py-2 text-xs">
                   {codeTabs.map((tab) => (
@@ -1878,6 +3834,14 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     </div>
                   ))}
                 </div>
+                <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-2 text-[11px] text-white/55">
+                  {editorBreadcrumbs.map((item, index) => (
+                    <div key={`${index}-${item}`} className="flex items-center gap-2">
+                      <span className="rounded-full bg-white/5 px-2 py-1 text-white/75">{item}</span>
+                      {index < editorBreadcrumbs.length - 1 ? <span className="text-white/25">/</span> : null}
+                    </div>
+                  ))}
+                </div>
                 <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 text-xs text-white/70 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
                     <div className="truncate font-medium text-white">
@@ -1885,7 +3849,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                       {hasUnsavedChanges ? ` • ${isCn ? "未保存" : "unsaved"}` : ""}
                     </div>
                     <div className="mt-1 truncate text-[11px] text-white/45">
-                      {selectedFileSummary || (isCn ? "左侧目录与右侧编辑器已经联动，选中文件后这里会展示真实代码内容。" : "The left explorer and right editor are linked. Selecting a file renders its real code here.")}
+                      {selectedFileSummary || (isCn ? "左侧资源导航、页面映射和底部输出已经接进当前编辑器。" : "The left explorer, route map, and bottom output are all connected to the active editor now.")}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -1916,11 +3880,37 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     </a>
                   </div>
                 </div>
-                <div className="grid min-h-[72vh] xl:grid-cols-[220px_52px_minmax(0,1fr)_260px]">
+                {openedFromAi ? (
+                  <div className="border-b border-violet-400/20 bg-violet-500/10 px-4 py-3 text-xs text-violet-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-violet-300/30 bg-violet-400/15 px-2.5 py-1 font-medium">
+                        {isCn ? "来自 AI 上下文" : "Opened from AI context"}
+                      </span>
+                      <span className="text-violet-100/80">
+                        {isCn
+                          ? "编辑器已根据 AI 当前页面、模块和元素焦点自动对位。"
+                          : "The editor aligned itself to the page, module, and element focus coming from AI."}
+                      </span>
+                    </div>
+                    {aiEntrySummary.length ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {aiEntrySummary.map((item) => (
+                          <span
+                            key={item}
+                            className="rounded-full border border-violet-300/20 bg-black/20 px-2.5 py-1 text-[11px] text-violet-50"
+                          >
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="grid min-h-[58vh] xl:grid-cols-[220px_52px_minmax(0,1fr)_260px]">
                   <div className="border-r border-white/10 bg-white/5 p-3">
                     <div className="mb-3 text-xs font-medium text-white/70">{copy.symbols}</div>
                     <div className="space-y-2">
-                      {selectedCodeSymbols.map((symbol) => (
+                      {selectedCodeSymbols.length ? selectedCodeSymbols.map((symbol) => (
                         <button
                           key={`${symbol.kind}:${symbol.name}:${symbol.line}`}
                           type="button"
@@ -1932,7 +3922,11 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                           <div>{symbol.name}</div>
                           <div className="mt-1 text-[10px] opacity-70">{symbol.kind} · {isCn ? `第 ${symbol.line} 行` : `line ${symbol.line}`}</div>
                         </button>
-                      ))}
+                      )) : (
+                        <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/55">
+                          {copy.noSymbols}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="border-r border-white/10 bg-black px-2 py-4 text-right text-xs text-white/35">
@@ -1947,7 +3941,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     onChange={(e) => setDraftCodeContent(e.target.value)}
                     disabled={codeLoading || !selectedCodeFile}
                     spellCheck={false}
-                    className="min-h-[56vh] w-full min-w-0 resize-none bg-black p-4 text-xs leading-6 text-white outline-none xl:min-h-[72vh]"
+                    className="min-h-[46vh] w-full min-w-0 resize-none bg-black p-4 text-xs leading-6 text-white outline-none xl:min-h-[58vh]"
                   />
                   <div className="border-l border-white/10 bg-white/5 p-3">
                     <div className="mb-3 text-xs font-medium text-white/70">{copy.diagnostics}</div>
@@ -1966,8 +3960,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     {searchResults.length ? (
                       <div className="mt-4">
                         <div className="mb-2 text-xs font-medium text-white/70">{copy.globalResults}</div>
-                        <div className="max-h-[48vh] space-y-2 overflow-auto">
-                          {searchResults.slice(0, 10).map((result) => (
+                        <div className="max-h-[36vh] space-y-2 overflow-auto">
+                          {searchResults.slice(0, 8).map((result) => (
                             <button
                               key={result.path}
                               type="button"
@@ -1988,9 +3982,91 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     ) : null}
                   </div>
                 </div>
+                <div className="border-t border-white/10 bg-[#0d1117]">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-2 text-[11px] text-white/65">
+                    {([
+                      { key: "terminal", label: isCn ? "Terminal" : "Terminal" },
+                      { key: "problems", label: isCn ? "Problems" : "Problems" },
+                      { key: "output", label: isCn ? "Output" : "Output" },
+                    ] as const).map((item) => (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setEditorBottomTab(item.key)}
+                        className={`rounded-md px-3 py-1.5 transition ${
+                          editorBottomTab === item.key ? "bg-white text-black" : "bg-white/5 text-white/70"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="max-h-[22vh] overflow-auto rounded-xl border border-white/10 bg-black/40 p-3">
+                      {editorBottomTab === "terminal" ? (
+                        <div className="space-y-2 font-mono text-[11px] text-emerald-200">
+                          {editorTerminalLines.map((line, index) => (
+                            <div key={`${index}-${line}`}>{line}</div>
+                          ))}
+                        </div>
+                      ) : editorBottomTab === "problems" ? (
+                        <div className="space-y-2">
+                          {editorProblemItems.length ? editorProblemItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className={`rounded-md px-3 py-2 text-xs ${
+                                item.level === "warn" ? "bg-amber-500/15 text-amber-200" : "bg-white/5 text-white/75"
+                              }`}
+                            >
+                              {item.text}
+                            </div>
+                          )) : (
+                            <div className="text-xs text-white/55">{isCn ? "当前没有新的问题。" : "No new problems right now."}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {editorOutputItems.map((item) => (
+                            <div key={item} className="rounded-md bg-white/5 px-3 py-2 text-xs text-white/80">
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <div className="mb-2 text-xs font-medium text-white/70">{isCn ? "编辑器焦点" : "Editor focus"}</div>
+                      <div className="space-y-2 text-xs text-white/70">
+                        <div className="rounded-md bg-white/5 px-3 py-2">
+                          {isCn ? "当前文件：" : "Current file: "} {selectedCodeFile || copy.noFileSelected}
+                        </div>
+                        <div className="rounded-md bg-white/5 px-3 py-2">
+                          {isCn ? "活动 rail：" : "Active rail: "} {editorRailLabel}
+                        </div>
+                        <div className="rounded-md bg-white/5 px-3 py-2">
+                          {isCn ? "输出面板：" : "Output panel: "} {editorBottomTabLabel}
+                        </div>
+                        <div className="rounded-md bg-white/5 px-3 py-2">
+                          {isCn ? "页面路由：" : "Route: "} {currentCodeRoute || (isCn ? "未命中" : "not inferred")}
+                        </div>
+                        <div className="rounded-md bg-white/5 px-3 py-2">
+                          {isCn ? "标签数量：" : "Open tabs: "} {codeTabs.length}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 border-t border-white/10 px-4 py-3 text-[11px] text-white/60">
+                    {editorStatusItems.map((item) => (
+                      <div key={item.label} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                        {item.label}: {item.value}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
               </div>
             </div>
-          ) : previewProbe?.renderStrategy === "structured_fallback" ? (
+            ) : previewProbe?.renderStrategy === "structured_fallback" ? (
             <StructuredPreviewFallback
               projectName={projectName}
               projectSubtitle={projectSubtitle}
@@ -2023,7 +4099,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         </Card>
       </div>
 
-      <div className="min-w-0">
+      <div className="order-1 min-w-0 xl:order-1">
         <div className="sticky top-24">
           <Card className="border-border/70 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
             <CardHeader className="space-y-4 border-b border-border/70">
@@ -2033,7 +4109,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     <Bot className="h-4 w-4 text-primary" />
                     {copy.aiStudio}
                   </CardTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">{copy.applyHint}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{copy.workspaceSubtitle}</p>
                 </div>
                 <Badge
                   variant={workspaceStatus.tone === "destructive" ? "destructive" : workspaceStatus.tone === "warning" ? "secondary" : "outline"}
@@ -2057,6 +4133,27 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
             </CardHeader>
 
             <CardContent className="space-y-5 p-4">
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                <div className="text-xs font-medium text-primary">{copy.workspaceTitle}</div>
+                <div className="mt-2 text-sm text-foreground">{copy.applyHint}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {workspaceSurfaceTabs.map((item) => (
+                    <button
+                      key={`copilot-${item.key}`}
+                      type="button"
+                      onClick={() => setPreviewTab(item.key)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        previewTab === item.key
+                          ? "border-primary/40 bg-primary/10 text-foreground"
+                          : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium">{copy.assistantMode}</div>
@@ -2085,15 +4182,154 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 </div>
                 <div className="rounded-xl border border-border bg-secondary/20 p-3">
                   <div className="text-xs text-muted-foreground">{copy.currentContext}</div>
-                  <div className="mt-2 text-sm font-medium text-foreground">{selectedCodeFile || (isCn ? "当前未选择文件" : "No active file selected")}</div>
+                  <div className="mt-2 text-sm font-medium text-foreground">{contextFile || (isCn ? "当前未选择文件" : "No active file selected")}</div>
                   <div className="mt-2 text-xs text-muted-foreground">
-                    {copy.currentRoute}: {currentCodeRoute || (isCn ? "未命中页面路由" : "No page route inferred")}
+                    {copy.currentRoute}: {contextRoute || (isCn ? "未命中页面路由" : "No page route inferred")}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {selectedCodeSymbols.length
-                      ? `${copy.symbols}: ${selectedCodeSymbols.map((item) => item.name).slice(0, 4).join(", ")}`
+                    {contextSymbols.length
+                      ? `${copy.symbols}: ${contextSymbols.map((item) => item.name).slice(0, 4).join(", ")}`
                       : copy.noSymbols}
                   </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "页面" : "Page"}</div>
+                      <div className="mt-1 text-xs font-medium text-foreground">{contextPage.label}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{contextPage.route}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块" : "Module"}</div>
+                      <div className="mt-1 text-xs font-medium text-foreground">{contextModule.name}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{contextModule.source}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素" : "Element"}</div>
+                      <div className="mt-1 text-xs font-medium text-foreground">{contextElement.name}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">{contextElement.source}</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/80 px-3 py-2">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "会话" : "Session"}</div>
+                      <div className="mt-1 text-xs font-medium text-foreground">
+                        {contextSession?.workspaceSurface || previewTab}
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        {contextSession?.activeSection || activeSectionKey || contextPage.id}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "模块锚点" : "Module anchors"}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {availableAiSymbols.map((symbol) => (
+                          <button
+                            key={symbol}
+                            type="button"
+                            onClick={() => setAiTargetSymbol(symbol)}
+                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                              aiTargetSymbol === symbol
+                                ? "border-primary/40 bg-primary/10 text-foreground"
+                                : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                            }`}
+                          >
+                            {symbol}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{isCn ? "元素锚点" : "Element anchors"}</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {availableAiElements.map((element) => (
+                          <button
+                            key={element}
+                            type="button"
+                            onClick={() => setAiTargetElement(element)}
+                            className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                              aiTargetElement === element
+                                ? "border-primary/40 bg-primary/10 text-foreground"
+                                : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                            }`}
+                          >
+                            {element}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
+                <div className="text-sm font-medium">{copy.queuedChanges}</div>
+                <textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder={copy.continuePrompt}
+                  className="min-h-[120px] w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none"
+                />
+                {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
+                {iterateResult?.summary ? <p className="text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
+                {iterateResult?.warning ? <p className="text-xs text-amber-600">{iterateResult.warning}</p> : null}
+                {iterateResult?.thinking ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.modelOutput}</div>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{iterateResult.thinking}</pre>
+                  </div>
+                ) : null}
+                {iterateResult?.changedFiles?.length ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
+                    <div className="max-h-32 overflow-auto">
+                      {renderSelectableFileTree(iterateTree, selectedCodeFile, (filePath) => {
+                        setSelectedCodeFile(filePath)
+                        setPreviewTab("code")
+                        setEditorRail("explorer")
+                        setFocusedLine(null)
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+                {iterateResult?.build?.logs?.length ? (
+                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
+                    <div className="mb-2 text-xs font-medium">{copy.buildAcceptance}</div>
+                    <div className="mb-2 text-xs text-muted-foreground">
+                      {iterateResult.build.status === "ok"
+                        ? copy.buildPassed
+                        : iterateResult.build.status === "failed"
+                          ? copy.buildFailed
+                          : copy.buildPending}
+                    </div>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                      {iterateResult.build.logs.join("\n")}
+                    </pre>
+                  </div>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button onClick={iterate} disabled={iterating} className="w-full">
+                    <Wand2 className="mr-2 h-4 w-4" />
+                    {iterating ? copy.applying : aiMode === "explain" ? copy.explainMode : copy.applyChange}
+                  </Button>
+                  <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
+                    <Undo2 className="mr-2 h-4 w-4" />
+                    {revertBusy ? copy.reverting : copy.revert}
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3 text-sm font-medium">{copy.quickSuggestions}</div>
+                <div className="flex flex-wrap gap-2">
+                  {quickSuggestions.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setPrompt(item)}
+                      className="rounded-full border border-border bg-background px-3 py-2 text-xs text-foreground hover:border-primary/30 hover:bg-primary/5"
+                    >
+                      {item}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -2144,75 +4380,138 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
-              <div>
-                <div className="mb-3 text-sm font-medium">{copy.quickSuggestions}</div>
-                <div className="flex flex-wrap gap-2">
-                  {quickSuggestions.map((item) => (
+      <div className="order-3 min-w-0 xl:order-3">
+        <div className="sticky top-24">
+          <Card className="border-border/70 bg-card/95 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <CardHeader className="space-y-4 border-b border-border/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs text-muted-foreground">{isCn ? "Overview 总览" : "Overview"}</div>
+                  <CardTitle className="mt-1 text-base">
+                    {isCn ? "把高频入口收进同一条工作区线索" : "Keep the high-frequency controls on one workspace thread"}
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {isCn
+                      ? "这里承接 Dashboard 按钮、主工作区切换和当前上下文，低优先级功能统一沉到底部。"
+                      : "This rail owns the Dashboard entry, primary workspace switching, and current context while pushing lower-priority controls down."}
+                  </p>
+                </div>
+                <Button
+                  variant={previewTab === "dashboard" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPreviewTab("dashboard")}
+                >
+                  Dashboard
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {workspaceSurfaceTabs.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPreviewTab(item.key)}
+                    className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                      previewTab === item.key
+                        ? "border-primary/40 bg-primary/10 text-foreground"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/20 hover:text-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+
+            <CardContent className="space-y-4 p-4">
+              <div className="rounded-2xl border border-border bg-secondary/20 p-3">
+                <div className="text-xs text-muted-foreground">{copy.projectOverview}</div>
+                <div className="mt-2 text-sm font-semibold text-foreground">{projectName}</div>
+                <div className="mt-2 text-sm text-muted-foreground">{projectSummary}</div>
+                {pageManifest.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {pageManifest.slice(0, 6).map((item) => (
+                      <Badge key={item.filePath} variant="outline">
+                        {item.route}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/80 p-3">
+                <div className="text-xs text-muted-foreground">{isCn ? "当前工作区焦点" : "Current workspace focus"}</div>
+                <div className="mt-3 space-y-2">
+                  {overviewContextItems.map((item) => (
+                    <div key={item.label} className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
+                      <div className="text-[11px] text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 text-sm text-foreground">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-background/80 p-3">
+                <div className="text-xs text-muted-foreground">{isCn ? "核心控制区" : "Core controls"}</div>
+                <div className="mt-3 space-y-2">
+                  {overviewPrimaryControls.map((item) => (
                     <button
-                      key={item}
+                      key={item.key}
                       type="button"
-                      onClick={() => setPrompt(item)}
-                      className="rounded-full border border-border bg-background px-3 py-2 text-xs text-foreground hover:border-primary/30 hover:bg-primary/5"
+                      onClick={item.action}
+                      className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                        item.active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-border bg-secondary/20 hover:border-primary/20 hover:bg-primary/5"
+                      }`}
                     >
-                      {item}
+                      <div className="text-sm font-medium text-foreground">{item.label}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{item.note}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-3">
-                <div className="text-sm font-medium">{copy.queuedChanges}</div>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder={copy.continuePrompt}
-                  className="min-h-[120px] w-full resize-none rounded-xl border border-border bg-background px-3 py-3 text-sm outline-none"
-                />
-                {iterateStatus ? <p className="text-xs text-muted-foreground">{iterateStatus}</p> : null}
-                {iterateResult?.summary ? <p className="text-xs text-muted-foreground">{iterateResult.summary}</p> : null}
-                {iterateResult?.thinking ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.modelOutput}</div>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">{iterateResult.thinking}</pre>
-                  </div>
-                ) : null}
-                {iterateResult?.changedFiles?.length ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.changedFiles}</div>
-                    <div className="max-h-32 overflow-auto">{renderFileTree(iterateTree)}</div>
-                  </div>
-                ) : null}
-                {iterateResult?.build?.logs?.length ? (
-                  <div className="rounded-xl border border-border bg-secondary/20 p-3">
-                    <div className="mb-2 text-xs font-medium">{copy.buildAcceptance}</div>
-                    <div className="mb-2 text-xs text-muted-foreground">
-                      {iterateResult.build.status === "ok"
-                        ? copy.buildPassed
-                        : iterateResult.build.status === "failed"
-                          ? copy.buildFailed
-                          : copy.buildPending}
-                    </div>
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
-                      {iterateResult.build.logs.join("\n")}
-                    </pre>
-                  </div>
-                ) : null}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Button onClick={iterate} disabled={iterating} className="w-full">
-                    <Wand2 className="mr-2 h-4 w-4" />
-                    {iterating ? copy.applying : aiMode === "explain" ? copy.explainMode : copy.applyChange}
-                  </Button>
-                  <Button onClick={revertLastChange} disabled={revertBusy} variant="outline" className="w-full">
-                    <Undo2 className="mr-2 h-4 w-4" />
-                    {revertBusy ? copy.reverting : copy.revert}
-                  </Button>
+              <div className="rounded-2xl border border-border bg-background/80 p-3">
+                <div className="text-xs text-muted-foreground">{isCn ? "打开与交付" : "Open and delivery"}</div>
+                <div className="mt-3 space-y-2">
+                  {dashboardActions.slice(0, 4).map((action) => (
+                    <button
+                      key={action.label}
+                      type="button"
+                      onClick={action.onClick}
+                      className="flex w-full items-center justify-between rounded-xl border border-border bg-secondary/20 px-3 py-2 text-left text-sm text-foreground transition hover:border-primary/20 hover:bg-primary/5"
+                    >
+                      <span>{action.label}</span>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-border bg-background/70 p-3">
+                <div className="text-xs text-muted-foreground">{isCn ? "后续再看" : "Later"}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {overviewLaterControls.map((item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-border bg-secondary/20 px-3 py-1.5 text-xs text-muted-foreground"
+                    >
+                      {item}
+                    </span>
+                  ))}
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+    </div>
     </div>
   )
 }

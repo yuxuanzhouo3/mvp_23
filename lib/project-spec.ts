@@ -11,6 +11,19 @@ import {
   type DatabaseTarget,
   type DeploymentTarget,
 } from "@/lib/fullstack-targets"
+import {
+  buildCodePlatformContextRoutes,
+  findCodePlatformRouteByFilePath,
+  findCodePlatformRouteByHref,
+  findCodePlatformRouteById,
+  getLocalizedRouteElements,
+  getLocalizedRouteLabel,
+  type CodePlatformContextRoute,
+  type WorkspaceElementContext,
+  type WorkspaceModuleContext,
+  type WorkspacePageContext,
+  type WorkspaceSessionContext,
+} from "@/lib/workspace-ai-context"
 
 export type AppKind = "task" | "crm" | "blog" | "community" | "code_platform"
 export type ScaffoldArchetype =
@@ -99,6 +112,19 @@ type WorkspaceFile = {
   path: string
   content: string
   reason: string
+}
+
+export type SpecIterationContext = {
+  currentFilePath?: string
+  currentRoute?: string
+  focusedLine?: number
+  currentPage?: WorkspacePageContext
+  currentModule?: WorkspaceModuleContext
+  currentElement?: WorkspaceElementContext
+  sharedSession?: WorkspaceSessionContext
+  openTabs?: string[]
+  relatedPaths?: string[]
+  mode?: "explain" | "fix" | "generate" | "refactor"
 }
 
 const FEATURE_SET = new Set<SpecFeature>([
@@ -650,7 +676,117 @@ function extractProductNameFromPrompt(prompt: string) {
   return ""
 }
 
-export function applyPromptToSpec(spec: AppSpec, prompt: string) {
+function normalizeSpecContextPath(value?: string | null) {
+  return String(value ?? "").replace(/\\/g, "/").replace(/^\/+/, "").trim()
+}
+
+function normalizeSpecContextRoute(value?: string | null) {
+  const route = String(value ?? "").trim()
+  if (!route) return ""
+  return route.startsWith("/") ? route : `/${route}`
+}
+
+function normalizeSpecContextLabel(value?: string | null) {
+  return sanitizeUiText(String(value ?? ""))
+}
+
+function getCodePlatformContextModules(pageId: string, region: Region) {
+  const isCn = region === "cn"
+  switch (pageId) {
+    case "editor":
+      return isCn
+        ? ["当前文件上下文", "页面感知 AI", "元素级动作锚点", "共享会话轨道"]
+        : ["Current file context", "Page-aware AI", "Element-level action anchors", "Shared session rail"]
+    case "dashboard":
+      return isCn
+        ? ["控制平面焦点", "交付检查轨道", "运行与资源摘要"]
+        : ["Control-plane focus", "Delivery checklist rail", "Runtime and resource summary"]
+    case "runs":
+      return isCn
+        ? ["构建验收", "运行历史", "回退守卫"]
+        : ["Build acceptance", "Run history", "Fallback guards"]
+    case "templates":
+      return isCn
+        ? ["模板检索", "模板复用入口", "模板切换轨道"]
+        : ["Template search", "Template reuse entry", "Template switching rail"]
+    case "pricing":
+      return isCn
+        ? ["资源权限对比", "导出策略", "套餐升级路径"]
+        : ["Resource policy comparison", "Export policy", "Plan upgrade path"]
+    case "settings":
+      return isCn
+        ? ["环境与访问控制", "数据路径", "发布配置轨道"]
+        : ["Environment and access control", "Data path", "Publish configuration rail"]
+    default:
+      return isCn
+        ? ["页面感知工作区", "当前会话摘要"]
+        : ["Page-aware workspace", "Current session summary"]
+  }
+}
+
+function applyIterationContextToSpec(spec: AppSpec, modules: string[], features: SpecFeature[], context?: SpecIterationContext) {
+  if (!context) return
+
+  const currentFilePath = normalizeSpecContextPath(context.currentFilePath)
+  const currentRoute = normalizeSpecContextRoute(context.currentRoute)
+  const currentPageId = normalizeSpecContextLabel(context.currentPage?.id || context.sharedSession?.activeSection).toLowerCase()
+  const currentModuleName = normalizeSpecContextLabel(context.currentModule?.name)
+  const currentElementName = normalizeSpecContextLabel(context.currentElement?.name)
+  const selectedTemplate = normalizeSpecContextLabel(context.sharedSession?.selectedTemplate)
+  const workspaceSurface = normalizeSpecContextLabel(context.sharedSession?.workspaceSurface).toLowerCase()
+  const workspaceStatus = normalizeSpecContextLabel(context.sharedSession?.workspaceStatus)
+
+  if (
+    currentPageId === "about" ||
+    currentRoute === "/about" ||
+    currentFilePath.endsWith("/about/page.tsx")
+  ) {
+    pushFeature(features, "about_page")
+  }
+
+  if (
+    currentPageId === "analytics" ||
+    currentRoute === "/analytics" ||
+    currentFilePath.endsWith("/analytics/page.tsx")
+  ) {
+    pushFeature(features, "analytics_page")
+  }
+
+  if (spec.kind === "code_platform") {
+    for (const module of getCodePlatformContextModules(currentPageId, spec.region)) {
+      pushModule(modules, module)
+    }
+    if (workspaceSurface === "code") {
+      pushModule(modules, spec.region === "cn" ? "多文件工作区" : "Multi-file workspace")
+    }
+    if (workspaceStatus) {
+      pushModule(modules, spec.region === "cn" ? "工作区状态联动" : "Workspace status sync")
+    }
+  }
+
+  if (currentModuleName && currentModuleName.length <= 48) {
+    pushModule(
+      modules,
+      spec.region === "cn" ? `模块焦点：${currentModuleName}` : `Module focus: ${currentModuleName}`
+    )
+  }
+
+  if (currentElementName && currentElementName.length <= 48) {
+    pushModule(
+      modules,
+      spec.region === "cn" ? `元素焦点：${currentElementName}` : `Element focus: ${currentElementName}`
+    )
+  }
+
+  if (selectedTemplate) {
+    pushModule(
+      modules,
+      spec.region === "cn" ? `模板轨道：${selectedTemplate}` : `Template rail: ${selectedTemplate}`
+    )
+  }
+}
+
+export function applyPromptToSpec(spec: AppSpec, prompt: string, context?: SpecIterationContext) {
   const next = { ...spec, prompt, updatedAt: new Date().toISOString() }
   const inferredTemplateId = spec.templateId ?? inferTemplateIdFromPrompt(prompt)
   next.templateId = inferredTemplateId
@@ -697,6 +833,8 @@ export function applyPromptToSpec(spec: AppSpec, prompt: string) {
   if (!knownIntent && promptSafe) {
     pushModule(modules, promptSafe)
   }
+
+  applyIterationContextToSpec(next, modules, features, context)
 
   next.features = uniqueStrings(features).filter((item): item is SpecFeature => FEATURE_SET.has(item as SpecFeature))
   next.modules = uniqueStrings(modules)
@@ -4685,16 +4823,7 @@ export default function AnalyticsPage() {
 `
 }
 
-type CodePlatformRouteSeed = {
-  id: string
-  href: string
-  filePath: string
-  labelCn: string
-  labelEn: string
-  focusCn: string
-  focusEn: string
-  symbols: string[]
-}
+type CodePlatformRouteSeed = CodePlatformContextRoute
 
 type CodePlatformFileSeed = {
   id: string
@@ -4732,106 +4861,10 @@ type CodePlatformRunSeed = {
 }
 
 function buildCodePlatformRoutes(spec: AppSpec): CodePlatformRouteSeed[] {
-  const routes: CodePlatformRouteSeed[] = [
-    {
-      id: "home",
-      href: "/",
-      filePath: "app/page.tsx",
-      labelCn: "工作台首页",
-      labelEn: "Workspace home",
-      focusCn: "生成总览、当前项目入口与交付摘要",
-      focusEn: "Generation overview, current app entry, and delivery summary",
-      symbols: ["HomePage", "WorkspaceHero", "DeliverySummary"],
-    },
-    {
-      id: "dashboard",
-      href: "/dashboard",
-      filePath: "app/dashboard/page.tsx",
-      labelCn: "控制台总览",
-      labelEn: "Control plane overview",
-      focusCn: "应用头部、访问控制、交付与集成状态",
-      focusEn: "App header, access controls, delivery, and integration status",
-      symbols: ["DashboardPage", "ControlPlaneHeader", "WorkspaceMetrics"],
-    },
-    {
-      id: "editor",
-      href: "/editor",
-      filePath: "app/editor/page.tsx",
-      labelCn: "编辑器工作区",
-      labelEn: "Editor workspace",
-      focusCn: "文件树、多标签、终端、预览与 AI 助手",
-      focusEn: "Explorer, tabs, terminal, preview, and AI assistant",
-      symbols: ["EditorPage", "WorkbenchShell", "AssistantRail"],
-    },
-    {
-      id: "runs",
-      href: "/runs",
-      filePath: "app/runs/page.tsx",
-      labelCn: "运行链路",
-      labelEn: "Runtime flow",
-      focusCn: "生成、构建、预览、部署与回退",
-      focusEn: "Generate, build, preview, deploy, and fallback",
-      symbols: ["RunsPage", "RunTimeline", "BuildAcceptanceRail"],
-    },
-    {
-      id: "templates",
-      href: "/templates",
-      filePath: "app/templates/page.tsx",
-      labelCn: "模板轨道",
-      labelEn: "Template rails",
-      focusCn: "官网、销售、API、社区等生成方向",
-      focusEn: "Website, sales, API, community, and other generation tracks",
-      symbols: ["TemplatesPage", "TemplateRail", "TrackFilters"],
-    },
-    {
-      id: "pricing",
-      href: "/pricing",
-      filePath: "app/pricing/page.tsx",
-      labelCn: "套餐与升级",
-      labelEn: "Plans and upgrades",
-      focusCn: "免费版、专业版、精英版能力差异",
-      focusEn: "Free, Pro, and Elite capability differences",
-      symbols: ["PricingPage", "PlanGrid", "CapabilityComparison"],
-    },
-    {
-      id: "settings",
-      href: "/settings",
-      filePath: "app/settings/page.tsx",
-      labelCn: "环境设置",
-      labelEn: "Environment settings",
-      focusCn: "部署、数据库、权限、发布通道",
-      focusEn: "Deployment, database, access, and publish lane",
-      symbols: ["SettingsPage", "DeploymentRail", "AccessPolicyPanel"],
-    },
-  ]
-
-  if (spec.features.includes("analytics_page")) {
-    routes.push({
-      id: "analytics",
-      href: "/analytics",
-      filePath: "app/analytics/page.tsx",
-      labelCn: "分析页",
-      labelEn: "Analytics",
-      focusCn: "趋势、运行表现与业务指标",
-      focusEn: "Trends, runtime health, and product metrics",
-      symbols: ["AnalyticsPage", "TrendBoard", "HealthMetrics"],
-    })
-  }
-
-  if (spec.features.includes("about_page")) {
-    routes.push({
-      id: "about",
-      href: "/about",
-      filePath: "app/about/page.tsx",
-      labelCn: "说明页",
-      labelEn: "About",
-      focusCn: "产品说明、启用能力与模块说明",
-      focusEn: "Product notes, enabled features, and module explanation",
-      symbols: ["AboutPage", "FeatureNotes", "ModuleSummary"],
-    })
-  }
-
-  return routes
+  return buildCodePlatformContextRoutes({
+    region: spec.region,
+    features: spec.features,
+  })
 }
 
 function buildCodePlatformEditorFileGroups(spec: AppSpec): CodePlatformFileGroupSeed[] {
@@ -5168,53 +5201,91 @@ function getCodePlatformPlanLabel(planTier: PlanTier, region: Region) {
 }
 
 function buildCodePlatformElementSeeds(spec: AppSpec) {
-  const isCn = spec.region === "cn"
-  const seeds = [
-    {
-      routeId: "home",
-      elements: isCn ? ["入口 Hero", "项目列表", "交付摘要", "升级入口"] : ["Entry hero", "Project list", "Delivery summary", "Upgrade rail"],
-    },
-    {
-      routeId: "dashboard",
-      elements: isCn ? ["控制台头部", "指标矩阵", "访问策略卡", "交付轨道"] : ["Control-plane header", "Metric matrix", "Access policy card", "Delivery rail"],
-    },
-    {
-      routeId: "editor",
-      elements: isCn ? ["活动栏", "文件树", "标签栏", "预览摘要"] : ["Activity bar", "Explorer tree", "Tab strip", "Preview summary"],
-    },
-    {
-      routeId: "runs",
-      elements: isCn ? ["运行列表", "构建日志", "回退守卫", "发布检查"] : ["Run list", "Build logs", "Fallback guards", "Release checks"],
-    },
-    {
-      routeId: "templates",
-      elements: isCn ? ["模板筛选", "模板卡片", "详情面板", "生成入口"] : ["Template filters", "Template cards", "Detail panel", "Generate entry"],
-    },
-    {
-      routeId: "pricing",
-      elements: isCn ? ["套餐卡片", "能力对比表", "升级动作", "推荐说明"] : ["Plan cards", "Capability table", "Upgrade actions", "Fit narrative"],
-    },
-    {
-      routeId: "settings",
-      elements: isCn ? ["部署轨道", "数据库轨道", "权限策略", "发布通道"] : ["Deployment rail", "Database rail", "Access policy", "Publish lane"],
-    },
-  ] as Array<{ routeId: string; elements: string[] }>
+  return buildCodePlatformRoutes(spec).map((route) => ({
+    routeId: route.id,
+    elements: getLocalizedRouteElements(route, spec.region),
+  }))
+}
 
-  if (spec.features.includes("analytics_page")) {
-    seeds.push({
-      routeId: "analytics",
-      elements: isCn ? ["趋势总览", "健康指标", "异常列表", "对比窗口"] : ["Trend overview", "Health metrics", "Incident list", "Comparison window"],
-    })
+type CodePlatformIterationSeed = {
+  routeId: string
+  routeLabel: string
+  fileId: string
+  filePath: string
+  openTabIds: string[]
+  symbolName: string
+  elementName: string
+  selectedTemplateName: string
+  aiPrompt: string
+  sessionNote: string
+  mode: "explain" | "fix" | "generate" | "refactor"
+}
+
+function buildCodePlatformIterationSeed(
+  spec: AppSpec,
+  fileGroups: CodePlatformFileGroupSeed[],
+  routes: CodePlatformRouteSeed[],
+  templates: CodePlatformTemplateSeed[],
+  context?: SpecIterationContext
+): CodePlatformIterationSeed {
+  const allFiles = fileGroups.flatMap((group) => group.files)
+  const pageRoute =
+    findCodePlatformRouteById(routes, context?.currentPage?.id || context?.sharedSession?.activeSection) ??
+    findCodePlatformRouteByFilePath(routes, context?.currentFilePath) ??
+    findCodePlatformRouteByHref(routes, context?.currentRoute) ??
+    routes[0]
+  const pageLabel = getLocalizedRouteLabel(pageRoute, spec.region)
+  const routeFile =
+    allFiles.find((file) => file.fullPath === normalizeSpecContextPath(context?.currentFilePath)) ??
+    allFiles.find((file) => file.fullPath === pageRoute.filePath) ??
+    allFiles[0]
+  const normalizedMode = context?.mode === "explain" || context?.mode === "fix" || context?.mode === "refactor"
+    ? context.mode
+    : "generate"
+  const routeElements = getLocalizedRouteElements(pageRoute, spec.region)
+  const selectedTemplateName =
+    normalizeSpecContextLabel(context?.sharedSession?.selectedTemplate) ||
+    templates[0]?.name ||
+    ""
+  const openTabIds = uniqueStrings([
+    normalizeSpecContextPath(context?.currentFilePath),
+    normalizeSpecContextPath(context?.currentPage?.filePath),
+    ...((context?.openTabs ?? []).map((item) => normalizeSpecContextPath(item))),
+    ...((context?.relatedPaths ?? []).map((item) => normalizeSpecContextPath(item))),
+  ])
+    .map((filePath) => allFiles.find((file) => file.fullPath === filePath)?.id)
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 4)
+
+  const moduleName =
+    normalizeSpecContextLabel(context?.currentModule?.name) ||
+    routeFile?.symbols[0] ||
+    pageRoute.symbols[0] ||
+    (spec.region === "cn" ? "主模块" : "Primary module")
+  const elementName =
+    normalizeSpecContextLabel(context?.currentElement?.name) ||
+    routeElements[0] ||
+    (spec.region === "cn" ? "主容器" : "Primary surface")
+  const aiPrompt = sanitizeUiText(spec.prompt) || (spec.region === "cn" ? "继续沿当前文件上下文扩展工作区能力。" : "Keep extending the workspace from the current file context.")
+  const sessionNote = [
+    pageLabel,
+    moduleName,
+    elementName,
+  ].filter(Boolean).join(" / ")
+
+  return {
+    routeId: pageRoute.id,
+    routeLabel: pageLabel,
+    fileId: routeFile?.id || allFiles[0]?.id || "dashboard",
+    filePath: routeFile?.fullPath || pageRoute.filePath,
+    openTabIds: openTabIds.length ? openTabIds : [routeFile?.id || allFiles[0]?.id || "dashboard"],
+    symbolName: moduleName,
+    elementName,
+    selectedTemplateName,
+    aiPrompt,
+    sessionNote,
+    mode: normalizedMode,
   }
-
-  if (spec.features.includes("about_page")) {
-    seeds.push({
-      routeId: "about",
-      elements: isCn ? ["产品说明", "能力清单", "模块摘要", "交付边界"] : ["Product brief", "Capability list", "Module summary", "Delivery bounds"],
-    })
-  }
-
-  return seeds
 }
 
 function renderDashboardPage(spec: AppSpec) {
@@ -5878,7 +5949,7 @@ export default function DashboardPage() {
 `
 }
 
-function renderCodeEditorPage(spec: AppSpec) {
+function renderCodeEditorPage(spec: AppSpec, iterationContext?: SpecIterationContext) {
   const isCn = spec.region === "cn"
   const brand = spec.title
   const fileGroups = buildCodePlatformEditorFileGroups(spec)
@@ -5886,6 +5957,7 @@ function renderCodeEditorPage(spec: AppSpec) {
   const routeSeeds = buildCodePlatformRoutes(spec)
   const planLabel = getCodePlatformPlanLabel(spec.planTier, spec.region)
   const elementSeeds = buildCodePlatformElementSeeds(spec)
+  const iterationSeed = buildCodePlatformIterationSeed(spec, fileGroups, routeSeeds, templateTracks, iterationContext)
   return `// @ts-nocheck
 "use client";
 import { useEffect, useMemo, useState } from "react";
@@ -6009,22 +6081,40 @@ export default function EditorPage() {
     label: isCn ? route.labelCn : route.labelEn,
     focus: isCn ? route.focusCn : route.focusEn,
   })), null, 2)} as Array<{ id: string; href: string; filePath: string; label: string; focus: string }>;
+  const iterationSeed = ${JSON.stringify(iterationSeed, null, 2)} as const;
   const allFiles = fileGroups.flatMap((group) => group.files);
-  const [selectedFile, setSelectedFile] = useState(allFiles[0].id);
-  const [openTabs, setOpenTabs] = useState(allFiles.slice(0, 3).map((file) => file.id));
-  const [activeMode, setActiveMode] = useState<typeof aiModes[number]>(aiModes[2]);
+  const initialTargetFile = allFiles.find((file) => file.id === iterationSeed.fileId) ?? allFiles[0];
+  const initialTemplate = templates.find((item) => item.name === iterationSeed.selectedTemplateName) ?? templates[0];
+  const initialMode =
+    iterationSeed.mode === "explain"
+      ? aiModes[0]
+      : iterationSeed.mode === "fix"
+        ? aiModes[1]
+        : iterationSeed.mode === "refactor"
+          ? aiModes[3]
+          : aiModes[2];
+  const [selectedFile, setSelectedFile] = useState(initialTargetFile.id);
+  const [openTabs, setOpenTabs] = useState(
+    iterationSeed.openTabIds.length ? iterationSeed.openTabIds : allFiles.slice(0, 3).map((file) => file.id)
+  );
+  const [activeMode, setActiveMode] = useState<typeof aiModes[number]>(initialMode);
   const [activeRail, setActiveRail] = useState(activityBarItems[0].label);
   const [commandQuery, setCommandQuery] = useState("");
   const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal");
   const [runtimeState, setRuntimeState] = useState<"idle" | "running" | "failed" | "ready">("ready");
-  const [activeTemplate, setActiveTemplate] = useState(templates[0]);
-  const [activeRouteId, setActiveRouteId] = useState(routeManifest[0]?.id ?? "dashboard");
-  const [activeSymbolName, setActiveSymbolName] = useState("");
-  const [activeElementName, setActiveElementName] = useState("");
-  const [aiInput, setAiInput] = useState(isCn ? "继续把文件树、编辑器、终端和预览做成真正可用的 IDE。" : "Keep turning the file tree, editor, terminal, and preview into a truly usable IDE.");
+  const [activeTemplate, setActiveTemplate] = useState(initialTemplate);
+  const [activeRouteId, setActiveRouteId] = useState(iterationSeed.routeId || (routeManifest[0]?.id ?? "dashboard"));
+  const [activeSymbolName, setActiveSymbolName] = useState(iterationSeed.symbolName);
+  const [activeElementName, setActiveElementName] = useState(iterationSeed.elementName);
+  const [aiInput, setAiInput] = useState(iterationSeed.aiPrompt);
   const [saveNote, setSaveNote] = useState(isCn ? "未保存变更" : "Unsaved changes");
   const [assistantTrail, setAssistantTrail] = useState(assistantHistory);
-  const [previewRailNotes, setPreviewRailNotes] = useState(() => routeManifest.map((item) => item.label + ": " + item.focus));
+  const [previewRailNotes, setPreviewRailNotes] = useState(() => [
+    (isCn ? "当前页面: " : "Current page: ") + iterationSeed.routeLabel,
+    (isCn ? "当前文件: " : "Current file: ") + iterationSeed.filePath,
+    (isCn ? "当前模块: " : "Current module: ") + iterationSeed.symbolName,
+    (isCn ? "当前元素: " : "Current element: ") + iterationSeed.elementName,
+  ]);
   const [expandedGroups, setExpandedGroups] = useState(() =>
     Object.fromEntries(fileGroups.map((group) => [group.id, true]))
   );
@@ -6035,14 +6125,20 @@ export default function EditorPage() {
     publishChannel: "preview",
   });
   const [workspaceSession, setWorkspaceSession] = useState({
-    selectedTemplateId: templates[0]?.id ?? "",
-    selectedTemplateName: templates[0]?.name ?? "",
+    selectedTemplateId: initialTemplate?.id ?? templates[0]?.id ?? "",
+    selectedTemplateName: initialTemplate?.name ?? templates[0]?.name ?? "",
     selectedPlanName: defaultPlanName,
-    lastAction: isCn ? "等待下一次 AI 修改" : "Waiting for the next AI change",
-    lastIntent: "",
-    lastChangedFile: allFiles[0]?.fullPath ?? "",
-    lastChangedAt: isCn ? "未写入" : "No draft saved yet",
-    readiness: "draft",
+    lastAction: (isCn ? "继续从 AI 上下文切入 " : "Continue from AI context: ") + iterationSeed.sessionNote,
+    lastIntent: iterationSeed.aiPrompt,
+    lastChangedFile: initialTargetFile?.fullPath ?? allFiles[0]?.fullPath ?? "",
+    lastChangedAt: isCn ? "刚刚" : "just now",
+    readiness: "context_ready",
+    routeId: iterationSeed.routeId || (routeManifest[0]?.id ?? "editor"),
+    routeLabel: iterationSeed.routeLabel || (routeManifest[0]?.label ?? ""),
+    fileId: initialTargetFile?.id ?? allFiles[0]?.id ?? "",
+    filePath: initialTargetFile?.fullPath ?? allFiles[0]?.fullPath ?? "",
+    symbolName: iterationSeed.symbolName,
+    elementName: iterationSeed.elementName,
   });
   const [drafts, setDrafts] = useState(() =>
     Object.fromEntries(allFiles.map((file) => [file.id, file.body.replace(/morncursor/g, ${JSON.stringify(brand)})]))
@@ -6203,11 +6299,11 @@ export default function EditorPage() {
   }, [selectedFile, isCn]);
 
   useEffect(() => {
-    setActiveSymbolName(currentSymbols[0] ?? "");
+    setActiveSymbolName((current) => (current && currentSymbols.includes(current) ? current : currentSymbols[0] ?? ""));
   }, [currentFile.id, currentSymbols]);
 
   useEffect(() => {
-    setActiveElementName(routeElements[0] ?? "");
+    setActiveElementName((current) => (current && routeElements.includes(current) ? current : routeElements[0] ?? ""));
   }, [activeRoute?.id, routeElements]);
 
   useEffect(() => {
@@ -9653,7 +9749,11 @@ export default function TeamPage() {
 `
 }
 
-export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: AppSpec): Promise<WorkspaceFile[]> {
+export async function buildSpecDrivenWorkspaceFiles(
+  projectDir: string,
+  spec: AppSpec,
+  iterationContext?: SpecIterationContext
+): Promise<WorkspaceFile[]> {
   const envPath = path.join(projectDir, ".env")
   const currentEnv = await fs.readFile(envPath, "utf8").catch(() => null)
   const dataPath = path.join(projectDir, "data", "items.json")
@@ -9785,7 +9885,7 @@ export async function buildSpecDrivenWorkspaceFiles(projectDir: string, spec: Ap
     files.push(
       {
         path: "app/editor/page.tsx",
-        content: renderCodeEditorPage(spec),
+        content: renderCodeEditorPage(spec, iterationContext),
         reason: "Add dedicated editor page for code-platform projects",
       },
       {
