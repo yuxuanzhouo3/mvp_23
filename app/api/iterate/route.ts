@@ -28,16 +28,47 @@ import {
   type WorkspaceSessionContext,
   type WorkspaceSymbolRef,
 } from "@/lib/workspace-ai-context"
+import { getPlanDefinition, normalizePlanTier } from "@/lib/plan-catalog"
 
 export const runtime = "nodejs"
 
+type ModelEditOperation =
+  | "replace_file"
+  | "create_file"
+  | "delete_file"
+  | "replace_once"
+  | "replace_all"
+  | "insert_before"
+  | "insert_after"
+
 type ModelFileEdit = {
   path: string
-  content: string
+  op?: ModelEditOperation
+  content?: string
+  find?: string
+  replaceWith?: string
+  anchor?: string
   reason?: string
 }
 
 type IterateMode = "explain" | "fix" | "generate" | "refactor"
+type IterateWorkflowMode = "act" | "discuss" | "edit_context"
+
+type DiscussPlan = {
+  archetype:
+    | "code_platform"
+    | "crm"
+    | "api_platform"
+    | "community"
+    | "website_landing_download"
+    | "admin_ops_internal_tool"
+  summary: string
+  routeMap: string[]
+  modulePlan: string[]
+  taskPlan: string[]
+  guardrails: string[]
+  constraints: string[]
+}
 
 type EditorRequestContext = {
   currentFilePath?: string
@@ -73,14 +104,45 @@ type ModelOutput = {
   reasoning?: string
 }
 
+type AppliedEditSummary = {
+  path: string
+  operation: "created" | "updated" | "patched" | "deleted"
+  reason?: string
+  existedBefore: boolean
+  linesBefore: number
+  linesAfter: number
+  lineDelta: number
+  bytesBefore: number
+  bytesAfter: number
+}
+
 function normalizeIterateMode(input: unknown): IterateMode {
   const value = String(input ?? "").trim().toLowerCase()
   if (value === "explain" || value === "fix" || value === "refactor") return value
   return "generate"
 }
 
+function normalizeIterateWorkflowMode(input: unknown): IterateWorkflowMode {
+  const value = String(input ?? "").trim().toLowerCase()
+  if (value === "act" || value === "discuss" || value === "edit_context") return value
+  return "edit_context"
+}
+
 function sanitizeUiText(input: string) {
   return input.replace(/[<>`{}]/g, "").trim()
+}
+
+function normalizeModelEditOperation(input: unknown): ModelEditOperation | undefined {
+  const value = String(input ?? "").trim().toLowerCase()
+  if (!value) return undefined
+  if (value === "replace_file" || value === "replace" || value === "overwrite" || value === "rewrite") return "replace_file"
+  if (value === "create_file" || value === "create" || value === "new_file") return "create_file"
+  if (value === "delete_file" || value === "delete" || value === "remove") return "delete_file"
+  if (value === "replace_once" || value === "patch_once") return "replace_once"
+  if (value === "replace_all" || value === "patch_all") return "replace_all"
+  if (value === "insert_before") return "insert_before"
+  if (value === "insert_after") return "insert_after"
+  return undefined
 }
 
 function hasIntent(prompt: string, patterns: RegExp[]) {
@@ -205,7 +267,7 @@ async function collectContextFiles(rootDir: string) {
   return out
 }
 
-function normalizeContextPath(value?: string | null) {
+function normalizeContextPath(value?: unknown) {
   const normalized = normalizePath(String(value ?? ""))
   return isAllowedFile(normalized) ? normalized : ""
 }
@@ -302,17 +364,148 @@ function normalizeElementContext(value: unknown): WorkspaceElementContext | unde
 function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessionContext | undefined {
   if (!value || typeof value !== "object") return undefined
   const session = value as Record<string, unknown>
+  const selectedPlanId = normalizeTextValue(session.selectedPlanId)
+  const codeExportAllowedValue = session.codeExportAllowed
+  const databaseAccessMode = normalizeTextValue(session.databaseAccessMode)
   return {
     projectName: normalizeTextValue(session.projectName) || undefined,
     specKind: normalizeTextValue(session.specKind) || undefined,
     workspaceSurface: normalizeTextValue(session.workspaceSurface) || undefined,
     activeSection: normalizeTextValue(session.activeSection) || undefined,
+    routeId: normalizeTextValue(session.routeId) || undefined,
+    routeLabel: normalizeTextValue(session.routeLabel) || undefined,
+    filePath: normalizeContextPath(session.filePath),
+    symbolName: normalizeTextValue(session.symbolName) || undefined,
+    elementName: normalizeTextValue(session.elementName) || undefined,
     deploymentTarget: normalizeTextValue(session.deploymentTarget) || undefined,
     databaseTarget: normalizeTextValue(session.databaseTarget) || undefined,
     region: session.region === "cn" || session.region === "intl" ? (session.region as Region) : region,
+    selectedPlanId: selectedPlanId ? normalizePlanTier(selectedPlanId) : undefined,
+    selectedPlanName: normalizeTextValue(session.selectedPlanName) || undefined,
     selectedTemplate: normalizeTextValue(session.selectedTemplate) || undefined,
+    codeExportAllowed: typeof codeExportAllowedValue === "boolean" ? codeExportAllowedValue : undefined,
+    databaseAccessMode: databaseAccessMode || undefined,
     workspaceStatus: normalizeTextValue(session.workspaceStatus) || undefined,
+    lastIntent: normalizeTextValue(session.lastIntent) || undefined,
+    lastAction: normalizeTextValue(session.lastAction) || undefined,
+    lastChangedFile: normalizeContextPath(session.lastChangedFile),
+    lastChangedAt: normalizeTextValue(session.lastChangedAt) || undefined,
+    readiness: normalizeTextValue(session.readiness) || undefined,
   }
+}
+
+function inferRouteFromFilePath(filePath?: string | null) {
+  const normalized = normalizeContextPath(filePath)
+  if (!normalized) return ""
+  if (normalized === "app/page.tsx") return "/"
+  const match = normalized.match(/^app\/(.+)\/page\.(tsx|jsx)$/)
+  if (!match?.[1]) return ""
+  return `/${match[1]}`
+}
+
+function pickPrimaryChangedFile(changedFiles: string[] | undefined, context: EditorRequestContext) {
+  const candidates = uniqueContextPaths(changedFiles ?? [])
+  if (!candidates.length) return ""
+
+  const currentFile = normalizeContextPath(context.currentFilePath)
+  const pageFile = normalizeContextPath(context.currentPage?.filePath)
+  const sessionFile = normalizeContextPath(context.sharedSession?.filePath)
+  const sessionLastChangedFile = normalizeContextPath(context.sharedSession?.lastChangedFile)
+  const openTabs = new Set(uniqueContextPaths(context.openTabs ?? []))
+  const relatedPaths = new Set(uniqueContextPaths(context.relatedPaths ?? []))
+
+  const ranked = candidates
+    .map((filePath, index) => {
+      let score = 0
+      if (filePath === currentFile) score += 120
+      if (filePath === pageFile) score += 100
+      if (filePath === sessionLastChangedFile) score += 85
+      if (filePath === sessionFile) score += 70
+      if (openTabs.has(filePath)) score += 50
+      if (relatedPaths.has(filePath)) score += 35
+      if (/^app\/.+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 30
+      else if (/^(components|lib)\/.+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 24
+      else if (/^app\/api\/.+\.(ts|js)$/.test(filePath)) score += 18
+      else if (/^data\/.+\.json$/.test(filePath)) score += 8
+
+      if (filePath === ".env") score -= 40
+      if (filePath === "spec.json" || filePath === "region.config.json") score -= 24
+      if (/\.json$/.test(filePath)) score -= 8
+
+      return { filePath, score, index }
+    })
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+
+  return ranked[0]?.filePath || candidates[0] || ""
+}
+
+function buildResolvedSessionContext(options: {
+  session?: WorkspaceSessionContext
+  context: EditorRequestContext
+  mode: IterateMode
+  prompt: string
+  now: string
+  summary?: string
+  changedFiles?: string[]
+  buildStatus?: "ok" | "failed" | "skipped"
+}) {
+  const { session, context, mode, prompt, now, summary, changedFiles, buildStatus } = options
+  const firstChangedFile = pickPrimaryChangedFile(changedFiles, context)
+  const resolvedFilePath =
+    firstChangedFile ||
+    normalizeContextPath(context.currentFilePath) ||
+    normalizeContextPath(context.currentPage?.filePath) ||
+    normalizeContextPath(session?.filePath)
+  const resolvedRoute =
+    context.currentRoute ||
+    context.currentPage?.route ||
+    inferRouteFromFilePath(firstChangedFile) ||
+    inferRouteFromFilePath(resolvedFilePath)
+  const resolvedWorkspaceStatus =
+    buildStatus === "ok"
+      ? "build_ok"
+      : buildStatus === "failed"
+        ? "build_failed"
+        : buildStatus === "skipped"
+          ? "context_ready"
+          : context.sharedSession?.workspaceStatus || session?.workspaceStatus
+
+  return {
+    ...session,
+    projectName: context.sharedSession?.projectName || session?.projectName,
+    specKind: context.sharedSession?.specKind || session?.specKind,
+    workspaceSurface: context.sharedSession?.workspaceSurface || session?.workspaceSurface,
+    activeSection: context.currentPage?.id || context.sharedSession?.activeSection || session?.activeSection,
+    routeId: context.currentPage?.id || session?.routeId,
+    routeLabel: context.currentPage?.label || session?.routeLabel,
+    filePath: resolvedFilePath || session?.filePath,
+    symbolName: context.currentModule?.name || session?.symbolName,
+    elementName: context.currentElement?.name || session?.elementName,
+    deploymentTarget: context.sharedSession?.deploymentTarget || session?.deploymentTarget,
+    databaseTarget: context.sharedSession?.databaseTarget || session?.databaseTarget,
+    region: context.sharedSession?.region || session?.region,
+    selectedPlanId: context.sharedSession?.selectedPlanId || session?.selectedPlanId,
+    selectedPlanName: context.sharedSession?.selectedPlanName || session?.selectedPlanName,
+    selectedTemplate: context.sharedSession?.selectedTemplate || session?.selectedTemplate,
+    codeExportAllowed:
+      typeof context.sharedSession?.codeExportAllowed === "boolean"
+        ? context.sharedSession.codeExportAllowed
+        : session?.codeExportAllowed,
+    databaseAccessMode: context.sharedSession?.databaseAccessMode || session?.databaseAccessMode,
+    workspaceStatus: resolvedWorkspaceStatus || undefined,
+    lastIntent: sanitizeUiText(prompt).slice(0, 240) || session?.lastIntent,
+    lastAction: summary || session?.lastAction || `${mode}:${sanitizeUiText(prompt).slice(0, 120)}`,
+    lastChangedFile: firstChangedFile || session?.lastChangedFile || resolvedFilePath,
+    lastChangedAt: now,
+    readiness:
+      buildStatus === "ok"
+        ? "change_applied"
+        : buildStatus === "failed"
+          ? "build_failed"
+          : mode === "explain"
+            ? "context_ready"
+            : session?.readiness || "context_ready",
+  } satisfies WorkspaceSessionContext
 }
 
 function prioritizeContextFiles(files: string[], context: EditorRequestContext) {
@@ -324,6 +517,449 @@ function prioritizeContextFiles(files: string[], context: EditorRequestContext) 
   ])
   const remainder = files.filter((file) => !priority.includes(file))
   return [...priority, ...remainder]
+}
+
+type IterateTargetStrategy = {
+  snapshotFiles: string[]
+  targetFiles: string[]
+  promptNotes: string[]
+}
+
+type ScopedEditResult = {
+  edits: ModelFileEdit[]
+  droppedPaths: string[]
+}
+
+function collectSiblingFiles(files: string[], targetPath?: string | null, limit = 6) {
+  const normalized = normalizeContextPath(targetPath)
+  if (!normalized) return []
+  const dirname = path.posix.dirname(normalized)
+  return files
+    .filter((file) => file !== normalized && path.posix.dirname(file) === dirname)
+    .slice(0, limit)
+}
+
+function buildIterateTargetStrategy(files: string[], context: EditorRequestContext, mode: IterateMode): IterateTargetStrategy {
+  const currentFile = normalizeContextPath(context.currentFilePath)
+  const pageFile = normalizeContextPath(context.currentPage?.filePath)
+  const sessionFile = normalizeContextPath(context.sharedSession?.filePath)
+  const sessionLastChangedFile = normalizeContextPath(context.sharedSession?.lastChangedFile)
+  const openTabs = uniqueContextPaths(context.openTabs ?? []).slice(0, 6)
+  const related = uniqueContextPaths(context.relatedPaths ?? []).slice(0, 8)
+  const hintedSupport = collectHintMatchedFiles(files, context, mode === "explain" ? 4 : 6)
+  const currentSiblings = collectSiblingFiles(files, currentFile, 5)
+  const pageSiblings = collectSiblingFiles(files, pageFile, 5)
+  const currentDirFiles = uniqueContextPaths([...currentSiblings, ...pageSiblings])
+
+  const coreScope = uniqueContextPaths([
+    currentFile,
+    pageFile,
+    sessionLastChangedFile,
+    sessionFile,
+    ...hintedSupport,
+    ...openTabs,
+    ...related,
+  ])
+
+  const fixScope = uniqueContextPaths([
+    currentFile,
+    pageFile,
+    sessionLastChangedFile,
+    sessionFile,
+    ...hintedSupport,
+    ...currentDirFiles,
+    ...openTabs,
+    ...related,
+  ]).slice(0, 12)
+
+  const refactorScope = uniqueContextPaths([
+    currentFile,
+    ...currentSiblings,
+    pageFile,
+    sessionLastChangedFile,
+    sessionFile,
+    ...hintedSupport,
+    ...pageSiblings,
+    ...openTabs,
+    ...related,
+  ]).slice(0, 14)
+
+  const generateScope = uniqueContextPaths([
+    pageFile,
+    currentFile,
+    sessionLastChangedFile,
+    sessionFile,
+    ...hintedSupport,
+    ...pageSiblings,
+    ...currentSiblings,
+    ...openTabs,
+    ...related,
+  ]).slice(0, 14)
+
+  const explainScope = uniqueContextPaths([
+    currentFile,
+    pageFile,
+    sessionLastChangedFile,
+    sessionFile,
+    ...hintedSupport,
+    ...openTabs,
+    ...related,
+  ]).slice(0, 10)
+
+  const snapshotSeed =
+    mode === "fix"
+      ? fixScope
+      : mode === "refactor"
+        ? refactorScope
+        : mode === "generate"
+          ? generateScope
+          : explainScope
+
+  const targetFiles = snapshotSeed.length ? snapshotSeed : coreScope
+  const snapshotFiles = [...targetFiles, ...files.filter((file) => !targetFiles.includes(file))]
+
+  const promptNotes =
+    mode === "fix"
+      ? [
+          `Primary repair scope: ${targetFiles.join(", ") || "current file only"}`,
+          "Prefer editing the current file and directly related files before touching broader workspace surfaces.",
+          "Avoid creating new files unless the repair is impossible without a small supporting helper.",
+        ]
+      : mode === "refactor"
+        ? [
+            `Primary refactor scope: ${targetFiles.join(", ") || "current module"}`,
+            "Restructure around the current module boundary and neighboring files instead of rewriting the whole app.",
+            "If you split code, keep the changes anchored to the current module or current page directory.",
+          ]
+        : mode === "generate"
+          ? [
+              `Primary generation scope: ${targetFiles.join(", ") || "current page"}`,
+              "Extend capability from the current page, current file, and directly related route/module files first.",
+              "Create new files only when they directly support the current page, module, or route request.",
+            ]
+          : [
+              `Primary explanation scope: ${targetFiles.join(", ") || "current workspace"}`,
+              "Explain the current file first, then use neighboring files only as supporting context.",
+              "Do not propose broad rewrites before grounding the explanation in the current page/module context.",
+            ]
+
+  return {
+    snapshotFiles,
+    targetFiles,
+    promptNotes,
+  }
+}
+
+function splitContextHintTokens(...values: Array<string | undefined | null>) {
+  const out = new Set<string>()
+  const blocked = new Set(["page", "pages", "app", "workspace", "surface", "module", "route"])
+  for (const value of values) {
+    const normalized = String(value ?? "")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+    if (!normalized) continue
+    for (const part of normalized.split(/\s+/)) {
+      if (part.length >= 3 && !blocked.has(part)) out.add(part)
+    }
+  }
+  return Array.from(out)
+}
+
+function pathMatchesHintToken(filePath: string, tokens: string[]) {
+  if (!tokens.length) return false
+  const normalized = normalizeContextPath(filePath).toLowerCase()
+  return tokens.some((token) => normalized.includes(token))
+}
+
+function collectHintMatchedFiles(files: string[], context: EditorRequestContext, limit = 6) {
+  const currentFile = normalizeContextPath(context.currentFilePath)
+  const pageFile = normalizeContextPath(context.currentPage?.filePath)
+  const sessionFile = normalizeContextPath(context.sharedSession?.filePath)
+  const sessionLastChangedFile = normalizeContextPath(context.sharedSession?.lastChangedFile)
+  const openTabs = uniqueContextPaths(context.openTabs ?? [])
+  const relatedPaths = uniqueContextPaths(context.relatedPaths ?? [])
+  const blocked = new Set<string>(
+    [currentFile, pageFile, sessionFile, sessionLastChangedFile, ...openTabs, ...relatedPaths].filter(Boolean)
+  )
+
+  const hintTokens = splitContextHintTokens(
+    context.currentPage?.id,
+    context.currentPage?.label,
+    context.currentPage?.focus,
+    ...(context.currentPage?.symbols ?? []),
+    ...(context.currentPage?.elements ?? []),
+    context.currentModule?.name,
+    ...(context.currentModule?.relatedSymbols ?? []),
+    context.currentElement?.name,
+    context.sharedSession?.routeId,
+    context.sharedSession?.routeLabel,
+    context.sharedSession?.symbolName,
+    context.sharedSession?.elementName,
+    ...((context.currentFileSymbols ?? []).map((item) => item.name))
+  )
+
+  if (!hintTokens.length) return []
+
+  return files
+    .filter((filePath) => !blocked.has(filePath))
+    .map((filePath, index) => {
+      let score = 0
+      if (pathMatchesHintToken(filePath, hintTokens)) score += 52
+      if (pathSharesDirectory(filePath, [currentFile, pageFile, sessionFile, sessionLastChangedFile])) score += 22
+      if (/^(components|lib)\/.+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 24
+      else if (/^app\/(?!api\/).+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 18
+      else if (/^data\/.+\.(json|ts)$/.test(filePath)) score += 8
+      if (/\/page\.(tsx|jsx)$/.test(filePath) && filePath !== pageFile) score -= 16
+      return { filePath, score, index }
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+    .slice(0, limit)
+    .map((item) => item.filePath)
+}
+
+function pathSharesDirectory(filePath: string, anchors: Array<string | undefined | null>) {
+  const normalized = normalizeContextPath(filePath)
+  if (!normalized) return false
+  const targetDir = path.posix.dirname(normalized)
+  return anchors.some((anchor) => {
+    const normalizedAnchor = normalizeContextPath(anchor)
+    return normalizedAnchor ? path.posix.dirname(normalizedAnchor) === targetDir : false
+  })
+}
+
+function isScopedSupportFile(
+  filePath: string,
+  anchors: Array<string | undefined | null>,
+  tokens: string[],
+  existingFiles: Set<string>
+) {
+  const normalized = normalizeContextPath(filePath)
+  if (!normalized) return false
+  if (pathSharesDirectory(normalized, anchors)) return true
+  if (pathMatchesHintToken(normalized, tokens)) return true
+  if (!existingFiles.has(normalized) && /^app\/.+\/[^/]+\.(tsx|ts|jsx|js)$/.test(normalized)) return true
+  if (/^(components|lib)\/.+\.(tsx|ts|jsx|js)$/.test(normalized) && pathMatchesHintToken(normalized, tokens)) return true
+  return false
+}
+
+function constrainModelEdits(
+  edits: ModelFileEdit[],
+  existingFiles: string[],
+  targetStrategy: IterateTargetStrategy,
+  context: EditorRequestContext,
+  mode: IterateMode
+): ScopedEditResult {
+  if (mode === "explain") {
+    return { edits: [], droppedPaths: edits.map((edit) => normalizeContextPath(edit.path)).filter(Boolean) }
+  }
+
+  const currentFile = normalizeContextPath(context.currentFilePath)
+  const pageFile = normalizeContextPath(context.currentPage?.filePath)
+  const targetFiles = new Set(uniqueContextPaths(targetStrategy.targetFiles))
+  const relatedFiles = new Set(uniqueContextPaths(context.relatedPaths ?? []))
+  const openTabs = new Set(uniqueContextPaths(context.openTabs ?? []))
+  const existing = new Set(uniqueContextPaths(existingFiles))
+  const hintTokens = splitContextHintTokens(
+    context.currentPage?.id,
+    context.currentPage?.label,
+    context.currentPage?.focus,
+    ...(context.currentPage?.symbols ?? []),
+    ...(context.currentPage?.elements ?? []),
+    context.currentModule?.name,
+    ...(context.currentModule?.relatedSymbols ?? []),
+    context.currentElement?.name,
+    context.sharedSession?.routeId,
+    context.sharedSession?.routeLabel,
+    context.sharedSession?.symbolName,
+    context.sharedSession?.elementName,
+    ...((context.currentFileSymbols ?? []).map((item) => item.name))
+  )
+  const anchors = [currentFile, pageFile, ...targetStrategy.targetFiles]
+  const limit = mode === "fix" ? 4 : mode === "refactor" ? 6 : 5
+  const maxNewFiles = mode === "fix" ? 1 : mode === "refactor" ? 3 : 2
+
+  const ranked = edits
+    .map((edit, index) => {
+      const filePath = normalizeContextPath(edit.path)
+      let score = 0
+      const exists = existing.has(filePath)
+      const inSupportScope = isScopedSupportFile(filePath, anchors, hintTokens, existing)
+
+      if (filePath === currentFile) score += 180
+      if (filePath === pageFile) score += 140
+      if (targetFiles.has(filePath)) score += 110
+      if (openTabs.has(filePath)) score += 50
+      if (relatedFiles.has(filePath)) score += 40
+      if (pathSharesDirectory(filePath, anchors)) score += 36
+      if (pathMatchesHintToken(filePath, hintTokens)) score += 28
+      if (/^app\/.+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 22
+      else if (/^(components|lib)\/.+\.(tsx|ts|jsx|js)$/.test(filePath)) score += 16
+      else if (/^data\/.+\.json$/.test(filePath)) score += 6
+
+      if (!exists && !inSupportScope) score -= mode === "fix" ? 120 : 70
+      if (mode === "fix" && !inSupportScope && !targetFiles.has(filePath)) score -= 60
+      if (filePath === "app/page.tsx" && pageFile && pageFile !== "app/page.tsx") {
+        score -= mode === "generate" ? 20 : 45
+      }
+      if (filePath === "app/layout.tsx" && filePath !== currentFile && filePath !== pageFile) {
+        score -= mode === "refactor" ? 18 : 32
+      }
+      if (
+        /^app\/[^/]+\/page\.(tsx|jsx)$/.test(filePath) &&
+        filePath !== pageFile &&
+        !pathSharesDirectory(filePath, anchors)
+      ) {
+        score -= mode === "generate" ? 24 : 52
+      }
+      if (mode === "refactor" && /^app\/(?!api\/).+\/page\.(tsx|jsx)$/.test(filePath) && !pathSharesDirectory(filePath, anchors)) {
+        score -= 48
+      }
+      if (filePath === ".env") score -= 100
+      if (filePath === "spec.json" || filePath === "region.config.json") score -= 80
+
+      return {
+        edit: { ...edit, path: filePath || edit.path },
+        filePath,
+        exists,
+        inSupportScope,
+        score,
+        index,
+      }
+    })
+    .filter((item) => item.filePath)
+    .sort((a, b) => (b.score - a.score) || (a.index - b.index))
+
+  const kept: ModelFileEdit[] = []
+  const seen = new Set<string>()
+  let newFileCount = 0
+
+  for (const item of ranked) {
+    const isDirectContext =
+      targetFiles.has(item.filePath) ||
+      relatedFiles.has(item.filePath) ||
+      openTabs.has(item.filePath) ||
+      pathSharesDirectory(item.filePath, anchors)
+    const isHintMatched = pathMatchesHintToken(item.filePath, hintTokens)
+    if (seen.has(item.filePath)) continue
+    if (mode === "fix" && !isDirectContext) continue
+    if (mode === "generate" && !isDirectContext && !item.inSupportScope) continue
+    if (mode === "refactor" && !isDirectContext && !isHintMatched && !item.inSupportScope) continue
+    if (mode === "refactor" && /^app\/(?!api\/).+\.(tsx|ts|jsx|js)$/.test(item.filePath) && !isDirectContext && !isHintMatched) {
+      continue
+    }
+    if (!item.exists) {
+      if (!item.inSupportScope) continue
+      if (newFileCount >= maxNewFiles) continue
+    }
+    if (kept.length >= limit) break
+    if (item.score < 0 && kept.length > 0) continue
+    kept.push(item.edit)
+    seen.add(item.filePath)
+    if (!item.exists) newFileCount += 1
+  }
+
+  if (!kept.length && ranked[0]) {
+    kept.push(ranked[0].edit)
+    seen.add(ranked[0].filePath)
+  }
+
+  return {
+    edits: kept,
+    droppedPaths: ranked.map((item) => item.filePath).filter((filePath) => !seen.has(filePath)),
+  }
+}
+
+function inferSymbolsFromContent(content?: string | null): WorkspaceSymbolRef[] {
+  const source = String(content ?? "")
+  if (!source.trim()) return []
+  const lines = source.split(/\r?\n/)
+  const out: WorkspaceSymbolRef[] = []
+  const seen = new Set<string>()
+  const patterns: Array<{ kind: string; re: RegExp }> = [
+    { kind: "function", re: /^\s*export\s+default\s+function\s+([A-Za-z0-9_]+)/ },
+    { kind: "function", re: /^\s*export\s+function\s+([A-Za-z0-9_]+)/ },
+    { kind: "function", re: /^\s*function\s+([A-Za-z0-9_]+)/ },
+    { kind: "component", re: /^\s*export\s+const\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|<[^>]+>\s*\([^)]*\))\s*=>/ },
+    { kind: "component", re: /^\s*const\s+([A-Za-z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|<[^>]+>\s*\([^)]*\))\s*=>/ },
+    { kind: "class", re: /^\s*export\s+class\s+([A-Za-z0-9_]+)/ },
+    { kind: "class", re: /^\s*class\s+([A-Za-z0-9_]+)/ },
+  ]
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    for (const pattern of patterns) {
+      const match = line.match(pattern.re)
+      const name = match?.[1]
+      if (!name || seen.has(name)) continue
+      seen.add(name)
+      out.push({ kind: pattern.kind, name, line: index + 1 })
+      break
+    }
+    if (out.length >= 8) break
+  }
+
+  return out
+}
+
+function rebuildEditorFocus(
+  context: EditorRequestContext,
+  region: Region,
+  routes: ReturnType<typeof buildCodePlatformContextRoutes>
+) {
+  const currentPage = inferCodePlatformPageContext({
+    routes,
+    region,
+    currentFilePath: context.currentFilePath,
+    currentRoute: context.currentRoute,
+    activeSection: context.sharedSession?.activeSection || context.sharedSession?.routeId || context.currentPage?.id,
+    previewTab: context.sharedSession?.workspaceSurface,
+  })
+
+  const symbolCandidate = [
+    context.currentModule?.name,
+    context.sharedSession?.symbolName,
+  ].find((value) =>
+    value
+      ? (context.currentFileSymbols ?? []).some((item) => item.name === value)
+      : false
+  )
+
+  const currentModule = inferCodePlatformModuleContext({
+    currentFilePath: context.currentFilePath,
+    currentFileSymbols: context.currentFileSymbols,
+    currentPage,
+    activeSymbolName: symbolCandidate,
+  })
+
+  const elementCandidate =
+    (context.currentElement?.name && currentPage.elements.includes(context.currentElement.name)
+      ? context.currentElement.name
+      : undefined) ||
+    (context.sharedSession?.elementName && currentPage.elements.includes(context.sharedSession.elementName)
+      ? context.sharedSession.elementName
+      : undefined)
+
+  const currentElement = inferCodePlatformElementContext({
+    currentPage,
+    activeElementName: elementCandidate,
+    previewTab: context.sharedSession?.workspaceSurface,
+    editorRailLabel: context.currentElement?.source === "editor_rail" ? context.currentElement.name : undefined,
+    editorBottomTabLabel: context.currentElement?.source === "output_panel" ? context.currentElement.name : undefined,
+  })
+
+  return {
+    ...context,
+    currentRoute: context.currentRoute || currentPage.route,
+    currentPage,
+    currentModule,
+    currentElement: {
+      ...currentElement,
+      options: currentElement.options.length ? currentElement.options : currentPage.elements,
+    },
+  } satisfies EditorRequestContext
 }
 
 function buildExplainFallback(prompt: string, context: EditorRequestContext, region: Region): ModelOutput {
@@ -340,6 +976,18 @@ function buildExplainFallback(prompt: string, context: EditorRequestContext, reg
   const elementName = context.currentElement?.name || ""
   const sessionSurface = context.sharedSession?.workspaceSurface || ""
   const sessionSection = context.sharedSession?.activeSection || ""
+  const planLabel = context.sharedSession?.selectedPlanName || context.sharedSession?.selectedPlanId || ""
+  const exportPolicy =
+    typeof context.sharedSession?.codeExportAllowed === "boolean"
+      ? context.sharedSession.codeExportAllowed
+        ? region === "cn"
+          ? "当前套餐允许代码导出。"
+          : "The current plan allows code export."
+        : region === "cn"
+          ? "当前套餐仍锁定代码导出。"
+          : "The current plan still keeps code export locked."
+      : ""
+  const databaseMode = context.sharedSession?.databaseAccessMode || ""
   const summary = filePath
     ? region === "cn"
       ? `已解释当前文件 ${filePath} 的职责与修改方向。`
@@ -386,6 +1034,17 @@ function buildExplainFallback(prompt: string, context: EditorRequestContext, reg
         ? `工作区会话：${[sessionSurface, sessionSection].filter(Boolean).join(" / ")}`
         : `Workspace session: ${[sessionSurface, sessionSection].filter(Boolean).join(" / ")}`
       : "",
+    planLabel
+      ? region === "cn"
+        ? `当前套餐：${planLabel}`
+        : `Current plan: ${planLabel}`
+      : "",
+    exportPolicy,
+    databaseMode
+      ? region === "cn"
+        ? `数据库模式：${databaseMode}`
+        : `Database mode: ${databaseMode}`
+      : "",
     focusedLine
       ? region === "cn"
         ? `当前焦点行：第 ${focusedLine} 行`
@@ -414,6 +1073,20 @@ function buildExplainFallback(prompt: string, context: EditorRequestContext, reg
   }
 }
 
+function shouldPreferLocalFallback(prompt: string, mode: IterateMode, context: EditorRequestContext) {
+  if (mode === "explain") return false
+  if (!context.currentFilePath && !context.currentPage?.filePath) return false
+  return (
+    Boolean(extractTargetTitle(prompt)) ||
+    isChineseUiRequest(prompt) ||
+    isDescriptionFieldRequest(prompt) ||
+    isBlockedColumnRequest(prompt) ||
+    isAssigneeFilterRequest(prompt) ||
+    isAboutPageRequest(prompt) ||
+    /(?:status note|health status|api health|header note|note near .*header|missing status labeling|copy issue|copy tweak|文案|标题附近.*说明|健康状态|状态说明)/i.test(prompt)
+  )
+}
+
 async function resolveEditorContext(
   projectDir: string,
   body: any,
@@ -421,20 +1094,35 @@ async function resolveEditorContext(
 ): Promise<EditorRequestContext> {
   const projectSpec = await readProjectSpec(projectDir)
   const specRegion = projectSpec?.region === "cn" ? "cn" : region
-  const currentFileSymbols = normalizeContextSymbols(body?.currentFileSymbols)
+  const incomingSession = normalizeSessionContext(body?.sharedSession, specRegion)
+  let currentFileSymbols = normalizeContextSymbols(body?.currentFileSymbols)
+  const requestedFilePath =
+    normalizeContextPath(body?.currentFilePath) ||
+    normalizeContextPath(incomingSession?.lastChangedFile) ||
+    normalizeContextPath(incomingSession?.filePath)
+  if (!currentFileSymbols.length && requestedFilePath) {
+    const candidateContent =
+      typeof body?.currentFileContent === "string"
+        ? body.currentFileContent
+        : await fs.readFile(path.join(projectDir, requestedFilePath), "utf8").catch(() => "")
+    currentFileSymbols = inferSymbolsFromContent(candidateContent)
+  }
   const context: EditorRequestContext = {
-    currentFilePath: normalizeContextPath(body?.currentFilePath),
+    currentFilePath: requestedFilePath,
     currentFileContent: typeof body?.currentFileContent === "string" ? body.currentFileContent : undefined,
     currentFileSymbols,
     focusedLine: typeof body?.focusedLine === "number" ? body.focusedLine : undefined,
-    currentRoute: typeof body?.currentRoute === "string" ? body.currentRoute : undefined,
+    currentRoute:
+      typeof body?.currentRoute === "string"
+        ? body.currentRoute
+        : inferRouteFromFilePath(requestedFilePath) || undefined,
     relatedPaths: Array.isArray(body?.relatedPaths) ? body.relatedPaths.map((item: unknown) => String(item)) : undefined,
     openTabs: Array.isArray(body?.openTabs) ? body.openTabs.map((item: unknown) => String(item)) : undefined,
   }
 
   const routes = buildCodePlatformContextRoutes({
     region: specRegion,
-    features: Array.isArray(projectSpec?.features) ? projectSpec.features.filter((item): item is string => typeof item === "string") : [],
+    features: Array.isArray(projectSpec?.features) ? projectSpec.features.filter((item) => typeof item === "string") : [],
   })
 
   const currentPage =
@@ -444,8 +1132,8 @@ async function resolveEditorContext(
       region: specRegion,
       currentFilePath: context.currentFilePath,
       currentRoute: context.currentRoute,
-      activeSection: normalizeTextValue(body?.sharedSession?.activeSection),
-      previewTab: normalizeTextValue(body?.sharedSession?.workspaceSurface),
+      activeSection: incomingSession?.activeSection,
+      previewTab: incomingSession?.workspaceSurface,
     })
 
   const currentModule =
@@ -454,46 +1142,91 @@ async function resolveEditorContext(
       currentFilePath: context.currentFilePath,
       currentFileSymbols,
       currentPage,
-      activeSymbolName: normalizeTextValue(body?.currentModule?.name),
+      activeSymbolName: normalizeTextValue(body?.currentModule?.name) || incomingSession?.symbolName,
     })
 
   const currentElement =
     normalizeElementContext(body?.currentElement) ??
     inferCodePlatformElementContext({
       currentPage,
-      activeElementName: normalizeTextValue(body?.currentElement?.name),
-      previewTab: normalizeTextValue(body?.sharedSession?.workspaceSurface),
+      activeElementName: normalizeTextValue(body?.currentElement?.name) || incomingSession?.elementName,
+      previewTab: incomingSession?.workspaceSurface,
     })
 
   const sharedSession =
-    normalizeSessionContext(body?.sharedSession, specRegion) ?? {
+    incomingSession ?? {
       projectName: normalizeTextValue(projectSpec?.title) || undefined,
       specKind: normalizeTextValue(projectSpec?.kind) || undefined,
       workspaceSurface: normalizeTextValue(body?.sharedSession?.workspaceSurface) || undefined,
       activeSection: normalizeTextValue(body?.sharedSession?.activeSection) || currentPage.id,
+      routeId: currentPage.id,
+      routeLabel: currentPage.label,
+      filePath: context.currentFilePath || currentPage.filePath,
+      symbolName: currentModule.name,
+      elementName: currentElement.name,
       deploymentTarget: normalizeTextValue(projectSpec?.deploymentTarget) || undefined,
       databaseTarget: normalizeTextValue(projectSpec?.databaseTarget) || undefined,
       region: specRegion,
+      selectedPlanId: projectSpec?.planTier || undefined,
+      selectedPlanName: getPlanDefinition(projectSpec?.planTier || "free")[specRegion === "cn" ? "nameCn" : "nameEn"],
       selectedTemplate: normalizeTextValue(body?.sharedSession?.selectedTemplate) || undefined,
+      codeExportAllowed: projectSpec?.planTier ? projectSpec.planTier !== "free" : false,
+      databaseAccessMode: projectSpec?.planTier === "free" ? "online_only" : "managed_config",
       workspaceStatus: normalizeTextValue(body?.sharedSession?.workspaceStatus) || undefined,
+      lastIntent: normalizeTextValue(body?.prompt) || undefined,
+      lastChangedFile: context.currentFilePath || currentPage.filePath,
+      readiness: "context_ready",
     }
 
-  return {
-    ...context,
-    currentPage,
-    currentModule,
-    currentElement: {
-      ...currentElement,
-      options: currentElement.options.length ? currentElement.options : currentPage.elements,
+  context.sharedSession = buildResolvedSessionContext({
+    session: sharedSession,
+    context: {
+      ...context,
+      currentPage,
+      currentModule,
+      currentElement: {
+        ...currentElement,
+        options: currentElement.options.length ? currentElement.options : currentPage.elements,
+      },
+      sharedSession,
     },
-    sharedSession,
-    openTabs: uniqueContextPaths(context.openTabs ?? []),
-    relatedPaths: uniqueContextPaths([
-      context.currentFilePath,
-      currentPage.filePath,
-      ...(context.relatedPaths ?? []),
-      ...(context.openTabs ?? []),
-    ]),
+    mode: normalizeIterateMode(body?.mode),
+    prompt: typeof body?.prompt === "string" ? body.prompt : "",
+    now: new Date().toISOString(),
+  })
+
+  const resolvedContext = rebuildEditorFocus(
+    {
+      ...context,
+      currentPage,
+      currentModule,
+      currentElement: {
+        ...currentElement,
+        options: currentElement.options.length ? currentElement.options : currentPage.elements,
+      },
+      sharedSession: context.sharedSession,
+      openTabs: uniqueContextPaths(context.openTabs ?? []),
+      relatedPaths: uniqueContextPaths([
+        context.currentFilePath,
+        currentPage.filePath,
+        ...(context.relatedPaths ?? []),
+        ...(context.openTabs ?? []),
+      ]),
+    },
+    specRegion,
+    routes
+  )
+
+  return {
+    ...resolvedContext,
+    ...context,
+    currentRoute: resolvedContext.currentRoute,
+    currentPage: resolvedContext.currentPage,
+    currentModule: resolvedContext.currentModule,
+    currentElement: resolvedContext.currentElement,
+    sharedSession: resolvedContext.sharedSession,
+    openTabs: resolvedContext.openTabs,
+    relatedPaths: resolvedContext.relatedPaths,
   }
 }
 
@@ -530,13 +1263,68 @@ function sanitizeJsonText(input: string) {
     .replace(/,\s*([}\]])/g, "$1")
 }
 
+function normalizeModelFileEdit(rawEdit: any): ModelFileEdit | null {
+  const pathValue = String(rawEdit?.path ?? rawEdit?.filePath ?? "").trim()
+  if (!pathValue) return null
+
+  const content =
+    typeof rawEdit?.content === "string"
+      ? rawEdit.content
+      : typeof rawEdit?.nextContent === "string"
+        ? rawEdit.nextContent
+        : undefined
+
+  const find =
+    typeof rawEdit?.find === "string"
+      ? rawEdit.find
+      : typeof rawEdit?.search === "string"
+        ? rawEdit.search
+        : typeof rawEdit?.findText === "string"
+          ? rawEdit.findText
+          : undefined
+
+  const replaceWith =
+    typeof rawEdit?.replaceWith === "string"
+      ? rawEdit.replaceWith
+      : typeof rawEdit?.replace === "string"
+        ? rawEdit.replace
+        : typeof rawEdit?.replacement === "string"
+          ? rawEdit.replacement
+          : undefined
+
+  const anchor =
+    typeof rawEdit?.anchor === "string"
+      ? rawEdit.anchor
+      : typeof rawEdit?.anchorText === "string"
+        ? rawEdit.anchorText
+        : undefined
+
+  const op =
+    normalizeModelEditOperation(rawEdit?.op ?? rawEdit?.operation ?? rawEdit?.type) ??
+    (find ? "replace_once" : content !== undefined ? "replace_file" : undefined)
+
+  return {
+    path: pathValue,
+    op,
+    content,
+    find,
+    replaceWith,
+    anchor,
+    reason: typeof rawEdit?.reason === "string" ? rawEdit.reason : undefined,
+  }
+}
+
 function parseModelOutput(rawContent: string) {
   const candidate = extractJsonObject(rawContent)
   try {
-    return JSON.parse(candidate) as ModelOutput
+    const parsed = JSON.parse(candidate) as ModelOutput
+    parsed.files = Array.isArray(parsed.files) ? parsed.files.map(normalizeModelFileEdit).filter(Boolean) as ModelFileEdit[] : []
+    return parsed
   } catch {
     const sanitized = sanitizeJsonText(candidate)
-    return JSON.parse(sanitized) as ModelOutput
+    const parsed = JSON.parse(sanitized) as ModelOutput
+    parsed.files = Array.isArray(parsed.files) ? parsed.files.map(normalizeModelFileEdit).filter(Boolean) as ModelFileEdit[] : []
+    return parsed
   }
 }
 
@@ -544,6 +1332,101 @@ function trimText(input: string, maxLen = 1800) {
   const text = String(input ?? "")
   if (text.length <= maxLen) return text
   return `...${text.slice(text.length - maxLen)}`
+}
+
+function getTextLineCount(content: string | null) {
+  if (content === null) return 0
+  if (!content.length) return 0
+  return content.split(/\r?\n/).length
+}
+
+function buildAppliedEditSummary(args: {
+  path: string
+  operation: AppliedEditSummary["operation"]
+  reason?: string
+  existedBefore: boolean
+  beforeContent: string | null
+  afterContent: string | null
+}): AppliedEditSummary {
+  const { path, operation, reason, existedBefore, beforeContent, afterContent } = args
+  const beforeText = beforeContent ?? ""
+  const afterText = afterContent ?? ""
+  return {
+    path,
+    operation,
+    reason,
+    existedBefore,
+    linesBefore: getTextLineCount(beforeContent),
+    linesAfter: getTextLineCount(afterContent),
+    lineDelta: getTextLineCount(afterContent) - getTextLineCount(beforeContent),
+    bytesBefore: Buffer.byteLength(beforeText, "utf8"),
+    bytesAfter: Buffer.byteLength(afterText, "utf8"),
+  }
+}
+
+function applyInstructionalEdit(args: {
+  edit: ModelFileEdit
+  relativePath: string
+  previousContent: string | null
+  exists: boolean
+}): { nextContent: string | null; operation: AppliedEditSummary["operation"] } {
+  const { edit, relativePath, previousContent, exists } = args
+  const op = edit.op ?? (edit.content !== undefined ? "replace_file" : undefined)
+  const source = previousContent ?? ""
+
+  if (!op) {
+    throw new Error(`Edit for ${relativePath} is missing an operation and full file content.`)
+  }
+
+  if (op === "delete_file") {
+    return { nextContent: null, operation: "deleted" }
+  }
+
+  if (op === "create_file" || op === "replace_file") {
+    if (typeof edit.content !== "string") {
+      throw new Error(`Edit for ${relativePath} requires content for ${op}.`)
+    }
+    return {
+      nextContent: edit.content,
+      operation: exists ? "updated" : "created",
+    }
+  }
+
+  if (!exists && previousContent === null) {
+    throw new Error(`Patch-style edit for ${relativePath} requires an existing file.`)
+  }
+
+  if (op === "replace_once" || op === "replace_all") {
+    if (typeof edit.find !== "string") {
+      throw new Error(`Edit for ${relativePath} requires find text for ${op}.`)
+    }
+    if (!source.includes(edit.find)) {
+      throw new Error(`Could not locate target text in ${relativePath} for ${op}.`)
+    }
+    const replacement = typeof edit.replaceWith === "string" ? edit.replaceWith : ""
+    const nextContent =
+      op === "replace_all" ? source.split(edit.find).join(replacement) : source.replace(edit.find, replacement)
+    return { nextContent, operation: "patched" }
+  }
+
+  if (op === "insert_before" || op === "insert_after") {
+    if (typeof edit.anchor !== "string") {
+      throw new Error(`Edit for ${relativePath} requires an anchor for ${op}.`)
+    }
+    if (typeof edit.content !== "string") {
+      throw new Error(`Edit for ${relativePath} requires content for ${op}.`)
+    }
+    if (!source.includes(edit.anchor)) {
+      throw new Error(`Could not locate anchor text in ${relativePath} for ${op}.`)
+    }
+    const insertion = op === "insert_before" ? `${edit.content}${edit.anchor}` : `${edit.anchor}${edit.content}`
+    return {
+      nextContent: source.replace(edit.anchor, insertion),
+      operation: "patched",
+    }
+  }
+
+  throw new Error(`Unsupported edit operation for ${relativePath}: ${op}`)
 }
 
 async function readStreamToModelOutput(res: Response): Promise<{ content: string; reasoning: string }> {
@@ -595,7 +1478,8 @@ async function callEditorModel(
   region: Region,
   context: EditorRequestContext,
   body: any,
-  mode: IterateMode
+  mode: IterateMode,
+  workflowMode: IterateWorkflowMode
 ): Promise<ModelOutput> {
   const config = resolveAiConfig({
     apiKey: String(body?.apiKey ?? "").trim() || undefined,
@@ -605,9 +1489,13 @@ async function callEditorModel(
     mode: "fixer",
   })
 
-  const files = prioritizeContextFiles(await collectContextFiles(projectDir), context)
+  const allFiles = prioritizeContextFiles(await collectContextFiles(projectDir), context)
+  const targetStrategy = buildIterateTargetStrategy(allFiles, context, mode)
+  const files = targetStrategy.snapshotFiles
+  const snapshotLimit = mode === "explain" ? 8 : mode === "fix" ? 8 : mode === "refactor" ? 10 : 12
+  const snapshotChars = mode === "explain" ? 5000 : mode === "fix" ? 6000 : 7000
   const snapshots: string[] = []
-  for (const relativePath of files.slice(0, 20)) {
+  for (const relativePath of files.slice(0, snapshotLimit)) {
     const fullPath = path.join(projectDir, relativePath)
     const content =
       context.currentFilePath === relativePath && typeof context.currentFileContent === "string"
@@ -616,7 +1504,7 @@ async function callEditorModel(
     snapshots.push(
       `FILE: ${relativePath}\n` +
         "```text\n" +
-        `${content.slice(0, 12000)}\n` +
+        `${content.slice(0, snapshotChars)}\n` +
         "```\n"
     )
   }
@@ -624,14 +1512,29 @@ async function callEditorModel(
   const system = [
     "You are a code editor for an existing Next.js workspace.",
     "Return strict JSON only with this schema:",
-    '{"summary":"...","analysis":"","files":[{"path":"relative/path","content":"full file content","reason":"..."}]}',
+    '{"summary":"...","analysis":"","files":[{"path":"relative/path","op":"replace_file|create_file|delete_file|replace_once|replace_all|insert_before|insert_after","content":"full file content or inserted text","find":"target text for replace_*","replaceWith":"replacement text for replace_*","anchor":"anchor text for insert_*","reason":"..."}]}',
     "Rules:",
     "- Use relative paths only.",
     "- Do not modify node_modules, .next, or .git.",
     "- Keep changes minimal and executable.",
+    "- Prefer patch-style edits (replace_once, replace_all, insert_before, insert_after) for small local changes in the current file or nearby module.",
+    "- Use replace_file/create_file only when a patch-style edit would be too brittle or when a new file is required.",
     "- Always anchor your reasoning in the provided current file/page/module context when it exists.",
     "- If the requested mode is explain, prefer returning analysis with an empty files array unless the user explicitly asks for code edits.",
+    "- If workflow mode is act, directly implement the requested product change instead of turning the response into a discussion-only answer.",
+    "- If workflow mode is edit_context, keep the edit set tightly scoped to the current file, current page, current module, and neighboring support files.",
+    "- Respect the primary target scope. If you must edit a file outside it, keep that expansion minimal and justified by the request.",
+    "- Respect current plan/resource constraints. If export is locked or database usage is online-only, keep that gating explicit instead of pretending those capabilities are already live.",
   ].join("\n")
+
+  const workflowDirective =
+    workflowMode === "act"
+      ? region === "cn"
+        ? "当前 workflow mode：act。请直接落代码并优先补成能运行的工作流，不要把回答停留在讨论层。"
+        : "Workflow mode: act. Apply the change directly and prefer a runnable workflow over a discussion-only response."
+      : region === "cn"
+        ? "当前 workflow mode：edit_context。请把改动收敛在当前文件、当前页面、当前模块和直接支持文件附近。"
+        : "Workflow mode: edit_context. Keep the edit scope anchored to the current file, page, module, and directly supporting files."
 
   const modeDirective =
     mode === "explain"
@@ -691,10 +1594,23 @@ async function callEditorModel(
         context.sharedSession.specKind ? `Workspace kind: ${context.sharedSession.specKind}` : "",
         context.sharedSession.workspaceSurface ? `Workspace surface: ${context.sharedSession.workspaceSurface}` : "",
         context.sharedSession.activeSection ? `Active section: ${context.sharedSession.activeSection}` : "",
+        context.sharedSession.routeId ? `Route id: ${context.sharedSession.routeId}` : "",
+        context.sharedSession.routeLabel ? `Route label: ${context.sharedSession.routeLabel}` : "",
+        context.sharedSession.filePath ? `Session file: ${context.sharedSession.filePath}` : "",
+        context.sharedSession.symbolName ? `Session symbol: ${context.sharedSession.symbolName}` : "",
+        context.sharedSession.elementName ? `Session element: ${context.sharedSession.elementName}` : "",
         context.sharedSession.selectedTemplate ? `Selected template: ${context.sharedSession.selectedTemplate}` : "",
+        context.sharedSession.selectedPlanId ? `Selected plan id: ${context.sharedSession.selectedPlanId}` : "",
+        context.sharedSession.selectedPlanName ? `Selected plan name: ${context.sharedSession.selectedPlanName}` : "",
+        typeof context.sharedSession.codeExportAllowed === "boolean" ? `Code export allowed: ${context.sharedSession.codeExportAllowed ? "yes" : "no"}` : "",
+        context.sharedSession.databaseAccessMode ? `Database access mode: ${context.sharedSession.databaseAccessMode}` : "",
         context.sharedSession.deploymentTarget ? `Deployment target: ${context.sharedSession.deploymentTarget}` : "",
         context.sharedSession.databaseTarget ? `Database target: ${context.sharedSession.databaseTarget}` : "",
         context.sharedSession.workspaceStatus ? `Workspace status: ${context.sharedSession.workspaceStatus}` : "",
+        context.sharedSession.lastIntent ? `Last intent: ${context.sharedSession.lastIntent}` : "",
+        context.sharedSession.lastAction ? `Last action: ${context.sharedSession.lastAction}` : "",
+        context.sharedSession.lastChangedFile ? `Last changed file: ${context.sharedSession.lastChangedFile}` : "",
+        context.sharedSession.readiness ? `Session readiness: ${context.sharedSession.readiness}` : "",
       ]
         .filter(Boolean)
         .join("\n")
@@ -718,9 +1634,12 @@ async function callEditorModel(
 
   const user = [
     `Project region: ${region}`,
+    `Workflow mode: ${workflowMode}`,
     `Requested mode: ${mode}`,
     `User request: ${prompt}`,
+    workflowDirective,
     modeDirective,
+    ...targetStrategy.promptNotes,
     currentFileMeta,
     currentPageMeta,
     currentModuleMeta,
@@ -739,7 +1658,7 @@ async function callEditorModel(
       { role: "user", content: user },
     ],
     temperature: 0.2,
-    timeoutMs: 120_000,
+    timeoutMs: 45_000,
     mode: "fixer",
   })
 
@@ -772,6 +1691,53 @@ async function runBuild(projectDir: string) {
   const hasModules = await pathExists(path.join(projectDir, "node_modules"))
   if (!hasModules) {
     return { status: "skipped" as const, logs: ["Skipped: node_modules missing; run npm install first"] }
+  }
+
+  const hostTscBin = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")
+  if (await pathExists(hostTscBin)) {
+    const typeCheck = await new Promise<{ status: "ok" | "failed"; logs: string[] }>((resolve) => {
+      const logs: string[] = []
+      const child = spawn(process.execPath, [hostTscBin, "--noEmit", "--pretty", "false"], {
+        cwd: projectDir,
+        env: {
+          ...process.env,
+          NODE_ENV: "production",
+          NEXT_TELEMETRY_DISABLED: "1",
+        },
+        windowsHide: true,
+        shell: false,
+      })
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill()
+        } catch {
+          // noop
+        }
+        resolve({
+          status: "failed",
+          logs: [...logs, "TypeScript validation timed out after 60000ms"],
+        })
+      }, 60_000)
+
+      child.stdout?.on("data", (data) => logs.push(String(data)))
+      child.stderr?.on("data", (data) => logs.push(String(data)))
+      child.on("error", (err) => {
+        clearTimeout(timer)
+        resolve({ status: "failed", logs: [...logs, err.message] })
+      })
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        resolve({
+          status: code === 0 ? "ok" : "failed",
+          logs: code === 0 ? ["TypeScript-first iterate validation passed."] : logs,
+        })
+      })
+    })
+
+    if (typeCheck.status === "ok") {
+      return typeCheck
+    }
   }
 
   return new Promise<{ status: "ok" | "failed"; logs: string[] }>((resolve) => {
@@ -816,12 +1782,150 @@ async function repairLegacyPrismaImport(projectDir: string) {
 
 function buildIterateContextSummary(context: EditorRequestContext, region: Region) {
   const parts = [
-    context.currentPage?.label,
-    context.currentModule?.name,
-    context.currentElement?.name,
+    context.currentPage?.label || context.sharedSession?.routeLabel,
+    context.currentModule?.name || context.sharedSession?.symbolName,
+    context.currentElement?.name || context.sharedSession?.elementName,
   ].filter(Boolean)
+  if (!parts.length && (context.currentFilePath || context.sharedSession?.filePath)) {
+    return context.currentFilePath || context.sharedSession?.filePath || (region === "cn" ? "当前工作区" : "the current workspace")
+  }
   if (!parts.length) return region === "cn" ? "当前工作区" : "the current workspace"
   return parts.join(" / ")
+}
+
+function resolveDiscussionArchetype(prompt: string, context: EditorRequestContext, spec: Awaited<ReturnType<typeof readProjectSpec>>) {
+  const text = [
+    prompt,
+    spec?.prompt,
+    spec?.templateId,
+    spec?.kind,
+    context.currentPage?.label,
+    context.sharedSession?.activeSection,
+    context.sharedSession?.routeLabel,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+
+  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
+    return "code_platform" as const
+  }
+  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+    return "crm" as const
+  }
+  if (/api|sdk|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
+    return "api_platform" as const
+  }
+  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
+    return "community" as const
+  }
+  if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档|品牌|增长/.test(text)) {
+    return "website_landing_download" as const
+  }
+  return "admin_ops_internal_tool" as const
+}
+
+function getDiscussionRouteMap(
+  archetype: DiscussPlan["archetype"],
+  spec: Awaited<ReturnType<typeof readProjectSpec>>
+) {
+  if (spec?.kind === "code_platform" || archetype === "code_platform") {
+    return ["/dashboard", "/editor", "/runs", "/templates", "/pricing", "/settings"]
+  }
+  if (archetype === "crm") return ["/dashboard", "/leads", "/pipeline", "/customers", "/automations"]
+  if (archetype === "api_platform") return ["/dashboard", "/endpoints", "/logs", "/auth", "/environments"]
+  if (archetype === "community") return ["/", "/events", "/feedback", "/pricing"]
+  if (archetype === "website_landing_download") return ["/", "/downloads", "/docs", "/pricing"]
+  return ["/dashboard", "/users", "/data", "/analytics", "/settings"]
+}
+
+function buildWorkspaceDiscussionPlan(args: {
+  prompt: string
+  region: Region
+  context: EditorRequestContext
+  projectSpec: Awaited<ReturnType<typeof readProjectSpec>>
+}): DiscussPlan {
+  const { prompt, region, context, projectSpec } = args
+  const isCn = region === "cn"
+  const basePrompt = projectSpec?.prompt || prompt
+  const nextSpec = applyPromptToSpec(createAppSpec(basePrompt, region, projectSpec ?? undefined), prompt, context)
+  const archetype = resolveDiscussionArchetype(prompt, context, projectSpec)
+  const routeMap = getDiscussionRouteMap(archetype, nextSpec)
+  const modulePlan = Array.from(new Set(nextSpec.modules)).slice(0, 8)
+  const constraints = [
+    context.sharedSession?.selectedPlanName
+      ? `${isCn ? "当前套餐" : "Current plan"}: ${context.sharedSession.selectedPlanName}`
+      : "",
+    typeof context.sharedSession?.codeExportAllowed === "boolean"
+      ? context.sharedSession.codeExportAllowed
+        ? isCn
+          ? "当前套餐允许代码导出。"
+          : "The current plan allows code export."
+        : isCn
+          ? "当前套餐仍锁定代码导出。"
+          : "The current plan still keeps code export locked."
+      : "",
+    context.sharedSession?.databaseAccessMode
+      ? `${isCn ? "数据库访问" : "Database access"}: ${context.sharedSession.databaseAccessMode}`
+      : "",
+    context.sharedSession?.deploymentTarget
+      ? `${isCn ? "部署目标" : "Deployment target"}: ${context.sharedSession.deploymentTarget}`
+      : "",
+  ].filter(Boolean)
+
+  const guardrails = [
+    isCn
+      ? `保持改动锚定在 ${buildIterateContextSummary(context, region)}，不要回到全局大改。`
+      : `Keep the change anchored to ${buildIterateContextSummary(context, region)} instead of drifting into global rewrites.`,
+    isCn
+      ? "先补主工作流和页面关系，再补视觉细节。"
+      : "Stabilize the main workflow and route relationships before polishing visuals.",
+    isCn
+      ? "继续沿用当前项目的套餐、数据和部署约束。"
+      : "Preserve the current project's plan, data, and deployment constraints.",
+  ]
+
+  const taskPlan = [
+    isCn
+      ? "先确认 archetype、主页面关系和导航入口。"
+      : "Confirm the archetype, route map, and navigation entrypoints first.",
+    isCn
+      ? "围绕当前文件/页面补主工作流和关键交互。"
+      : "Expand the core workflow and key interactions around the current file/page.",
+    isCn
+      ? "把数据、权限、套餐限制接进页面行为和文案。"
+      : "Thread data, permissions, and plan limits into page behavior and copy.",
+    isCn
+      ? "最后做 build/preview 验证并整理缺口。"
+      : "Finish with build/preview validation and a concise gap list.",
+  ]
+
+  return {
+    archetype,
+    summary: isCn
+      ? `已为当前需求整理 ${routeMap.length} 个主路由、${modulePlan.length} 个模块的讨论规划。`
+      : `Prepared a discussion plan with ${routeMap.length} core routes and ${modulePlan.length} modules.`,
+    routeMap,
+    modulePlan,
+    taskPlan,
+    guardrails,
+    constraints,
+  }
+}
+
+function renderDiscussionPlan(plan: DiscussPlan, region: Region) {
+  const isCn = region === "cn"
+  return [
+    `${isCn ? "Archetype" : "Archetype"}: ${plan.archetype}`,
+    `${isCn ? "主路由" : "Route map"}: ${plan.routeMap.join(", ")}`,
+    `${isCn ? "模块规划" : "Module plan"}: ${plan.modulePlan.join(", ")}`,
+    `${isCn ? "执行顺序" : "Execution sequence"}:`,
+    ...plan.taskPlan.map((item, index) => `${index + 1}. ${item}`),
+    `${isCn ? "约束" : "Constraints"}:`,
+    ...plan.constraints.map((item) => `- ${item}`),
+    `${isCn ? "护栏" : "Guardrails"}:`,
+    ...plan.guardrails.map((item) => `- ${item}`),
+  ].join("\n")
 }
 
 async function tryLocalFallbackEdits(
@@ -831,7 +1935,10 @@ async function tryLocalFallbackEdits(
   mode: IterateMode,
   region: Region
 ): Promise<ModelOutput | null> {
+  const allFiles = await collectContextFiles(projectDir)
+  const targetStrategy = buildIterateTargetStrategy(allFiles, context, mode)
   const candidatePaths = uniqueContextPaths([
+    ...targetStrategy.targetFiles,
     context.currentFilePath,
     context.currentPage?.filePath,
     "app/page.tsx",
@@ -857,6 +1964,13 @@ async function tryLocalFallbackEdits(
     return null
   }
 
+  const focusedPagePath =
+    context.currentFilePath ||
+    context.currentPage?.filePath ||
+    candidatePaths[0] ||
+    "app/page.tsx"
+  const focusedDraft = await ensureDraft(focusedPagePath)
+
   const title = extractTargetTitle(prompt)
   if (title) {
     for (const relativePath of candidatePaths) {
@@ -879,6 +1993,33 @@ async function tryLocalFallbackEdits(
   const workspaceDraft = await ensureDraft(workspacePagePath)
   if (!workspaceDraft) {
     return null
+  }
+
+  const wantsHeaderNote =
+    /(?:status note|health status|api health|header note|note near .*header|状态说明|健康状态|标题附近.*说明)/i.test(prompt)
+  if (focusedDraft && wantsHeaderNote && /<h1[^>]*>[\s\S]*?<\/h1>/.test(focusedDraft.next)) {
+    const before = focusedDraft.next
+    const noteText =
+      region === "cn"
+        ? "API 健康状态已同步，当前页聚焦端点、鉴权与环境准备度。"
+        : "API health is in sync here, with endpoint readiness, auth coverage, and environment status in one view."
+    if (!focusedDraft.next.includes(noteText)) {
+      focusedDraft.next = focusedDraft.next.replace(
+        /(<h1[^>]*>[\s\S]*?<\/h1>)/,
+        `$1
+              <p style={{ margin: "10px 0 0", maxWidth: 720, color: "#64748b", lineHeight: 1.7, fontSize: 14 }}>
+                ${noteText}
+              </p>`
+      )
+      changes.push("added focused header status note")
+    }
+    if (focusedDraft.next !== before && /missing status labeling|文案|copy|label/i.test(prompt)) {
+      const badgeNeedle = '{item.status}'
+      if (focusedDraft.next.includes(badgeNeedle) && !focusedDraft.next.includes("Status")) {
+        focusedDraft.next = focusedDraft.next.replace(badgeNeedle, `{isCn ? "状态 " : "Status "}{item.status}`)
+        changes.push("clarified status labeling")
+      }
+    }
   }
 
   if (isChineseUiRequest(prompt)) {
@@ -1087,6 +2228,96 @@ async function tryLocalFallbackEdits(
   }
 }
 
+async function tryFocusedHeaderNoteEdit(
+  projectDir: string,
+  prompt: string,
+  context: EditorRequestContext,
+  region: Region
+): Promise<ModelOutput | null> {
+  if (!/(?:status note|health status|api health|header note|note near .*header|标题附近.*说明|健康状态|状态说明)/i.test(prompt)) {
+    return null
+  }
+
+  const targetPath = normalizeContextPath(context.currentFilePath || context.currentPage?.filePath)
+  if (!targetPath) return null
+  const absolutePath = path.join(projectDir, targetPath)
+  if (!(await pathExists(absolutePath))) return null
+
+  const raw = await fs.readFile(absolutePath, "utf8")
+  if (!/<h1[^>]*>[\s\S]*?<\/h1>/.test(raw)) return null
+
+  const noteText =
+    region === "cn"
+      ? "API 健康状态已同步，当前页聚焦端点、鉴权与环境准备度。"
+      : "API health is in sync here, with endpoint readiness, auth coverage, and environment status in one view."
+
+  if (raw.includes(noteText)) return null
+
+  const next = raw.replace(
+    /(<h1[^>]*>[\s\S]*?<\/h1>)/,
+    `$1
+              <p style={{ margin: "10px 0 0", maxWidth: 720, color: "#64748b", lineHeight: 1.7, fontSize: 14 }}>
+                ${noteText}
+              </p>`
+  )
+
+  if (next === raw) return null
+
+  return {
+    summary:
+      region === "cn"
+        ? `已在 ${targetPath} 的标题下插入 API 状态说明。`
+        : `Added an API status note directly under the header in ${targetPath}.`,
+    reasoning: "Preferred local file-scoped fallback matched a header-note request.",
+    files: [
+      {
+        path: targetPath,
+        content: next,
+        reason: "Insert a concise status note under the existing header without changing layout",
+      },
+    ],
+  }
+}
+
+async function tryFocusedStatusLabelEdit(
+  projectDir: string,
+  prompt: string,
+  context: EditorRequestContext,
+  region: Region
+): Promise<ModelOutput | null> {
+  if (!/(?:missing status labeling|status labeling|copy issue|copy tweak|文案|状态标签|状态标识)/i.test(prompt)) {
+    return null
+  }
+
+  const targetPath = normalizeContextPath(context.currentFilePath || context.currentPage?.filePath)
+  if (!targetPath) return null
+  const absolutePath = path.join(projectDir, targetPath)
+  if (!(await pathExists(absolutePath))) return null
+
+  const raw = await fs.readFile(absolutePath, "utf8")
+  if (!raw.includes("{item.status}") || raw.includes('{isCn ? "状态 " : "Status "}{item.status}')) {
+    return null
+  }
+
+  const next = raw.replace("{item.status}", '{isCn ? "状态 " : "Status "}{item.status}')
+  if (next === raw) return null
+
+  return {
+    summary:
+      region === "cn"
+        ? `已在 ${targetPath} 中补齐状态标签文案。`
+        : `Added clearer status labeling in ${targetPath}.`,
+    reasoning: "Preferred local file-scoped fallback matched a status-labeling repair request.",
+    files: [
+      {
+        path: targetPath,
+        content: next,
+        reason: "Clarify status labeling inline without changing the overall layout",
+      },
+    ],
+  }
+}
+
 async function tryGenericFallbackEdits(
   projectDir: string,
   prompt: string,
@@ -1125,7 +2356,9 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const projectId = safeProjectId(String(body?.projectId ?? body?.jobId ?? ""))
   const prompt = String(body?.prompt ?? "").trim()
-  const mode = normalizeIterateMode(body?.mode)
+  const requestedMode = normalizeIterateMode(body?.mode)
+  const workflowMode = normalizeIterateWorkflowMode(body?.workflowMode ?? body?.assistantMode)
+  const mode = workflowMode === "discuss" ? "explain" : workflowMode === "act" && requestedMode === "explain" ? "generate" : requestedMode
   const region = (body?.region === "cn" ? "cn" : "intl") as Region
 
   if (!projectId || !prompt) {
@@ -1138,45 +2371,151 @@ export async function POST(req: Request) {
   }
   const project = await getProject(projectId)
   const effectiveRegion = project?.region ?? region
+  const projectSpec = await readProjectSpec(projectDir)
+  const workspaceRoutes = buildCodePlatformContextRoutes({
+    region: effectiveRegion,
+    features: Array.isArray(projectSpec?.features) ? projectSpec.features.filter((item) => typeof item === "string") : [],
+  })
 
   const backups = new Map<string, string | null>()
   try {
     await repairLegacyPrismaImport(projectDir)
-    const baselineBuild = await runBuild(projectDir)
+    const baselineBuild =
+      mode === "explain"
+        ? { status: "skipped" as const, logs: ["Skipped: explain mode does not need baseline build validation"] }
+        : await runBuild(projectDir)
     const requestContext = await resolveEditorContext(projectDir, body, effectiveRegion)
-    const responseContext = serializeEditorContext(requestContext)
+    let responseContext = serializeEditorContext(requestContext)
+    const discussionPlan =
+      workflowMode === "discuss"
+        ? buildWorkspaceDiscussionPlan({
+            prompt,
+            region: effectiveRegion,
+            context: requestContext,
+            projectSpec,
+          })
+        : null
     let modelResult: ModelOutput
 
-    try {
-      modelResult = await callEditorModel(projectDir, prompt, effectiveRegion, requestContext, body, mode)
-    } catch (modelErr: any) {
-      if (mode === "explain") {
-        const explained = buildExplainFallback(prompt, requestContext, effectiveRegion)
+    if (discussionPlan) {
+      modelResult = {
+        summary: discussionPlan.summary,
+        analysis: renderDiscussionPlan(discussionPlan, effectiveRegion),
+        reasoning: renderDiscussionPlan(discussionPlan, effectiveRegion),
+        files: [],
+      }
+    } else {
+      const localHeaderFirst =
+        workflowMode !== "discuss" && mode !== "explain"
+          ? await tryFocusedHeaderNoteEdit(projectDir, prompt, requestContext, effectiveRegion)
+          : null
+      const localStatusLabelFirst =
+        !localHeaderFirst && workflowMode !== "discuss" && mode !== "explain"
+          ? await tryFocusedStatusLabelEdit(projectDir, prompt, requestContext, effectiveRegion)
+          : null
+      const localFirst =
+        localHeaderFirst ||
+        localStatusLabelFirst ||
+        (workflowMode !== "discuss" && shouldPreferLocalFallback(prompt, mode, requestContext)
+          ? await tryLocalFallbackEdits(projectDir, prompt, requestContext, mode, effectiveRegion)
+          : null)
+
+      if (localFirst) {
         modelResult = {
-          ...explained,
-          reasoning: `${explained.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+          ...localFirst,
+          reasoning: `${localFirst.reasoning}\nPreferred local file-scoped fallback matched the request before calling the model.`,
         }
       } else {
-        const localFallback = await tryLocalFallbackEdits(projectDir, prompt, requestContext, mode, effectiveRegion)
-        if (localFallback) {
-          modelResult = {
-            ...localFallback,
-            reasoning: `${localFallback.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
-          }
-        } else {
-          const specDriven = await tryGenericFallbackEdits(projectDir, prompt, effectiveRegion, requestContext, mode)
-          modelResult = {
-            ...specDriven,
-            reasoning: `${specDriven.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+        try {
+          modelResult = await callEditorModel(projectDir, prompt, effectiveRegion, requestContext, body, mode, workflowMode)
+        } catch (modelErr: any) {
+          if (mode === "explain") {
+            const explained = buildExplainFallback(prompt, requestContext, effectiveRegion)
+            modelResult = {
+              ...explained,
+              reasoning: `${explained.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+            }
+          } else {
+            const localFallback = await tryLocalFallbackEdits(projectDir, prompt, requestContext, mode, effectiveRegion)
+            if (localFallback) {
+              modelResult = {
+                ...localFallback,
+                reasoning: `${localFallback.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+              }
+            } else {
+              const specDriven = await tryGenericFallbackEdits(projectDir, prompt, effectiveRegion, requestContext, mode)
+              modelResult = {
+                ...specDriven,
+                reasoning: `${specDriven.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
+              }
+            }
           }
         }
       }
     }
 
     const requestedFiles = Array.isArray(modelResult.files) ? modelResult.files : []
-    const appliedEdits = mode === "explain" ? [] : requestedFiles
+    const workspaceFiles = await collectContextFiles(projectDir)
+    const scopeStrategy = buildIterateTargetStrategy(prioritizeContextFiles(workspaceFiles, requestContext), requestContext, mode)
+    const scopedResult = constrainModelEdits(requestedFiles, workspaceFiles, scopeStrategy, requestContext, mode)
+    const appliedEdits = mode === "explain" ? [] : scopedResult.edits
+
+    if (scopedResult.droppedPaths.length) {
+      const scopeNote =
+        effectiveRegion === "cn"
+          ? `已按当前文件/页面上下文收敛改动范围，保留 ${appliedEdits.length}/${requestedFiles.length} 个文件。`
+          : `Scoped the edit set back to the current file/page context and kept ${appliedEdits.length}/${requestedFiles.length} files.`
+      modelResult.reasoning = [modelResult.reasoning, scopeNote].filter(Boolean).join("\n")
+      modelResult.summary = `${modelResult.summary} ${scopeNote}`.trim()
+    }
+
+    const updateResponseContext = (changedFiles: string[], buildStatus?: "ok" | "failed" | "skipped") => {
+      const firstChangedFile = pickPrimaryChangedFile(changedFiles, requestContext)
+      const previousFile = normalizeContextPath(requestContext.currentFilePath)
+      const changedDraft = appliedEdits.find((edit) => normalizeContextPath(edit.path) === firstChangedFile)
+      if (firstChangedFile) {
+        requestContext.currentFilePath = firstChangedFile
+        requestContext.currentRoute =
+          inferRouteFromFilePath(firstChangedFile) ||
+          requestContext.currentRoute ||
+          requestContext.currentPage?.route
+        if (previousFile && previousFile !== firstChangedFile) {
+          requestContext.currentFileSymbols = []
+        }
+        if (changedDraft?.content) {
+          requestContext.currentFileSymbols = inferSymbolsFromContent(changedDraft.content)
+        }
+      }
+      const rebuiltContext = rebuildEditorFocus(requestContext, effectiveRegion, workspaceRoutes)
+      requestContext.currentRoute = rebuiltContext.currentRoute
+      requestContext.currentPage = rebuiltContext.currentPage
+      requestContext.currentModule = rebuiltContext.currentModule
+      requestContext.currentElement = rebuiltContext.currentElement
+      requestContext.relatedPaths = uniqueContextPaths([
+        requestContext.currentFilePath,
+        rebuiltContext.currentPage?.filePath,
+        ...(requestContext.relatedPaths ?? []),
+        ...(requestContext.openTabs ?? []),
+      ])
+      requestContext.sharedSession = buildResolvedSessionContext({
+        session: requestContext.sharedSession,
+        context: requestContext,
+        mode,
+        prompt,
+        now,
+        summary: modelResult.summary,
+        changedFiles,
+        buildStatus,
+      })
+      responseContext = serializeEditorContext(requestContext)
+    }
 
     if (mode === "explain") {
+      updateResponseContext([], "skipped")
+      const skippedReason =
+        workflowMode === "discuss"
+          ? "Skipped: discuss mode returns plan/spec without file edits"
+          : "Skipped: explain mode does not apply file edits"
       await appendProjectHistory(projectId, {
         id: `evt_${Date.now()}`,
         type: "iterate",
@@ -1186,7 +2525,7 @@ export async function POST(req: Request) {
         summary: modelResult.summary,
         changedFiles: [],
         buildStatus: "skipped",
-        buildLogs: ["Skipped: explain mode does not apply file edits"],
+        buildLogs: [skippedReason],
       })
 
       return NextResponse.json({
@@ -1194,16 +2533,19 @@ export async function POST(req: Request) {
         status: "done",
         summary: modelResult.summary,
         thinking: modelResult.reasoning ?? modelResult.analysis ?? "",
+        workflowMode,
+        plan: discussionPlan ?? undefined,
         context: responseContext,
         changedFiles: [],
         build: {
           status: "skipped",
-          logs: ["Skipped: explain mode does not apply file edits"],
+          logs: [skippedReason],
         },
       })
     }
 
     const changedFiles: string[] = []
+    const appliedEditSummaries: AppliedEditSummary[] = []
     const fileBackups: Array<{ path: string; previousContent: string | null }> = []
     for (const edit of appliedEdits) {
       if (!isAllowedFile(edit.path)) {
@@ -1227,13 +2569,42 @@ export async function POST(req: Request) {
         }
       }
 
-      await ensureDir(path.dirname(absolute))
-      await fs.writeFile(absolute, edit.content, "utf8")
+      const previousContent = backups.get(absolute) ?? null
+      const existedBefore = previousContent !== null
+      const { nextContent, operation } = applyInstructionalEdit({
+        edit,
+        relativePath: relative,
+        previousContent,
+        exists: existedBefore,
+      })
+      const noChange = previousContent === nextContent
+      if (noChange) {
+        continue
+      }
+      if (nextContent === null) {
+        if (await pathExists(absolute)) {
+          await fs.rm(absolute, { force: true })
+        }
+      } else {
+        await ensureDir(path.dirname(absolute))
+        await fs.writeFile(absolute, nextContent, "utf8")
+      }
       changedFiles.push(relative)
+      appliedEditSummaries.push(
+        buildAppliedEditSummary({
+          path: relative,
+          operation,
+          reason: edit.reason,
+          existedBefore,
+          beforeContent: previousContent,
+          afterContent: nextContent,
+        })
+      )
     }
 
     const build = await runBuild(projectDir)
     if (build.status === "failed" && baselineBuild.status === "ok") {
+      updateResponseContext(changedFiles, "failed")
       for (const [filePath, oldContent] of backups.entries()) {
         if (oldContent === null) {
           if (await pathExists(filePath)) await fs.rm(filePath, { force: true })
@@ -1259,8 +2630,10 @@ export async function POST(req: Request) {
           projectId,
           status: "error",
           summary: modelResult.summary,
+          workflowMode,
           context: responseContext,
           changedFiles,
+          edits: appliedEditSummaries,
           build: { status: "failed", logs: build.logs },
           error: "Build failed and changes were rolled back",
         },
@@ -1269,6 +2642,7 @@ export async function POST(req: Request) {
     }
 
     if (build.status === "failed" && baselineBuild.status === "failed") {
+      updateResponseContext(changedFiles, "failed")
       await appendProjectHistory(projectId, {
         id: `evt_${Date.now()}`,
         type: "iterate",
@@ -1286,13 +2660,16 @@ export async function POST(req: Request) {
         status: "done",
         summary: `${modelResult.summary} (Workspace already had build errors before this change; changes kept.)`,
         thinking: modelResult.reasoning ?? "",
+        workflowMode,
         context: responseContext,
         changedFiles,
+        edits: appliedEditSummaries,
         build,
         warning: "Build failed, but changes were kept because baseline build was already failing.",
       })
     }
 
+    updateResponseContext(changedFiles, build.status)
     await appendProjectHistory(projectId, {
       id: `evt_${Date.now()}`,
       type: "iterate",
@@ -1311,8 +2688,10 @@ export async function POST(req: Request) {
       status: "done",
       summary: modelResult.summary,
       thinking: modelResult.reasoning ?? "",
+      workflowMode,
       context: responseContext,
       changedFiles,
+      edits: appliedEditSummaries,
       build,
     })
   } catch (error: any) {
@@ -1329,6 +2708,7 @@ export async function POST(req: Request) {
       {
         projectId,
         status: "error",
+        workflowMode,
         error: error?.message || String(error),
       },
       { status: 500 }

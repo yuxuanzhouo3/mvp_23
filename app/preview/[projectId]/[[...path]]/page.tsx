@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation"
 import { PreviewRouteClient } from "@/components/preview/preview-route-client"
 import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
 import { buildProjectPresentation } from "@/lib/project-presentation"

@@ -26,6 +26,17 @@ type IterateResp = {
   status: "done" | "error"
   summary?: string
   thinking?: string
+  edits?: Array<{
+    path: string
+    operation: "created" | "updated" | "patched" | "deleted"
+    reason?: string
+    existedBefore: boolean
+    linesBefore: number
+    linesAfter: number
+    lineDelta: number
+    bytesBefore: number
+    bytesAfter: number
+  }>
   changedFiles?: string[]
   build?: { status: "ok" | "failed" | "skipped"; logs?: string[] }
   warning?: string
@@ -82,12 +93,26 @@ function getWorkspaceSurface(section: string) {
   return "preview"
 }
 
+function formatWorkspaceSessionLabel(value?: string | null, locale?: string) {
+  const normalized = String(value ?? "").trim()
+  if (!normalized) return locale === "zh" ? "未同步" : "Not synced"
+  return normalized
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part, index) => {
+      if (index === 0 && /^[A-Z]/.test(part)) return part
+      return part.charAt(0).toUpperCase() + part.slice(1)
+    })
+    .join(" ")
+}
+
 export function AiCodePanel() {
   const [mode, setMode] = useState<"explain" | "fix" | "generate" | "refactor">("generate")
   const [value, setValue] = useState("")
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState("")
   const [result, setResult] = useState<IterateResp | null>(null)
+  const [sharedSessionSnapshot, setSharedSessionSnapshot] = useState<WorkspaceSessionContext | null>(null)
   const [project, setProject] = useState<ProjectSummary | null>(null)
   const [currentFileSymbols, setCurrentFileSymbols] = useState<WorkspaceSymbolRef[]>([])
   const [selectedSymbol, setSelectedSymbol] = useState("")
@@ -153,6 +178,11 @@ export function AiCodePanel() {
       specKind: project?.spec?.kind || "workspace",
       workspaceSurface,
       activeSection,
+      routeId: pageContext.id,
+      routeLabel: pageContext.label,
+      filePath: pageContext.filePath,
+      symbolName: moduleContext.name,
+      elementName: elementContext.name,
       deploymentTarget: project?.spec?.deploymentTarget || undefined,
       databaseTarget: project?.spec?.databaseTarget || undefined,
       region: workspaceRegion,
@@ -160,6 +190,11 @@ export function AiCodePanel() {
     }),
     [
       activeSection,
+      elementContext.name,
+      moduleContext.name,
+      pageContext.filePath,
+      pageContext.id,
+      pageContext.label,
       project?.generation?.buildStatus,
       project?.presentation?.displayName,
       project?.spec?.databaseTarget,
@@ -174,9 +209,53 @@ export function AiCodePanel() {
   const contextPage = resolvedContext?.currentPage ?? pageContext
   const contextModule = resolvedContext?.currentModule ?? moduleContext
   const contextElement = resolvedContext?.currentElement ?? elementContext
-  const contextSession = resolvedContext?.sharedSession ?? sharedSession
   const contextSymbols = resolvedContext?.currentFileSymbols?.length ? resolvedContext.currentFileSymbols : currentFileSymbols
-  const targetFilePath = resolvedContext?.currentFilePath || pageContext.filePath
+  const contextFilePath = resolvedContext?.currentFilePath || sharedSessionSnapshot?.lastChangedFile || pageContext.filePath
+  const requestSharedSession = useMemo<WorkspaceSessionContext>(
+    () => ({
+      ...(sharedSessionSnapshot ?? sharedSession),
+      projectName: project?.presentation?.displayName || project?.spec?.title || undefined,
+      specKind: project?.spec?.kind || "workspace",
+      workspaceSurface,
+      activeSection,
+      routeId: contextPage.id,
+      routeLabel: contextPage.label,
+      filePath: contextFilePath,
+      symbolName: contextModule.name,
+      elementName: contextElement.name,
+      deploymentTarget: project?.spec?.deploymentTarget || undefined,
+      databaseTarget: project?.spec?.databaseTarget || undefined,
+      region: workspaceRegion,
+      workspaceStatus: project?.generation?.buildStatus || undefined,
+      lastIntent: value.trim() || sharedSessionSnapshot?.lastIntent || undefined,
+      lastChangedFile: sharedSessionSnapshot?.lastChangedFile || contextFilePath,
+      lastChangedAt: sharedSessionSnapshot?.lastChangedAt,
+      readiness: sharedSessionSnapshot?.readiness || "context_ready",
+    }),
+    [
+      activeSection,
+      contextElement.name,
+      contextFilePath,
+      contextModule.name,
+      contextPage.id,
+      contextPage.label,
+      project?.generation?.buildStatus,
+      project?.presentation?.displayName,
+      project?.spec?.databaseTarget,
+      project?.spec?.deploymentTarget,
+      project?.spec?.kind,
+      project?.spec?.title,
+      sharedSession,
+      sharedSessionSnapshot,
+      value,
+      workspaceRegion,
+      workspaceSurface,
+    ]
+  )
+  const contextSession = resolvedContext?.sharedSession ?? sharedSessionSnapshot ?? requestSharedSession
+  const targetFilePath = resolvedContext?.currentFilePath || contextSession?.lastChangedFile || pageContext.filePath
+  const contextReadiness = formatWorkspaceSessionLabel(contextSession?.readiness || contextSession?.workspaceStatus, locale)
+  const contextLastAction = contextSession?.lastAction || result?.summary || ""
 
   useEffect(() => {
     if (!projectId) return
@@ -197,16 +276,29 @@ export function AiCodePanel() {
 
   useEffect(() => {
     setSelectedSymbol((current) => (current && availableSymbols.includes(current) ? current : availableSymbols[0] || ""))
-    setSelectedElement((current) => (current && pageContext.elements.includes(current) ? current : pageContext.elements[0] || ""))
-  }, [availableSymbols, pageContext])
+    setSelectedElement((current) => (current && contextPage.elements.includes(current) ? current : contextPage.elements[0] || ""))
+  }, [availableSymbols, contextPage])
 
   useEffect(() => {
-    if (!projectId || !pageContext.filePath) {
+    if (!resolvedContext) return
+    if (resolvedContext.currentFileSymbols?.length) {
+      setCurrentFileSymbols(resolvedContext.currentFileSymbols)
+    }
+    if (resolvedContext.currentModule?.name && availableSymbols.includes(resolvedContext.currentModule.name)) {
+      setSelectedSymbol(resolvedContext.currentModule.name)
+    }
+    if (resolvedContext.currentElement?.name && contextPage.elements.includes(resolvedContext.currentElement.name)) {
+      setSelectedElement(resolvedContext.currentElement.name)
+    }
+  }, [availableSymbols, contextPage.elements, resolvedContext])
+
+  useEffect(() => {
+    if (!projectId || !contextFilePath) {
       setCurrentFileSymbols([])
       return
     }
     let cancelled = false
-    fetch(`/api/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(pageContext.filePath)}`)
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(contextFilePath)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         if (cancelled) return
@@ -218,7 +310,7 @@ export function AiCodePanel() {
     return () => {
       cancelled = true
     }
-  }, [pageContext.filePath, projectId])
+  }, [contextFilePath, projectId])
 
   function openTargetInEditor(filePath: string) {
     const resolvedFocusFile = targetFilePath || pageContext.filePath
@@ -260,21 +352,33 @@ export function AiCodePanel() {
           projectId,
           prompt,
           mode,
-          currentFilePath: pageContext.filePath,
-          currentRoute: pageContext.route,
-          currentFileSymbols,
-          currentPage: pageContext,
-          currentModule: moduleContext,
-          currentElement: elementContext,
-          sharedSession,
-          openTabs: [pageContext.filePath],
-          relatedPaths: [pageContext.filePath],
+          currentFilePath: contextFilePath,
+          currentRoute: contextPage.route,
+          currentFileSymbols: contextSymbols,
+          currentPage: contextPage,
+          currentModule: contextModule,
+          currentElement: contextElement,
+          sharedSession: requestSharedSession,
+          openTabs: Array.from(new Set([contextFilePath, contextSession?.lastChangedFile, pageContext.filePath].filter(Boolean))),
+          relatedPaths: Array.from(new Set([contextFilePath, contextSession?.lastChangedFile, pageContext.filePath].filter(Boolean))),
         }),
         signal: ctrl.signal,
       })
       clearTimeout(timer)
       const json = (await res.json()) as IterateResp
       setResult(json)
+      if (json.context?.sharedSession) {
+        setSharedSessionSnapshot(json.context.sharedSession)
+      }
+      if (json.context?.currentFileSymbols?.length) {
+        setCurrentFileSymbols(json.context.currentFileSymbols)
+      }
+      if (json.context?.currentModule?.name) {
+        setSelectedSymbol(json.context.currentModule.name)
+      }
+      if (json.context?.currentElement?.name) {
+        setSelectedElement(json.context.currentElement.name)
+      }
       if (!res.ok || json.status === "error") {
         setStatus(json.error || "Iteration failed")
         return
@@ -305,6 +409,7 @@ export function AiCodePanel() {
           <Badge variant="outline">{contextPage.label}</Badge>
           <Badge variant="outline">{contextSession.workspaceSurface || workspaceSurface}</Badge>
           <Badge variant="outline">{contextSession.activeSection || activeSection}</Badge>
+          <Badge variant="outline">{contextReadiness}</Badge>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
@@ -313,7 +418,7 @@ export function AiCodePanel() {
             {locale === "zh" ? "当前作用对象" : "Current target"}
           </div>
           <div className="mt-2 text-sm font-medium text-foreground">{contextPage.route}</div>
-          <div className="mt-1 text-xs text-muted-foreground">{contextPage.filePath}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{targetFilePath}</div>
           <div className="mt-3 grid gap-2">
             <div className="rounded-md border border-border bg-background/80 px-3 py-2">
               <div className="text-[11px] text-muted-foreground">{locale === "zh" ? "模块" : "Module"}</div>
@@ -323,7 +428,12 @@ export function AiCodePanel() {
               <div className="text-[11px] text-muted-foreground">{locale === "zh" ? "元素" : "Element"}</div>
               <div className="mt-1 text-xs font-medium text-foreground">{contextElement.name}</div>
             </div>
+            <div className="rounded-md border border-border bg-background/80 px-3 py-2">
+              <div className="text-[11px] text-muted-foreground">{locale === "zh" ? "最近写入" : "Last changed"}</div>
+              <div className="mt-1 truncate text-xs font-medium text-foreground">{contextSession.lastChangedFile || targetFilePath}</div>
+            </div>
           </div>
+          {contextLastAction ? <div className="mt-3 text-xs text-muted-foreground">{contextLastAction}</div> : null}
         </div>
 
         <div className="rounded-lg border border-border bg-background/80 p-3">

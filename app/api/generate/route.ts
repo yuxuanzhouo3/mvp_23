@@ -24,6 +24,11 @@ import {
   getGenerateTask,
   updateGenerateTask,
   type GenerateTask,
+  type GenerateAcceptanceReport,
+  type GenerateArchetype,
+  type GeneratePlanSnapshot,
+  type GenerateRequestContext,
+  type GenerateWorkflowMode,
 } from "@/lib/generate-tasks"
 import {
   buildSpecDrivenWorkspaceFiles,
@@ -36,7 +41,7 @@ import {
 } from "@/lib/project-spec"
 import { getCurrentSession } from "@/lib/auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
-import { getPlanRank, type PlanTier } from "@/lib/plan-catalog"
+import { getPlanDefinition, getPlanRank, normalizePlanTier, type PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById, type TemplatePreviewStyle } from "@/lib/template-catalog"
 import {
   getDatabaseEnvGuide,
@@ -51,9 +56,22 @@ import {
   type DeploymentTarget,
 } from "@/lib/fullstack-targets"
 import { getDefaultPreviewMode } from "@/lib/sandbox-preview"
+import {
+  buildCodePlatformContextRoutes,
+  inferCodePlatformElementContext,
+  inferCodePlatformModuleContext,
+  inferCodePlatformPageContext,
+  type WorkspaceElementContext,
+  type WorkspaceModuleContext,
+  type WorkspacePageContext,
+  type WorkspaceSessionContext,
+} from "@/lib/workspace-ai-context"
 
 export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
+const BUILDER_STALL_MS = 2 * 60 * 1000
+const BUILDER_WATCHDOG_MS = 70 * 1000
+const BUILDER_TIMEOUT_MS = 55 * 1000
 
 function buildProjectPreviewPath(projectId: string) {
   return buildCanonicalPreviewUrl(projectId)
@@ -149,6 +167,8 @@ type RegionDefaults = {
   }>
 }
 
+type GenerateContextKind = AppKind | "workspace"
+
 function getRegionDefaults(region: Region): RegionDefaults {
   if (region === "cn") {
     return {
@@ -210,8 +230,17 @@ function sanitizeUiText(input: string) {
   return input.replace(/[<>`{}]/g, "").replace(/\s+/g, " ").trim()
 }
 
+function normalizeTextValue(value: unknown) {
+  return sanitizeUiText(String(value ?? "")).trim()
+}
+
 function normalizePath(p: string) {
   return p.replace(/\\/g, "/").replace(/^\/+/, "")
+}
+
+function normalizeContextPath(value?: unknown) {
+  const normalized = normalizePath(String(value ?? ""))
+  return isAllowedFile(normalized) ? normalized : ""
 }
 
 function isAllowedFile(relativePath: string) {
@@ -221,6 +250,708 @@ function isAllowedFile(relativePath: string) {
     return false
   }
   return true
+}
+
+function uniqueContextPaths(input: Array<string | undefined | null>) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of input) {
+    const normalized = normalizeContextPath(item)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    out.push(normalized)
+  }
+  return out
+}
+
+function normalizePageContext(value: unknown): WorkspacePageContext | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const page = value as Record<string, unknown>
+  const id = normalizeTextValue(page.id).toLowerCase()
+  const label = normalizeTextValue(page.label)
+  const route = String(page.route ?? "").trim()
+  const filePath = normalizeContextPath(page.filePath)
+  const focus = normalizeTextValue(page.focus)
+  const symbols = Array.isArray(page.symbols) ? page.symbols.map((item) => normalizeTextValue(item)).filter(Boolean) : []
+  const elements = Array.isArray(page.elements) ? page.elements.map((item) => normalizeTextValue(item)).filter(Boolean) : []
+  if (!id && !label && !route && !filePath) return undefined
+  return {
+    id: id || "workspace",
+    label: label || id || "Workspace",
+    route: route || "/",
+    filePath,
+    focus,
+    symbols,
+    elements,
+  }
+}
+
+function normalizeModuleContext(value: unknown): WorkspaceModuleContext | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const module = value as Record<string, unknown>
+  const name = normalizeTextValue(module.name)
+  if (!name) return undefined
+  const source = String(module.source ?? "page")
+  const relatedSymbols = Array.isArray(module.relatedSymbols)
+    ? module.relatedSymbols.map((item) => normalizeTextValue(item)).filter(Boolean)
+    : []
+  return {
+    name,
+    source: source === "symbol" || source === "file" ? source : "page",
+    relatedSymbols,
+  }
+}
+
+function normalizeElementContext(value: unknown): WorkspaceElementContext | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const element = value as Record<string, unknown>
+  const name = normalizeTextValue(element.name)
+  if (!name) return undefined
+  const source = String(element.source ?? "page")
+  const detail = normalizeTextValue(element.detail)
+  const options = Array.isArray(element.options)
+    ? element.options.map((item) => normalizeTextValue(item)).filter(Boolean)
+    : []
+  return {
+    name,
+    source:
+      source === "explicit" || source === "editor_rail" || source === "output_panel"
+        ? source
+        : "page",
+    options,
+    detail: detail || undefined,
+  }
+}
+
+function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessionContext | undefined {
+  if (!value || typeof value !== "object") return undefined
+  const session = value as Record<string, unknown>
+  const selectedPlanId = normalizeTextValue(session.selectedPlanId)
+  const codeExportAllowedValue = session.codeExportAllowed
+  const databaseAccessMode = normalizeTextValue(session.databaseAccessMode)
+  return {
+    projectName: normalizeTextValue(session.projectName) || undefined,
+    specKind: normalizeTextValue(session.specKind) || undefined,
+    workspaceSurface: normalizeTextValue(session.workspaceSurface) || undefined,
+    activeSection: normalizeTextValue(session.activeSection) || undefined,
+    routeId: normalizeTextValue(session.routeId) || undefined,
+    routeLabel: normalizeTextValue(session.routeLabel) || undefined,
+    filePath: normalizeContextPath(session.filePath),
+    symbolName: normalizeTextValue(session.symbolName) || undefined,
+    elementName: normalizeTextValue(session.elementName) || undefined,
+    deploymentTarget: normalizeTextValue(session.deploymentTarget) || undefined,
+    databaseTarget: normalizeTextValue(session.databaseTarget) || undefined,
+    region: session.region === "cn" || session.region === "intl" ? (session.region as Region) : region,
+    selectedPlanId: selectedPlanId ? normalizePlanTier(selectedPlanId) : undefined,
+    selectedPlanName: normalizeTextValue(session.selectedPlanName) || undefined,
+    selectedTemplate: normalizeTextValue(session.selectedTemplate) || undefined,
+    codeExportAllowed: typeof codeExportAllowedValue === "boolean" ? codeExportAllowedValue : undefined,
+    databaseAccessMode: databaseAccessMode || undefined,
+    workspaceStatus: normalizeTextValue(session.workspaceStatus) || undefined,
+    lastIntent: normalizeTextValue(session.lastIntent) || undefined,
+    lastAction: normalizeTextValue(session.lastAction) || undefined,
+    lastChangedFile: normalizeContextPath(session.lastChangedFile),
+    lastChangedAt: normalizeTextValue(session.lastChangedAt) || undefined,
+    readiness: normalizeTextValue(session.readiness) || undefined,
+  }
+}
+
+function inferRouteFromFilePath(filePath?: string | null) {
+  const normalized = normalizeContextPath(filePath)
+  if (!normalized) return ""
+  if (normalized === "app/page.tsx") return "/"
+  const match = normalized.match(/^app\/(.+)\/page\.(tsx|jsx)$/)
+  if (!match?.[1]) return ""
+  return `/${match[1]}`
+}
+
+function normalizeGenerateContextKind(value: string): GenerateContextKind {
+  if (value === "code_platform" || value === "crm" || value === "blog" || value === "community" || value === "task") {
+    return value
+  }
+  return "workspace"
+}
+
+function resolveContextAppKind(prompt: string, context?: GenerateRequestContext): AppKind {
+  const sessionKind = normalizeGenerateContextKind(normalizeTextValue(context?.sharedSession?.specKind).toLowerCase())
+  if (sessionKind !== "workspace") return sessionKind
+
+  const section = normalizeTextValue(context?.sharedSession?.activeSection || context?.currentPage?.id).toLowerCase()
+  const surface = normalizeTextValue(context?.sharedSession?.workspaceSurface).toLowerCase()
+  const filePath = normalizeContextPath(context?.currentFilePath || context?.sharedSession?.filePath)
+  const route = String(context?.currentRoute || context?.currentPage?.route || "").toLowerCase()
+
+  if (
+    surface === "code" ||
+    section === "editor" ||
+    ["dashboard", "editor", "runs", "templates", "pricing", "settings"].includes(section) ||
+    /app\/(dashboard|editor|runs|templates|pricing|settings)\/page\.(tsx|jsx)$/.test(filePath) ||
+    /^\/(dashboard|editor|runs|templates|pricing|settings)$/.test(route)
+  ) {
+    return "code_platform"
+  }
+
+  return inferAppKind(prompt)
+}
+
+function resolveTemplateId(prompt: string, context?: GenerateRequestContext) {
+  const selectedTemplate = normalizeTextValue(context?.sharedSession?.selectedTemplate).toLowerCase()
+  if (selectedTemplate) {
+    if (selectedTemplate.includes("siteforge")) return "siteforge"
+    if (selectedTemplate.includes("opsdesk")) return "opsdesk"
+    if (selectedTemplate.includes("taskflow")) return "taskflow"
+    if (selectedTemplate.includes("orbital")) return "orbital"
+    if (selectedTemplate.includes("launchpad")) return "launchpad"
+  }
+  return inferTemplateIdFromPrompt(prompt)
+}
+
+function inferPromptOnlyPlannerProductType(prompt: string): PlannerProductType {
+  const text = String(prompt ?? "").toLowerCase()
+  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
+    return "ai_code_platform"
+  }
+  if (/api|sdk|developer portal|endpoint|endpoints|auth|environment|environments|webhook|logs|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
+    return "api_platform"
+  }
+  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+    return "crm_workspace"
+  }
+  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
+    return "community_hub"
+  }
+  if (/website|landing|homepage|download|downloads|documentation|docs|marketing|brand|官网|下载站|落地页|下载页|文档|品牌|增长/.test(text)) {
+    return "content_site"
+  }
+  if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
+    return "task_workspace"
+  }
+  return "task_workspace"
+}
+
+function resolvePlannerProductType(prompt: string, context?: GenerateRequestContext): PlannerProductType {
+  const kind = resolveContextAppKind(prompt, context)
+  if (kind === "code_platform") return "ai_code_platform"
+  if (kind === "crm") return "crm_workspace"
+  if (kind === "community") return "community_hub"
+  if (kind === "blog" || /website|landing|homepage|download|官网|下载站|落地页|文档/i.test(prompt)) return "content_site"
+  const promptOnly = inferPromptOnlyPlannerProductType(prompt)
+  if (promptOnly !== "task_workspace") return promptOnly
+  if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/i.test(prompt)) {
+    return "task_workspace"
+  }
+  return "task_workspace"
+}
+
+function resolveGenerateWorkspaceContext(args: {
+  body: any
+  prompt: string
+  region: Region
+  planTier: PlanTier
+  deploymentTarget: DeploymentTarget
+  databaseTarget: DatabaseTarget
+  templateId?: string
+  templateTitle?: string
+}): GenerateRequestContext | undefined {
+  const { body, prompt, region, planTier, deploymentTarget, databaseTarget, templateId, templateTitle } = args
+  const incomingSession = normalizeSessionContext(body?.sharedSession, region)
+  const currentFilePath =
+    normalizeContextPath(body?.currentFilePath) ||
+    normalizeContextPath(incomingSession?.lastChangedFile) ||
+    normalizeContextPath(incomingSession?.filePath)
+  const currentRoute =
+    typeof body?.currentRoute === "string" && body.currentRoute.trim()
+      ? body.currentRoute.trim()
+      : inferRouteFromFilePath(currentFilePath) || undefined
+  const openTabs = Array.isArray(body?.openTabs) ? uniqueContextPaths(body.openTabs.map((item: unknown) => String(item))) : []
+  const relatedPaths = uniqueContextPaths([
+    currentFilePath,
+    ...(Array.isArray(body?.relatedPaths) ? body.relatedPaths.map((item: unknown) => String(item)) : []),
+    ...openTabs,
+  ])
+
+  const shouldUseCodePlatformContext =
+    resolveContextAppKind(prompt, {
+      currentFilePath,
+      currentRoute,
+      sharedSession: incomingSession,
+    }) === "code_platform"
+
+  const routes = shouldUseCodePlatformContext
+    ? buildCodePlatformContextRoutes({
+        region,
+        features: ["about_page", ...(planTier === "pro" || planTier === "elite" ? ["analytics_page"] : [])],
+      })
+    : []
+
+  const currentPage =
+    normalizePageContext(body?.currentPage) ??
+    (shouldUseCodePlatformContext
+      ? inferCodePlatformPageContext({
+          routes,
+          region,
+          currentFilePath,
+          currentRoute,
+          activeSection: incomingSession?.activeSection || incomingSession?.routeId,
+          previewTab: incomingSession?.workspaceSurface,
+        })
+      : undefined)
+
+  const currentModule =
+    normalizeModuleContext(body?.currentModule) ??
+    (shouldUseCodePlatformContext && currentPage
+      ? inferCodePlatformModuleContext({
+          currentFilePath,
+          currentFileSymbols: [],
+          currentPage,
+          activeSymbolName: incomingSession?.symbolName,
+        })
+      : undefined)
+
+  const currentElement =
+    normalizeElementContext(body?.currentElement) ??
+    (shouldUseCodePlatformContext && currentPage
+      ? inferCodePlatformElementContext({
+          currentPage,
+          activeElementName: incomingSession?.elementName,
+          previewTab: incomingSession?.workspaceSurface,
+        })
+      : undefined)
+
+  const currentKind = resolveContextAppKind(prompt, {
+    currentFilePath,
+    currentRoute,
+    currentPage,
+    currentModule,
+    currentElement,
+    sharedSession: incomingSession,
+    openTabs,
+    relatedPaths,
+  })
+
+  const resolvedSurface =
+    incomingSession?.workspaceSurface ||
+    (currentPage?.id === "editor" ? "code" : currentPage?.id === "dashboard" ? "dashboard" : undefined) ||
+    (currentKind === "code_platform" ? "preview" : undefined)
+
+  const resolvedSession: WorkspaceSessionContext = {
+    ...incomingSession,
+    projectName: incomingSession?.projectName || deriveProjectHeadline(prompt),
+    specKind: incomingSession?.specKind || currentKind,
+    workspaceSurface: resolvedSurface,
+    activeSection: incomingSession?.activeSection || currentPage?.id || undefined,
+    routeId: incomingSession?.routeId || currentPage?.id || undefined,
+    routeLabel: incomingSession?.routeLabel || currentPage?.label || undefined,
+    filePath: currentFilePath || currentPage?.filePath || incomingSession?.filePath,
+    symbolName: currentModule?.name || incomingSession?.symbolName || undefined,
+    elementName: currentElement?.name || incomingSession?.elementName || undefined,
+    deploymentTarget: incomingSession?.deploymentTarget || deploymentTarget,
+    databaseTarget: incomingSession?.databaseTarget || databaseTarget,
+    region: incomingSession?.region || region,
+    selectedPlanId: incomingSession?.selectedPlanId || planTier,
+    selectedPlanName:
+      incomingSession?.selectedPlanName || getPlanDefinition(planTier)[region === "cn" ? "nameCn" : "nameEn"],
+    selectedTemplate: incomingSession?.selectedTemplate || templateTitle || templateId || undefined,
+    codeExportAllowed:
+      typeof incomingSession?.codeExportAllowed === "boolean" ? incomingSession.codeExportAllowed : planTier !== "free",
+    databaseAccessMode: incomingSession?.databaseAccessMode || (planTier === "free" ? "online_only" : "managed_config"),
+    workspaceStatus: incomingSession?.workspaceStatus || "queued",
+    lastIntent: incomingSession?.lastIntent || sanitizeUiText(prompt).slice(0, 240),
+    lastChangedFile: incomingSession?.lastChangedFile || currentFilePath || currentPage?.filePath,
+    lastChangedAt: incomingSession?.lastChangedAt,
+    readiness: incomingSession?.readiness || "context_ready",
+  }
+
+  const hasContext =
+    Boolean(currentFilePath) ||
+    Boolean(currentRoute) ||
+    Boolean(currentPage) ||
+    Boolean(currentModule) ||
+    Boolean(currentElement) ||
+    Boolean(resolvedSession.projectName) ||
+    openTabs.length > 0 ||
+    relatedPaths.length > 0
+
+  if (!hasContext) return undefined
+
+  return {
+    currentFilePath: currentFilePath || undefined,
+    currentRoute: currentRoute || undefined,
+    currentPage,
+    currentModule,
+    currentElement,
+    sharedSession: resolvedSession,
+    openTabs: openTabs.length ? openTabs : undefined,
+    relatedPaths: relatedPaths.length ? relatedPaths : undefined,
+  }
+}
+
+function buildGenerateContextSummary(context?: GenerateRequestContext, region: Region = "intl") {
+  if (!context) return ""
+  const parts = [
+    context.sharedSession?.workspaceSurface,
+    context.currentPage?.label || context.sharedSession?.routeLabel,
+    context.currentModule?.name || context.sharedSession?.symbolName,
+    context.currentElement?.name || context.sharedSession?.elementName,
+  ].filter(Boolean)
+  if (!parts.length) {
+    return context.currentFilePath || context.sharedSession?.filePath || (region === "cn" ? "当前工作区" : "the current workspace")
+  }
+  return parts.join(" / ")
+}
+
+function serializeGenerateContextForPrompt(context?: GenerateRequestContext) {
+  if (!context) return ""
+
+  const currentPageMeta = context.currentPage
+    ? [
+        `Current page: ${context.currentPage.label} (${context.currentPage.id})`,
+        `Page route: ${context.currentPage.route}`,
+        context.currentPage.filePath ? `Page file: ${context.currentPage.filePath}` : "",
+        context.currentPage.focus ? `Page focus: ${context.currentPage.focus}` : "",
+        context.currentPage.elements.length ? `Page elements: ${context.currentPage.elements.join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : ""
+
+  const currentModuleMeta = context.currentModule
+    ? [
+        `Current module: ${context.currentModule.name}`,
+        `Module source: ${context.currentModule.source}`,
+        context.currentModule.relatedSymbols.length
+          ? `Module symbols: ${context.currentModule.relatedSymbols.join(", ")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : ""
+
+  const currentElementMeta = context.currentElement
+    ? [
+        `Current element: ${context.currentElement.name}`,
+        `Element source: ${context.currentElement.source}`,
+        context.currentElement.detail ? `Element detail: ${context.currentElement.detail}` : "",
+        context.currentElement.options.length ? `Available elements: ${context.currentElement.options.join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : ""
+
+  const sessionMeta = context.sharedSession
+    ? [
+        context.sharedSession.projectName ? `Project name: ${context.sharedSession.projectName}` : "",
+        context.sharedSession.specKind ? `Workspace kind: ${context.sharedSession.specKind}` : "",
+        context.sharedSession.workspaceSurface ? `Workspace surface: ${context.sharedSession.workspaceSurface}` : "",
+        context.sharedSession.activeSection ? `Active section: ${context.sharedSession.activeSection}` : "",
+        context.sharedSession.routeId ? `Route id: ${context.sharedSession.routeId}` : "",
+        context.sharedSession.routeLabel ? `Route label: ${context.sharedSession.routeLabel}` : "",
+        context.sharedSession.filePath ? `Session file: ${context.sharedSession.filePath}` : "",
+        context.sharedSession.symbolName ? `Session symbol: ${context.sharedSession.symbolName}` : "",
+        context.sharedSession.elementName ? `Session element: ${context.sharedSession.elementName}` : "",
+        context.sharedSession.selectedTemplate ? `Selected template: ${context.sharedSession.selectedTemplate}` : "",
+        context.sharedSession.selectedPlanId ? `Selected plan id: ${context.sharedSession.selectedPlanId}` : "",
+        context.sharedSession.selectedPlanName ? `Selected plan name: ${context.sharedSession.selectedPlanName}` : "",
+        typeof context.sharedSession.codeExportAllowed === "boolean"
+          ? `Code export allowed: ${context.sharedSession.codeExportAllowed ? "yes" : "no"}`
+          : "",
+        context.sharedSession.databaseAccessMode ? `Database access mode: ${context.sharedSession.databaseAccessMode}` : "",
+        context.sharedSession.deploymentTarget ? `Deployment target: ${context.sharedSession.deploymentTarget}` : "",
+        context.sharedSession.databaseTarget ? `Database target: ${context.sharedSession.databaseTarget}` : "",
+        context.sharedSession.workspaceStatus ? `Workspace status: ${context.sharedSession.workspaceStatus}` : "",
+        context.sharedSession.lastIntent ? `Last intent: ${context.sharedSession.lastIntent}` : "",
+        context.sharedSession.lastChangedFile ? `Last changed file: ${context.sharedSession.lastChangedFile}` : "",
+        context.sharedSession.readiness ? `Session readiness: ${context.sharedSession.readiness}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : ""
+
+  return [
+    context.currentFilePath ? `Current file: ${context.currentFilePath}` : "",
+    context.currentRoute ? `Current route: ${context.currentRoute}` : "",
+    currentPageMeta,
+    currentModuleMeta,
+    currentElementMeta,
+    sessionMeta,
+    context.openTabs?.length ? `Open tabs: ${context.openTabs.join(", ")}` : "",
+    context.relatedPaths?.length ? `Related files: ${context.relatedPaths.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+}
+
+function hasMeaningfulGenerateContext(context?: GenerateRequestContext) {
+  return Boolean(
+    context?.currentFilePath ||
+      context?.currentRoute ||
+      context?.currentPage ||
+      context?.currentModule ||
+      context?.currentElement ||
+      context?.sharedSession?.specKind ||
+      context?.sharedSession?.workspaceSurface ||
+      (context?.openTabs?.length ?? 0) > 0 ||
+      (context?.relatedPaths?.length ?? 0) > 0
+  )
+}
+
+function shouldUseDeterministicGeneratePath(args: {
+  plannerProductType: PlannerProductType
+  workflowMode: GenerateWorkflowMode
+  context?: GenerateRequestContext
+}) {
+  void args
+  return true
+}
+
+function normalizeGenerateWorkflowMode(input: unknown, context?: GenerateRequestContext): GenerateWorkflowMode {
+  const value = String(input ?? "").trim().toLowerCase()
+  if (value === "act" || value === "discuss" || value === "edit_context") {
+    return value
+  }
+  return hasMeaningfulGenerateContext(context) ? "edit_context" : "act"
+}
+
+function resolveGenerateArchetype(
+  prompt: string,
+  plannerProductType: PlannerProductType,
+  context?: GenerateRequestContext
+): GenerateArchetype {
+  if (plannerProductType === "ai_code_platform") return "code_platform"
+  if (plannerProductType === "crm_workspace") return "crm"
+  if (plannerProductType === "api_platform") return "api_platform"
+  if (plannerProductType === "community_hub") return "community"
+  if (plannerProductType === "content_site") return "website_landing_download"
+
+  const text = [
+    prompt,
+    context?.sharedSession?.activeSection,
+    context?.sharedSession?.routeLabel,
+    context?.currentPage?.label,
+    context?.currentModule?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+
+  if (/admin|ops|internal tool|backoffice|back office|console|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
+    return "admin_ops_internal_tool"
+  }
+  return "admin_ops_internal_tool"
+}
+
+function buildPlannerSnapshot(args: {
+  planner: PlannerSpec
+  plannedSpec: AppSpec
+  workflowMode: GenerateWorkflowMode
+  archetype: GenerateArchetype
+  deploymentTarget: DeploymentTarget
+  databaseTarget: DatabaseTarget
+}): GeneratePlanSnapshot {
+  const { planner, plannedSpec, workflowMode, archetype, deploymentTarget, databaseTarget } = args
+  const routeMap = planner.pages.map((page) => {
+    const normalized = sanitizeUiText(page).toLowerCase()
+    if (!normalized || normalized === "home") return "/"
+    return normalized.startsWith("/") ? normalized : `/${normalized}`
+  })
+  const taskPlan = [
+    ...routeMap.slice(0, 4).map((route) => `Ship ${route} as a first-class route`),
+    ...plannedSpec.modules.slice(0, 4).map((moduleName) => `Wire ${moduleName} into the primary workflow`),
+  ].slice(0, 6)
+  const guardrails = [
+    workflowMode === "discuss"
+      ? "Discuss mode stops at plan/spec and skips workspace code writes"
+      : "Keep the first delivery app-grade instead of a poster-like demo",
+    planner.productType === "ai_code_platform"
+      ? "Preserve the Preview / Dashboard / Code workspace thread"
+      : "Keep navigation, settings, and delivery affordances connected",
+    "Do not expose premium capabilities that the selected plan does not unlock",
+  ]
+  const constraints = [
+    `Deployment target: ${deploymentTarget}`,
+    `Database target: ${databaseTarget}`,
+    plannedSpec.planTier === "free"
+      ? "Free tier keeps code export locked and database usage online-only"
+      : `Plan tier ${plannedSpec.planTier} can expose richer delivery controls`,
+  ]
+  return {
+    workflowMode,
+    productName: planner.productName,
+    productType: planner.productType,
+    archetype,
+    summary: planner.summary,
+    pages: planner.pages,
+    routeMap,
+    modules: plannedSpec.modules,
+    aiTools: planner.aiTools,
+    taskPlan,
+    guardrails,
+    constraints,
+    deploymentTarget,
+    databaseTarget,
+  }
+}
+
+function plannerSnapshotToPlannerSpec(snapshot?: GeneratePlanSnapshot, region: Region = "intl"): PlannerSpec | null {
+  if (!snapshot) return null
+  const normalizedPages = uniqueLowerStrings(
+    (snapshot.pages?.length ? snapshot.pages : snapshot.routeMap ?? []).map((item) =>
+      sanitizeUiText(String(item)).replace(/^\//, "") || "home"
+    ),
+    ["dashboard"]
+  )
+  const normalizedAiTools = uniqueLowerStrings(snapshot.aiTools ?? [], ["generate"])
+  const rawProductType = sanitizeUiText(snapshot.productType || "")
+    .toLowerCase()
+    .replace(/-/g, "_")
+  const productType =
+    rawProductType === "ai_code_platform" ||
+    rawProductType === "crm_workspace" ||
+    rawProductType === "api_platform" ||
+    rawProductType === "community_hub" ||
+    rawProductType === "content_site" ||
+    rawProductType === "task_workspace"
+      ? (rawProductType as PlannerProductType)
+      : "task_workspace"
+
+  return {
+    productName: sanitizeUiText(snapshot.productName || "") || (region === "cn" ? "Mornstack 应用" : "Mornstack App"),
+    productType,
+    targetLocale: region === "cn" ? "zh-CN" : "en-US",
+    style: {
+      theme: productType === "content_site" ? "light" : "dark",
+      tone: "production-ready",
+      market: region === "cn" ? "china" : "global",
+    },
+    pages: normalizedPages,
+    layout: {
+      editor: productType === "ai_code_platform" ? ["activity_bar", "file_tree", "tab_editor", "terminal_panel", "ai_assistant_panel"] : [],
+    },
+    aiTools: normalizedAiTools,
+    templates: [],
+    plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
+    deploymentDefaults: {
+      cn: ["cloudbase", "cloud_docs"],
+      global: ["vercel", "supabase"],
+    },
+    preferredScaffold: `${productType}_scaffold`,
+    summary: sanitizeUiText(snapshot.summary || "") || (region === "cn" ? "已恢复规划摘要。" : "Recovered planner summary."),
+  }
+}
+
+function getDefaultPlannerPages(productType: PlannerProductType) {
+  if (productType === "ai_code_platform") return ["dashboard", "editor", "runs", "templates", "pricing", "settings"]
+  if (productType === "crm_workspace") return ["dashboard", "leads", "pipeline", "customers", "automations"]
+  if (productType === "api_platform") return ["dashboard", "endpoints", "logs", "auth", "environments"]
+  if (productType === "community_hub") return ["dashboard", "events", "feedback", "members", "settings"]
+  if (productType === "content_site") return ["dashboard", "website", "downloads", "docs", "admin"]
+  return ["dashboard", "tasks", "settings", "analytics"]
+}
+
+function getRequiredPlannerPages(productType: PlannerProductType) {
+  return getDefaultPlannerPages(productType)
+}
+
+function getDefaultTemplateIdForPlannerProductType(
+  productType: PlannerProductType,
+  prompt: string,
+  context?: GenerateRequestContext
+) {
+  if (productType === "crm_workspace") return "opsdesk"
+  if (productType === "api_platform") return "taskflow"
+  if (productType === "community_hub") return "orbital"
+  if (productType === "content_site") return "launchpad"
+  const inferred = resolveTemplateId(prompt, context)
+  if (inferred) return inferred
+  if (/website|landing|homepage|download|docs|官网|落地页|下载页|文档/i.test(prompt)) return "launchpad"
+  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/i.test(prompt)) {
+    return "orbital"
+  }
+  if (/api|sdk|developer portal|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/i.test(prompt)) {
+    return "taskflow"
+  }
+  if (/crm|customer|sales|pipeline|lead|admin|ops|internal tool|backoffice|back office|control plane|客户|销售|跟进|管理后台|运营后台|内部工具|审批|工单|控制台/i.test(prompt)) {
+    return "opsdesk"
+  }
+  return undefined
+}
+
+function buildGenerationAcceptance(args: {
+  prompt: string
+  planner: PlannerSpec
+  plannedSpec: AppSpec
+  workflowMode: GenerateWorkflowMode
+  buildResult: WorkspaceBuildResult
+  context?: GenerateRequestContext
+  contextSummary?: string
+  fallbackReason?: string
+  changedFiles: string[]
+}): GenerateAcceptanceReport {
+  const {
+    prompt,
+    planner,
+    plannedSpec,
+    workflowMode,
+    buildResult,
+    context,
+    contextSummary,
+    fallbackReason,
+    changedFiles,
+  } = args
+  const archetype = resolveGenerateArchetype(prompt, planner.productType, context)
+  const requiredPages = getRequiredPlannerPages(planner.productType)
+  const availablePages = new Set(planner.pages.map((page) => sanitizeUiText(page).toLowerCase()))
+  const criticalMissingPieces = requiredPages
+    .filter((page) => !availablePages.has(page))
+    .map((page) => `Missing ${page} route`)
+
+  if (workflowMode === "edit_context" && !changedFiles.length) {
+    criticalMissingPieces.push("Context-anchored request produced no applicable file changes")
+  }
+  if (planner.productType === "ai_code_platform" && !plannedSpec.modules.some((item) => item.startsWith("ai:"))) {
+    criticalMissingPieces.push("AI tool rail was not registered in the generated modules")
+  }
+  if (buildResult.status === "failed") {
+    criticalMissingPieces.push("Build validation failed")
+  }
+  if (plannedSpec.modules.length < 4) {
+    criticalMissingPieces.push("App scaffold is still too shallow")
+  }
+  if (!plannedSpec.features?.length) {
+    criticalMissingPieces.push("Core feature policy was not inferred")
+  }
+
+  const previewReadiness =
+    workflowMode === "discuss"
+      ? "planning_only"
+      : buildResult.status === "ok"
+        ? "ready"
+        : buildResult.status === "failed"
+          ? "blocked"
+          : "limited"
+
+  const quality =
+    workflowMode !== "discuss" &&
+    buildResult.status === "ok" &&
+    criticalMissingPieces.length === 0 &&
+    planner.pages.length >= requiredPages.length &&
+    plannedSpec.modules.length >= 4
+      ? "app_grade"
+      : "demo_grade"
+
+  return {
+    workflowMode,
+    archetype,
+    quality,
+    buildStatus: buildResult.status,
+    previewReadiness,
+    routeCount: planner.pages.length,
+    moduleCount: plannedSpec.modules.length,
+    contextAnchored: hasMeaningfulGenerateContext(context),
+    contextSummary,
+    fallbackReason,
+    criticalMissingPieces,
+  }
 }
 
 function extractJsonObject(raw: string) {
@@ -255,25 +986,33 @@ function uniqueLowerStrings(input: string[], fallback: string[]) {
   return values.length ? values : fallback
 }
 
-function inferPlannerProductType(prompt: string): PlannerProductType {
-  const kind = inferAppKind(prompt)
-  if (kind === "code_platform") return "ai_code_platform"
-  if (kind === "crm") return "crm_workspace"
-  if (/api|analytics|monitoring|dashboard|接口|分析平台|监控|趋势/i.test(prompt)) return "api_platform"
-  if (kind === "community") return "community_hub"
-  if (kind === "blog" || /website|landing|homepage|download|官网|下载站|落地页|文档/i.test(prompt)) return "content_site"
-  return "task_workspace"
+function mergePlannerPages(productType: PlannerProductType, parsedPages: string[] | undefined, fallbackPages: string[]) {
+  const merged = uniqueLowerStrings(parsedPages ?? [], fallbackPages)
+  const required = getRequiredPlannerPages(productType)
+  for (const page of required) {
+    if (!merged.includes(page)) merged.push(page)
+  }
+  return merged
+}
+
+function inferPlannerProductType(prompt: string, context?: GenerateRequestContext): PlannerProductType {
+  return resolvePlannerProductType(prompt, context)
 }
 
 function fallbackPlannerSpec(
   prompt: string,
   region: Region,
   deploymentTarget: DeploymentTarget,
-  databaseTarget: DatabaseTarget
+  databaseTarget: DatabaseTarget,
+  context?: GenerateRequestContext,
+  productTypeOverride?: PlannerProductType
 ): PlannerSpec {
-  const productType = inferPlannerProductType(prompt)
+  const productType = productTypeOverride ?? inferPlannerProductType(prompt, context)
   const targetLocale = region === "cn" ? "zh-CN" : "en-US"
-  const productName = deriveProjectHeadline(prompt) || (region === "cn" ? "Mornstack 应用" : "Mornstack App")
+  const productName =
+    context?.sharedSession?.projectName ||
+    deriveProjectHeadline(prompt) ||
+    (region === "cn" ? "Mornstack 应用" : "Mornstack App")
   const cnDefaults: [string, string] = ["cloudbase", "cloud_docs"]
   const globalDefaults: [string, string] = ["vercel", "supabase"]
 
@@ -287,7 +1026,7 @@ function fallbackPlannerSpec(
         tone: "production-ready",
         market: region === "cn" ? "china" : "global",
       },
-      pages: ["dashboard", "editor", "runs", "templates", "pricing"],
+      pages: ["dashboard", "editor", "runs", "templates", "pricing", "settings"],
       layout: {
         editor: ["activity_bar", "file_tree", "tab_editor", "terminal_panel", "ai_assistant_panel"],
       },
@@ -304,21 +1043,18 @@ function fallbackPlannerSpec(
       preferredScaffold: "ai_code_platform_scaffold",
       summary:
         region === "cn"
-          ? `规划为 AI 代码编辑平台，输出 dashboard、editor、runs、templates、pricing 五页骨架，并默认接入 ${deploymentTarget} + ${databaseTarget}。`
-          : `Planned as an AI coding platform with dashboard, editor, runs, templates, and pricing routes on ${deploymentTarget} + ${databaseTarget}.`,
+          ? `规划为 AI 代码编辑平台，输出 dashboard、editor、runs、templates、pricing、settings 六页骨架，并默认接入 ${deploymentTarget} + ${databaseTarget}。`
+          : `Planned as an AI coding platform with dashboard, editor, runs, templates, pricing, and settings routes on ${deploymentTarget} + ${databaseTarget}.`,
     }
   }
 
-  const fallbackPages =
-    productType === "crm_workspace"
-      ? ["dashboard", "leads", "tasks", "pricing"]
-      : productType === "api_platform"
-        ? ["dashboard", "runs", "docs", "pricing"]
-        : productType === "community_hub"
-          ? ["home", "events", "feedback", "pricing"]
-          : productType === "content_site"
-            ? ["home", "downloads", "docs", "pricing"]
-            : ["home", "dashboard", "tasks", "pricing"]
+  const fallbackPages = getDefaultPlannerPages(productType)
+  const aiTools =
+    productType === "crm_workspace" || productType === "api_platform" || productType === "task_workspace"
+      ? ["generate", "fix", "refactor"]
+      : productType === "community_hub" || productType === "content_site"
+        ? ["generate", "refactor"]
+        : ["generate"]
 
   return {
     productName,
@@ -331,15 +1067,27 @@ function fallbackPlannerSpec(
     },
     pages: fallbackPages,
     layout: {},
-    aiTools: ["generate"],
+    aiTools,
     templates: [],
     plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
     deploymentDefaults: { cn: cnDefaults, global: globalDefaults },
     preferredScaffold: `${productType}_scaffold`,
     summary:
       region === "cn"
-        ? `已规划为 ${productType}，优先输出可运行的多页面产品骨架。`
-        : `Planned as ${productType} with a runnable multi-page scaffold.`,
+        ? productType === "content_site"
+          ? `已规划为官网/下载/文档联动产品，优先输出 dashboard、website、downloads、docs、admin 五个核心入口。`
+          : productType === "community_hub"
+            ? `已规划为社区产品骨架，优先输出 dashboard、events、feedback、members、settings 五个核心入口。`
+            : productType === "task_workspace"
+              ? `已规划为后台/内部工具骨架，优先输出 dashboard、tasks、settings、analytics 四个核心入口。`
+              : `已规划为 ${productType}，优先输出可运行的多页面产品骨架。`
+        : productType === "content_site"
+          ? "Planned as a website + downloads + docs product with dashboard, website, downloads, docs, and admin routes."
+          : productType === "community_hub"
+            ? "Planned as a community product with dashboard, events, feedback, members, and settings routes."
+            : productType === "task_workspace"
+              ? "Planned as an admin/internal tool with dashboard, tasks, settings, and analytics routes."
+              : `Planned as ${productType} with a runnable multi-page scaffold.`,
   }
 }
 
@@ -348,9 +1096,10 @@ function normalizePlannerSpec(
   prompt: string,
   region: Region,
   deploymentTarget: DeploymentTarget,
-  databaseTarget: DatabaseTarget
+  databaseTarget: DatabaseTarget,
+  context?: GenerateRequestContext
 ) {
-  const fallback = fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+  const fallback = fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context)
   const rawProductType = sanitizeUiText(String(parsed?.productType ?? ""))
     .toLowerCase()
     .replace(/-/g, "_")
@@ -374,7 +1123,7 @@ function normalizePlannerSpec(
       tone: sanitizeUiText(parsed?.style?.tone || "") || fallback.style.tone,
       market: parsed?.style?.market === "global" ? "global" : fallback.style.market,
     },
-    pages: uniqueLowerStrings(parsed?.pages ?? [], fallback.pages),
+    pages: mergePlannerPages(productType, parsed?.pages, fallback.pages),
     layout: {
       editor: uniqueLowerStrings(parsed?.layout?.editor ?? [], fallback.layout.editor ?? []),
     },
@@ -414,20 +1163,28 @@ async function callPlannerModel(args: {
   planTier: PlanTier
   deploymentTarget: DeploymentTarget
   databaseTarget: DatabaseTarget
+  context?: GenerateRequestContext
 }): Promise<PlannerSpec> {
-  const { prompt, region, planTier, deploymentTarget, databaseTarget } = args
-  if (inferPlannerProductType(prompt) === "ai_code_platform") {
-    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+  const { prompt, region, planTier, deploymentTarget, databaseTarget, context } = args
+  const inferredProductType = inferPlannerProductType(prompt, context)
+  const promptOnlyProductType = inferPromptOnlyPlannerProductType(prompt)
+  if (promptOnlyProductType !== "task_workspace") {
+    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context, promptOnlyProductType)
   }
+  if (inferredProductType !== "task_workspace") {
+    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context, inferredProductType)
+  }
+  const contextBlock = serializeGenerateContextForPrompt(context)
   const config = resolveAiConfig({ mode: "planner" })
   const system = [
     "You are the planning layer for a Next.js application generator.",
     "Return strict JSON only.",
     "Do not write UI copy from the raw prompt. Convert the prompt into structured product intent.",
     "Prefer product language and reusable structure over literal prompt echoing.",
-    "For AI code platform or Cursor-like prompts, always include dashboard, editor, runs, templates, and pricing.",
+    "For AI code platform or Cursor-like prompts, always include dashboard, editor, runs, templates, pricing, and settings.",
     "For code-platform products, the editor layout must include activity_bar, file_tree, tab_editor, terminal_panel, and ai_assistant_panel.",
     "For code-platform products, AI tools must include explain, fix, generate, and refactor.",
+    "If workspace context is provided, keep the product family and active surface aligned with that context instead of reinterpreting the request from scratch.",
   ].join("\n")
 
   const user = [
@@ -436,6 +1193,7 @@ async function callPlannerModel(args: {
     `Plan tier: ${planTier}`,
     `Deployment target: ${deploymentTarget}`,
     `Database target: ${databaseTarget}`,
+    contextBlock ? `Workspace generation context:\n${contextBlock}` : "",
     'Return JSON with this schema: {"productName":"","productType":"","targetLocale":"zh-CN|en-US","style":{"theme":"dark|light","tone":"","market":"china|global"},"pages":[],"layout":{"editor":[]},"aiTools":[],"templates":[],"plans":[],"deploymentDefaults":{"cn":["cloudbase","cloud_docs"],"global":["vercel","supabase"]},"preferredScaffold":"","summary":""}',
   ].join("\n\n")
 
@@ -450,12 +1208,12 @@ async function callPlannerModel(args: {
       mode: "planner",
     })
     if (!content) {
-      return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+      return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context)
     }
     const parsed = JSON.parse(sanitizeJsonText(extractJsonObject(content))) as Partial<PlannerSpec>
-    return normalizePlannerSpec(parsed, prompt, region, deploymentTarget, databaseTarget)
+    return normalizePlannerSpec(parsed, prompt, region, deploymentTarget, databaseTarget, context)
   } catch {
-    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget)
+    return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context)
   }
 }
 
@@ -474,33 +1232,75 @@ function createPlannedAppSpec(args: {
   planner: PlannerSpec
   deploymentTarget: DeploymentTarget
   databaseTarget: DatabaseTarget
+  context?: GenerateRequestContext
 }): AppSpec {
-  const { prompt, region, planTier, planner, deploymentTarget, databaseTarget } = args
+  const { prompt, region, planTier, planner, deploymentTarget, databaseTarget, context } = args
   const kind = plannerProductTypeToAppKind(planner.productType)
+  const templateId =
+    kind === "code_platform"
+      ? ""
+      : getDefaultTemplateIdForPlannerProductType(planner.productType, prompt, context)
   const modules = [
     ...planner.pages.map((page) => `${page} page`),
     ...planner.aiTools.map((tool) => `ai:${tool}`),
     ...planner.templates,
+    ...(planner.productType === "crm_workspace"
+      ? region === "cn"
+        ? ["销售阶段推进", "客户交付衔接", "负责人节奏", "自动化提醒"]
+        : ["Sales stage flow", "Customer handoff", "Owner cadence", "Automation reminders"]
+      : planner.productType === "api_platform"
+        ? region === "cn"
+          ? ["接口目录", "运行日志", "鉴权策略", "环境发布"]
+          : ["Endpoint catalog", "Runtime logs", "Auth policy", "Environment promotion"]
+        : planner.productType === "community_hub"
+          ? region === "cn"
+            ? ["活动运营", "反馈回路", "成员分层", "社区设置"]
+            : ["Event ops", "Feedback loop", "Member segments", "Community settings"]
+          : planner.productType === "content_site"
+            ? region === "cn"
+              ? ["官网叙事", "下载分发", "文档中心", "后台联动"]
+              : ["Website narrative", "Download distribution", "Docs center", "Admin linkage"]
+            : region === "cn"
+              ? ["审批流", "任务队列", "访问控制", "分析视图"]
+              : ["Approval flow", "Task queue", "Access control", "Analytics view"]),
   ]
-  const features: SpecFeature[] =
-    kind === "code_platform"
-      ? ([
-          "description_field",
-          "assignee_filter",
-          "about_page",
-          ...(planTier === "pro" || planTier === "elite" ? ["analytics_page", "blocked_status"] : []),
-        ] as SpecFeature[])
-      : (["description_field", "assignee_filter"] as SpecFeature[])
+  const features = new Set<SpecFeature>(["description_field", "assignee_filter"])
+  if (kind === "code_platform" || planner.productType === "content_site" || planner.productType === "community_hub") {
+    features.add("about_page")
+  }
+  if (
+    kind === "code_platform" ||
+    planner.productType === "crm_workspace" ||
+    planner.productType === "api_platform" ||
+    planner.productType === "task_workspace" ||
+    planTier === "pro" ||
+    planTier === "elite"
+  ) {
+    features.add("analytics_page")
+  }
+  if (
+    planner.productType === "crm_workspace" ||
+    planner.productType === "task_workspace" ||
+    kind === "code_platform" ||
+    planTier === "builder" ||
+    planTier === "pro" ||
+    planTier === "elite"
+  ) {
+    features.add("blocked_status")
+  }
+  if (planTier === "builder" || planTier === "pro" || planTier === "elite") {
+    features.add("csv_export")
+  }
 
   return createAppSpec(prompt, region, {
     title: planner.productName,
     kind,
     planTier,
-    templateId: kind === "code_platform" ? "" : inferTemplateIdFromPrompt(prompt),
+    templateId,
     deploymentTarget,
     databaseTarget,
     modules,
-    features,
+    features: Array.from(features),
   })
 }
 
@@ -510,11 +1310,14 @@ async function callGeneratorModel(
   region: Region,
   projectId: string,
   planTier: PlanTier,
+  context?: GenerateRequestContext,
   deploymentTarget?: DeploymentTarget,
   databaseTarget?: DatabaseTarget
 ): Promise<GeneratorModelOutput> {
   const config = resolveAiConfig({ mode: "builder" })
-  const brief = buildGenerationBrief(prompt, region, planTier)
+  const brief = buildGenerationBrief(prompt, region, planTier, context)
+  const contextBlock = serializeGenerateContextForPrompt(context)
+  const contextSummary = buildGenerateContextSummary(context, region)
   const deployment = getDeploymentOption(deploymentTarget ?? getDefaultDeploymentTarget(region))
   const database = getDatabaseOption(databaseTarget ?? getDefaultDatabaseTarget(region))
 
@@ -553,6 +1356,8 @@ async function callGeneratorModel(
     "- Avoid fragile code patterns that often break preview startup: missing default exports, invalid hooks usage, browser-only APIs during server render, or references to undefined config.",
     "- Keep admin and market as separate standalone surfaces rather than embedding them into the end-user workspace navigation.",
     "- Prefer modifying these files: app/page.tsx, app/layout.tsx, app/api/items/route.ts, prisma/schema.prisma, README.md.",
+    "- If workspace context is provided, treat that page/module/surface as the primary anchor for naming, information hierarchy, and follow-on capability.",
+    "- Keep the generated result inside the same product family suggested by the workspace context and plan constraints.",
     "- Never return markdown, only JSON.",
   ].join("\n")
 
@@ -565,6 +1370,8 @@ async function callGeneratorModel(
     `Raw user prompt: ${prompt}`,
     `Planner spec: ${JSON.stringify(planner)}`,
     `Generation brief: ${JSON.stringify(brief)}`,
+    contextSummary ? `Workspace anchor: ${contextSummary}` : "",
+    contextBlock ? `Workspace generation context:\n${contextBlock}` : "",
     getPlanGenerationDirective(planTier, region),
     region === "cn"
       ? "如果需求是中国团队使用的产品，请优先使用中文工作流、项目交付语义、客户转化或团队协作语境。"
@@ -634,6 +1441,20 @@ async function pathExists(filePath: string) {
   }
 }
 
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function compactBuildLogs(lines: string[], maxChars = 12_000) {
   const joined = lines.join("").trim()
   if (!joined) return [] as string[]
@@ -676,6 +1497,7 @@ async function ensureWorkspaceValidationModules(workspacePath: string) {
 async function validateGeneratedWorkspace(workspacePath: string): Promise<WorkspaceBuildResult> {
   const packageJsonPath = path.join(workspacePath, "package.json")
   const hostNextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next")
+  const hostTscBin = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")
 
   if (!(await pathExists(packageJsonPath))) {
     return { status: "skipped", logs: ["Skipped: package.json missing in generated workspace"] }
@@ -688,6 +1510,73 @@ async function validateGeneratedWorkspace(workspacePath: string): Promise<Worksp
   const validationInstallReady = await ensureWorkspaceValidationModules(workspacePath)
   if (!validationInstallReady) {
     return { status: "skipped", logs: ["Skipped: validation install unavailable for generated workspace"] }
+  }
+
+  const runTypeScriptValidation = async () => {
+    if (!(await pathExists(hostTscBin))) {
+      return { status: "failed", logs: ["TypeScript fallback unavailable: host tsc runtime missing"] } satisfies WorkspaceBuildResult
+    }
+    return new Promise<WorkspaceBuildResult>((resolve) => {
+      const output: string[] = []
+      const child = spawn(process.execPath, [hostTscBin, "--noEmit", "--pretty", "false"], {
+        cwd: workspacePath,
+        env: {
+          ...process.env,
+          NODE_ENV: "production",
+          NEXT_TELEMETRY_DISABLED: "1",
+        },
+        windowsHide: true,
+        shell: false,
+      })
+      const timer = setTimeout(() => {
+        try {
+          child.kill()
+        } catch {
+          // noop
+        }
+        resolve({
+          status: "failed",
+          logs: compactBuildLogs([...output, "\nTypeScript fallback timed out after 120000ms."]),
+        })
+      }, 120_000)
+      child.stdout?.on("data", (data) => output.push(String(data)))
+      child.stderr?.on("data", (data) => output.push(String(data)))
+      child.on("error", (error) => {
+        clearTimeout(timer)
+        resolve({
+          status: "failed",
+          logs: compactBuildLogs([...output, `\n${error.message}`]),
+        })
+      })
+      child.on("close", (code) => {
+        clearTimeout(timer)
+        if (code === 0) {
+          resolve({
+            status: "ok",
+            logs: compactBuildLogs([
+              ...output,
+              "TypeScript fallback validation passed after Next build exited without actionable diagnostics.",
+            ]),
+          })
+          return
+        }
+        resolve({
+          status: "failed",
+          logs: compactBuildLogs(output),
+        })
+      })
+    })
+  }
+
+  const typeScriptValidation = await runTypeScriptValidation()
+  if (typeScriptValidation.status === "ok") {
+    return {
+      status: "ok",
+      logs: compactBuildLogs([
+        ...typeScriptValidation.logs,
+        "TypeScript-first workspace validation passed.",
+      ]),
+    }
   }
 
   return new Promise<WorkspaceBuildResult>((resolve) => {
@@ -726,9 +1615,45 @@ async function validateGeneratedWorkspace(workspacePath: string): Promise<Worksp
     })
     child.on("close", (code) => {
       clearTimeout(timer)
-      resolve({
-        status: code === 0 ? "ok" : "failed",
-        logs: compactBuildLogs(output),
+      if (code === 0) {
+        resolve({
+          status: "ok",
+          logs: compactBuildLogs(output),
+        })
+        return
+      }
+
+      const nextBuildLogs = compactBuildLogs(output)
+      const shouldTryTypeScriptFallback =
+        nextBuildLogs.length === 0 ||
+        nextBuildLogs.some((line) => /Next\.js build worker exited with code/i.test(line))
+
+      if (!shouldTryTypeScriptFallback) {
+        resolve({
+          status: "failed",
+          logs: nextBuildLogs,
+        })
+        return
+      }
+
+      void runTypeScriptValidation().then((fallbackResult) => {
+        if (fallbackResult.status === "ok") {
+          resolve({
+            status: "ok",
+            logs: compactBuildLogs([
+              ...nextBuildLogs,
+              ...fallbackResult.logs,
+            ]),
+          })
+          return
+        }
+        resolve({
+          status: "failed",
+          logs: compactBuildLogs([
+            ...nextBuildLogs,
+            ...fallbackResult.logs,
+          ]),
+        })
       })
     })
   })
@@ -746,6 +1671,7 @@ async function writeGeneratedProjectFiles(
     planTier?: PlanTier
     deploymentTarget?: DeploymentTarget
     databaseTarget?: DatabaseTarget
+    specOverride?: AppSpec
   }
 ) {
   const dbFile = region === "cn" ? "cn.db" : "intl.db"
@@ -903,8 +1829,8 @@ export default nextConfig;
   const current = await getCurrentSession()
   const latestCompletedPayment = current ? await getLatestCompletedPayment(current.user.id) : null
   const template = options?.templateId ? getTemplateById(options.templateId) : null
-  await writeProjectSpec(
-    outDir,
+  const specToWrite =
+    options?.specOverride ??
     createAppSpec(
       prompt,
       region,
@@ -917,6 +1843,9 @@ export default nextConfig;
         databaseTarget,
       } as Parameters<typeof createAppSpec>[2]
     )
+  await writeProjectSpec(
+    outDir,
+    specToWrite
   )
 
   await writeTextFile(
@@ -1254,8 +2183,8 @@ function deriveProjectHeadline(prompt: string) {
 
 function extractProductNameFromPrompt(prompt: string) {
   const patterns = [
-    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
-    /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
+    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|要求|并且|用于|for)\b|[,.，。]|$)["”'`]?/i,
+    /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|for|that)\b|[,.，。]|$)["”'`]?/i,
   ]
   for (const re of patterns) {
     const match = prompt.match(re)
@@ -1299,6 +2228,9 @@ function inferTemplateIdFromPrompt(prompt: string) {
   if (/crm|customer|sales|pipeline|lead|\u5ba2\u6237|\u9500\u552e|\u8ddf\u8fdb/.test(text)) {
     return "opsdesk"
   }
+  if (/admin|ops|internal tool|backoffice|back office|control plane|\u7ba1\u7406\u540e\u53f0|\u8fd0\u8425\u540e\u53f0|\u5185\u90e8\u5de5\u5177|\u5ba1\u6279|\u5de5\u5355|\u63a7\u5236\u53f0/.test(text)) {
+    return "opsdesk"
+  }
   if (/website|landing|homepage|download|docs|documentation|\u5b98\u7f51|\u843d\u5730\u9875|\u4e0b\u8f7d\u9875|\u6587\u6863/.test(text)) {
     return "launchpad"
   }
@@ -1311,9 +2243,9 @@ function inferTemplateIdFromPrompt(prompt: string) {
   return undefined
 }
 
-function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier) {
-  const kind = inferAppKind(prompt)
-  const templateId = inferTemplateIdFromPrompt(prompt)
+function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier, context?: GenerateRequestContext) {
+  const kind = resolveContextAppKind(prompt, context)
+  const templateId = resolveTemplateId(prompt, context)
   const isCn = region === "cn"
 
   const productArchetype =
@@ -1529,9 +2461,32 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
   return false
 }
 
-async function applyPromptDrivenFallback(outDir: string, prompt: string, region: Region) {
+async function applyPromptDrivenFallback(
+  outDir: string,
+  prompt: string,
+  region: Region,
+  options?: {
+    plannedSpec?: AppSpec
+  }
+) {
   const previousSpec = await readProjectSpec(outDir)
-  const spec = createAppSpec(prompt, region, previousSpec ?? undefined)
+  const spec =
+    options?.plannedSpec
+      ? createAppSpec(prompt, region, {
+          ...options.plannedSpec,
+          title: options.plannedSpec.title || previousSpec?.title,
+          planTier: (options.plannedSpec.planTier as PlanTier | undefined) ?? (previousSpec?.planTier as PlanTier | undefined) ?? "free",
+          deploymentTarget:
+            (options.plannedSpec.deploymentTarget as DeploymentTarget | undefined) ??
+            (previousSpec?.deploymentTarget as DeploymentTarget | undefined) ??
+            getDefaultDeploymentTarget(region),
+          databaseTarget:
+            (options.plannedSpec.databaseTarget as DatabaseTarget | undefined) ??
+            (previousSpec?.databaseTarget as DatabaseTarget | undefined) ??
+            getDefaultDatabaseTarget(region),
+        })
+      : createAppSpec(prompt, region, previousSpec ?? undefined)
+  await writeProjectSpec(outDir, spec)
   const files = await buildSpecDrivenWorkspaceFiles(outDir, spec)
   const changed = new Set<string>()
 
@@ -1556,10 +2511,116 @@ async function applyPromptDrivenFallback(outDir: string, prompt: string, region:
 async function stabilizeGeneratedWorkspace(
   outDir: string,
   prompt: string,
-  region: Region
+  region: Region,
+  options?: {
+    plannedSpec?: AppSpec
+  }
 ) {
-  const stabilized = await applyPromptDrivenFallback(outDir, prompt, region)
+  const stabilized = await applyPromptDrivenFallback(outDir, prompt, region, options)
   return stabilized
+}
+
+async function forceFinishStalledBuilderTask(task: GenerateTaskRecord) {
+  const runningForMs = Date.now() - Date.parse(task.updatedAt)
+  const hitBuilderPhase = (task.logs ?? []).some((line) => line.includes("[4/6] 正在调用 AI Builder"))
+  if (task.status !== "running" || !hitBuilderPhase || runningForMs < BUILDER_STALL_MS) {
+    return null
+  }
+
+  const rawPrompt = task.rawPrompt || task.prompt
+  const region = task.region
+  const workflowMode = normalizeGenerateWorkflowMode(task.workflowMode, task.requestContext)
+  const outDir = getWorkspacePath(task.projectId)
+  await ensureDir(outDir)
+
+  const previousSpec = await readProjectSpec(outDir)
+  const planner =
+    plannerSnapshotToPlannerSpec(task.planner, region) ??
+    fallbackPlannerSpec(
+      rawPrompt,
+      region,
+      previousSpec?.deploymentTarget ?? getDefaultDeploymentTarget(region),
+      previousSpec?.databaseTarget ?? getDefaultDatabaseTarget(region),
+      task.requestContext
+    )
+  const plannedSpec = previousSpec
+    ? createAppSpec(rawPrompt, region, {
+        ...previousSpec,
+        planTier: (previousSpec.planTier as PlanTier | undefined) ?? task.planTier ?? "free",
+        deploymentTarget: (previousSpec.deploymentTarget as DeploymentTarget | undefined) ?? getDefaultDeploymentTarget(region),
+        databaseTarget: (previousSpec.databaseTarget as DatabaseTarget | undefined) ?? getDefaultDatabaseTarget(region),
+      })
+    : createPlannedAppSpec({
+        prompt: rawPrompt,
+        region,
+        planTier: task.planTier ?? "free",
+        planner,
+        deploymentTarget: getDefaultDeploymentTarget(region),
+        databaseTarget: getDefaultDatabaseTarget(region),
+        context: task.requestContext,
+      })
+  const stabilized = await stabilizeGeneratedWorkspace(outDir, task.prompt, region, {
+    plannedSpec,
+  })
+  const fallbackReason =
+    region === "cn"
+      ? "轮询检测到 AI Builder 长时间卡住，系统已自动切到稳定 fallback 完成态。"
+      : "Polling detected that AI Builder was stalled for too long, so the task was auto-finished with the stable fallback."
+  const buildResult: WorkspaceBuildResult = {
+    status: "skipped",
+    logs: [fallbackReason],
+  }
+  const acceptance = buildGenerationAcceptance({
+    prompt: rawPrompt,
+    planner,
+    plannedSpec,
+    workflowMode,
+    buildResult,
+    context: task.requestContext,
+    contextSummary: task.contextSummary,
+    fallbackReason,
+    changedFiles: Array.from(new Set([...(task.changedFiles ?? []), ...stabilized])),
+  })
+  const summary =
+    region === "cn"
+      ? `已保留 ${planner.productName} 的稳定 scaffold，并在检测到 AI Builder 卡住后自动切换到可继续迭代的 fallback 完成态。`
+      : `Kept the stable scaffold for ${planner.productName} and auto-finished the task with a reusable fallback after the AI Builder stall was detected.`
+
+  await appendProjectHistory(task.projectId, {
+    id: `evt_${Date.now()}`,
+    type: "generate",
+    prompt: rawPrompt,
+    createdAt: new Date().toISOString(),
+    status: "done",
+    summary,
+    buildStatus: buildResult.status,
+    buildLogs: buildResult.logs,
+    changedFiles: Array.from(new Set([...(task.changedFiles ?? []), ...stabilized])),
+  })
+  await updateGenerateTask(task.jobId, (current) => ({
+    ...current,
+    status: "done",
+    summary,
+    changedFiles: Array.from(new Set([...(current.changedFiles ?? []), ...stabilized])),
+    buildStatus: buildResult.status,
+    buildLogs: buildResult.logs,
+    workflowMode,
+    planner:
+      current.planner ??
+      buildPlannerSnapshot({
+        planner,
+        plannedSpec,
+        workflowMode,
+        archetype: resolveGenerateArchetype(rawPrompt, planner.productType, task.requestContext),
+        deploymentTarget: plannedSpec.deploymentTarget,
+        databaseTarget: plannedSpec.databaseTarget,
+      }),
+    acceptance,
+    logs: [...(current.logs ?? []), `[WARN] ${fallbackReason}`],
+    error: undefined,
+  }))
+
+  return getGenerateTask(task.jobId)
 }
 
 async function runGenerateTaskWorker(jobId: string) {
@@ -1577,12 +2638,23 @@ async function runGenerateTaskWorker(jobId: string) {
   const deploymentTarget = projectRecord?.deploymentTarget ?? getDefaultDeploymentTarget(current.region)
   const databaseTarget = projectRecord?.databaseTarget ?? getDefaultDatabaseTarget(current.region)
   const currentTemplate = current.templateId ? getTemplateById(current.templateId) : null
+  const requestContext = current.requestContext
+  const workflowMode = normalizeGenerateWorkflowMode(current.workflowMode, requestContext)
   const logs: string[] = []
   let summary = "Initial project generated"
   let changedFiles: string[] = []
+  let fallbackReason = ""
+  let plannerSnapshot: GeneratePlanSnapshot | undefined
+  let acceptance: GenerateAcceptanceReport | undefined
+  let builderWatchdog: NodeJS.Timeout | undefined
   let buildResult: WorkspaceBuildResult = {
     status: "skipped",
     logs: ["Build validation was not attempted yet."],
+  }
+
+  const clearBuilderWatchdog = () => {
+    if (builderWatchdog) clearTimeout(builderWatchdog)
+    builderWatchdog = undefined
   }
 
   await updateGenerateTask(jobId, (t) => ({ ...t, status: "running", error: undefined }))
@@ -1590,32 +2662,29 @@ async function runGenerateTaskWorker(jobId: string) {
   if (current.templateTitle) {
     await appendGenerateTaskLog(jobId, `[1.5/6] 已加载模板基线：${current.templateTitle}`)
   }
+  if (current.contextSummary) {
+    await appendGenerateTaskLog(jobId, `[1.6/6] 已锁定生成锚点：${current.contextSummary}`)
+  }
 
   try {
     await ensureDir(outDir)
     await appendGenerateTaskLog(jobId, "[2/6] 正在规划产品蓝图")
-    const planner = await callPlannerModel({
-      prompt: rawPrompt,
-      region: current.region,
-      planTier: current.planTier ?? "free",
-      deploymentTarget,
-      databaseTarget,
-    })
+    const planner = await withTimeout(
+      callPlannerModel({
+        prompt: rawPrompt,
+        region: current.region,
+        planTier: current.planTier ?? "free",
+        deploymentTarget,
+        databaseTarget,
+        context: requestContext,
+      }),
+      45_000,
+      "Planner"
+    )
     await appendGenerateTaskLog(
       jobId,
       `[2.5/6] 规划完成：${planner.productName} · ${planner.productType} · scaffold=${planner.preferredScaffold}`
     )
-
-    await writeGeneratedProjectFiles(outDir, current.projectId, current.region, rawPrompt, {
-      titleOverride: planner.productName,
-      templateId: current.templateId,
-      templateStyle: currentTemplate?.previewStyle,
-      planTier: current.planTier,
-      deploymentTarget,
-      databaseTarget,
-    })
-    logs.push("[OK] Base scaffold generated")
-    await appendGenerateTaskLog(jobId, "[3/6] 基础脚手架已生成")
 
     const plannedSpec = createPlannedAppSpec({
       prompt: rawPrompt,
@@ -1624,43 +2693,231 @@ async function runGenerateTaskWorker(jobId: string) {
       planner,
       deploymentTarget,
       databaseTarget,
+      context: requestContext,
     })
+    plannerSnapshot = buildPlannerSnapshot({
+      planner,
+      plannedSpec,
+      workflowMode,
+      archetype: resolveGenerateArchetype(rawPrompt, planner.productType, requestContext),
+      deploymentTarget,
+      databaseTarget,
+    })
+    await updateGenerateTask(jobId, (t) => ({
+      ...t,
+      workflowMode,
+      planner: plannerSnapshot,
+    }))
+    const scheduleBuilderWatchdog = () => {
+      clearBuilderWatchdog()
+      builderWatchdog = setTimeout(() => {
+        void (async () => {
+          const live = await getGenerateTask(jobId)
+          if (!live || live.status !== "running") return
+
+          const watchdogReason =
+            current.region === "cn"
+              ? "AI Builder 长时间未完成，系统已保留稳定 scaffold 并强制结束任务。"
+              : "AI Builder did not finish in time, so the worker kept the stable scaffold and force-finished the task."
+          const watchdogBuild: WorkspaceBuildResult = {
+            status: "skipped",
+            logs: [watchdogReason],
+          }
+          const watchdogSummary =
+            current.region === "cn"
+              ? `已保留 ${planner.productName} 的稳定 scaffold，并因 AI Builder 超时切换到可继续迭代的 fallback 完成态。`
+              : `Kept the stable scaffold for ${planner.productName} and force-finished the task with a reusable fallback after the AI Builder timeout.`
+          const watchdogAcceptance = buildGenerationAcceptance({
+            prompt: rawPrompt,
+            planner,
+            plannedSpec,
+            workflowMode,
+            buildResult: watchdogBuild,
+            context: requestContext,
+            contextSummary: current.contextSummary,
+            fallbackReason: watchdogReason,
+            changedFiles,
+          })
+
+          await appendProjectHistory(current.projectId, {
+            id: `evt_${Date.now()}`,
+            type: "generate",
+            prompt: current.rawPrompt || current.prompt,
+            createdAt: new Date().toISOString(),
+            status: "done",
+            summary: watchdogSummary,
+            buildStatus: watchdogBuild.status,
+            buildLogs: watchdogBuild.logs,
+            changedFiles,
+          })
+          await updateGenerateTask(jobId, (t) => ({
+            ...t,
+            status: "done",
+            summary: watchdogSummary,
+            changedFiles,
+            buildStatus: watchdogBuild.status,
+            buildLogs: watchdogBuild.logs,
+            workflowMode,
+            planner: plannerSnapshot,
+            acceptance: watchdogAcceptance,
+            logs: [...(t.logs ?? []), `[WARN] ${watchdogReason}`],
+            error: undefined,
+          }))
+        })()
+      }, BUILDER_WATCHDOG_MS)
+    }
     await writeProjectSpec(outDir, plannedSpec)
     await updateProject(current.projectId, (record) => ({
       ...record,
       projectSlug: slugifyProjectName(planner.productName) || record.projectSlug || record.projectId,
       updatedAt: new Date().toISOString(),
     }))
+
+    if (workflowMode === "discuss") {
+      clearBuilderWatchdog()
+      summary =
+        current.region === "cn"
+          ? `已输出 ${planner.productName} 的 plan/spec，当前保留讨论模式，不直接写入工作区代码。`
+          : `Prepared the plan/spec for ${planner.productName} in discuss mode without writing workspace code.`
+      fallbackReason =
+        current.region === "cn"
+          ? "Discuss 模式只产出 plan/spec，不进入 scaffold、AI Builder 或 build 验收。"
+          : "Discuss mode stops at plan/spec and skips scaffold, AI Builder, and build validation."
+      buildResult = {
+        status: "skipped",
+        logs: [fallbackReason],
+      }
+      acceptance = buildGenerationAcceptance({
+        prompt: rawPrompt,
+        planner,
+        plannedSpec,
+        workflowMode,
+        buildResult,
+        context: requestContext,
+        contextSummary: current.contextSummary,
+        fallbackReason,
+        changedFiles,
+      })
+      logs.push("[OK] Discussion plan generated")
+      await appendGenerateTaskLog(jobId, "[3/6] Discuss 模式：已生成 plan/spec，跳过代码写入")
+      await appendGenerateTaskLog(jobId, "[4/6] Discuss 模式：不调用 AI Builder")
+      await appendGenerateTaskLog(jobId, "[5.5/6] Discuss 模式：不执行 build 验收")
+      await appendProjectHistory(current.projectId, {
+        id: `evt_${Date.now()}`,
+        type: "generate",
+        prompt: current.rawPrompt || current.prompt,
+        createdAt: new Date().toISOString(),
+        status: "done",
+        summary,
+        buildStatus: buildResult.status,
+        buildLogs: buildResult.logs,
+        changedFiles,
+      })
+      await updateGenerateTask(jobId, (t) => ({
+        ...t,
+        status: "done",
+        logs: [...(t.logs ?? []), ...logs],
+        summary,
+        changedFiles,
+        buildStatus: buildResult.status,
+        buildLogs: buildResult.logs,
+        workflowMode,
+        planner: plannerSnapshot,
+        acceptance,
+        error: undefined,
+      }))
+      await appendGenerateTaskLog(jobId, "[6/6] 生成完成")
+      return
+    }
+
+    await writeGeneratedProjectFiles(outDir, current.projectId, current.region, rawPrompt, {
+      titleOverride: planner.productName,
+      templateId: current.templateId,
+      templateStyle: currentTemplate?.previewStyle,
+      planTier: current.planTier,
+      deploymentTarget,
+      databaseTarget,
+      specOverride: plannedSpec,
+    })
+    logs.push("[OK] Base scaffold generated")
+    await appendGenerateTaskLog(jobId, "[3/6] 基础脚手架已生成")
     const scaffoldFiles = await buildSpecDrivenWorkspaceFiles(outDir, plannedSpec)
     const scaffoldChanged = await applyGeneratedFiles(
       outDir,
       scaffoldFiles.map((file) => ({ path: file.path, content: file.content }))
     )
     changedFiles = Array.from(new Set([...changedFiles, ...scaffoldChanged]))
+    await updateGenerateTask(jobId, (t) => ({
+      ...t,
+      changedFiles,
+      workflowMode,
+      planner: plannerSnapshot ?? t.planner,
+    }))
     await appendGenerateTaskLog(jobId, `[3.5/6] 已按规划落地 ${scaffoldChanged.length} 个 scaffold 文件`)
 
-    if (plannedSpec.kind === "code_platform") {
-      summary =
+    const shouldSkipAiBuilder = shouldUseDeterministicGeneratePath({
+      plannerProductType: planner.productType,
+      workflowMode,
+      context: requestContext,
+    })
+
+    if (shouldSkipAiBuilder) {
+      clearBuilderWatchdog()
+      fallbackReason =
         current.region === "cn"
-          ? `已生成 ${planner.productName} 的 AI 代码平台骨架，包含 dashboard、editor、runs、templates、pricing 五页与可演示工作台。`
-          : `Generated the ${planner.productName} AI code platform scaffold with dashboard, editor, runs, templates, and pricing.`
-      await appendGenerateTaskLog(jobId, "[4/6] 命中 ai_code_platform_scaffold，跳过自由生成并保留稳定骨架")
+          ? "当前走稳定生成路径：先交付完整可运行骨架，再把后续定制交给 iterate/上下文改写。"
+          : "Using the deterministic generation path: ship the runnable app scaffold first, then push deeper customization into iterate/context edits."
+      summary =
+        planner.productType === "ai_code_platform"
+          ? current.region === "cn"
+            ? `已生成 ${planner.productName} 的 AI 代码平台骨架，包含 dashboard、editor、runs、templates、pricing、settings 六页与可演示工作台。`
+            : `Generated the ${planner.productName} AI code platform scaffold with dashboard, editor, runs, templates, pricing, and settings.`
+          : planner.productType === "crm_workspace"
+            ? current.region === "cn"
+              ? `已生成 ${planner.productName} 的 CRM 工作台骨架，包含 dashboard、leads、pipeline、customers、automations 五页。`
+              : `Generated the ${planner.productName} CRM workspace scaffold with dashboard, leads, pipeline, customers, and automations.`
+            : planner.productType === "api_platform"
+              ? current.region === "cn"
+                ? `已生成 ${planner.productName} 的 API 平台骨架，包含 dashboard、endpoints、logs、auth、environments 五页。`
+                : `Generated the ${planner.productName} API platform scaffold with dashboard, endpoints, logs, auth, and environments.`
+              : planner.productType === "community_hub"
+                ? current.region === "cn"
+                  ? `已生成 ${planner.productName} 的社区工作区骨架，并保留后续继续补强的页面入口。`
+                  : `Generated the ${planner.productName} community workspace scaffold with follow-up expansion routes.`
+                : current.region === "cn"
+                  ? `已生成 ${planner.productName} 的稳定骨架，并跳过自由生成以优先保证 preview 与 build 验收。`
+                  : `Generated the ${planner.productName} stable scaffold and skipped free-form generation to prioritize preview and build acceptance.`
+      await appendGenerateTaskLog(jobId, "[4/6] 走稳定生成路径：直接交付完整 scaffold，并跳过长耗时自由生成")
+      const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
+        plannedSpec,
+      })
+      changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
+      await appendGenerateTaskLog(jobId, `[4.5/6] 已按规划稳定化 ${stabilized.length} 个工作区文件`)
     } else {
       try {
+        scheduleBuilderWatchdog()
         await appendGenerateTaskLog(jobId, "[4/6] 正在调用 AI Builder 生成业务页面和代码")
-        const modelOutput = await callGeneratorModel(
-          rawPrompt,
-          planner,
-          current.region,
+        const modelOutput = await withTimeout(
+          callGeneratorModel(
+            rawPrompt,
+            planner,
+            current.region,
           current.projectId,
           current.planTier ?? "free",
+          requestContext,
           deploymentTarget,
           databaseTarget
+        ),
+          BUILDER_TIMEOUT_MS,
+          "AI Builder"
         )
         const aiChanged = await applyGeneratedFiles(outDir, modelOutput.files)
         changedFiles = Array.from(new Set([...changedFiles, ...aiChanged]))
+        clearBuilderWatchdog()
 
-        const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
+        const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
+          plannedSpec,
+        })
         changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
 
         if (aiChanged.length > 0) {
@@ -1673,13 +2930,21 @@ async function runGenerateTaskWorker(jobId: string) {
           await appendGenerateTaskLog(jobId, "[4.5/6] 已对核心页面执行稳定化与模板锁定")
         } else {
           summary = "Structured workspace generated from the built-in product scaffold"
+          fallbackReason =
+            current.region === "cn"
+              ? "AI Builder 未返回可写入文件，已回退到本地稳定 scaffold。"
+              : "AI Builder returned no applicable files, so the worker fell back to the local stable scaffold."
           logs.push("[WARN] AI response had no applicable files; fallback applied")
           await appendGenerateTaskLog(jobId, "[4/6] AI 未返回可用文件，已切换到本地业务模板")
         }
       } catch (e: any) {
-        const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region)
+        clearBuilderWatchdog()
+        const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
+          plannedSpec,
+        })
         changedFiles = Array.from(new Set([...changedFiles, ...fallbackChanged]))
         summary = "Structured workspace generated from the built-in product scaffold"
+        fallbackReason = e?.message || String(e)
         logs.push(`[WARN] AI generation skipped: ${e?.message || String(e)}`)
         logs.push(`[OK] Fallback generation applied: ${fallbackChanged.length} files`)
         await appendGenerateTaskLog(jobId, `[4/6] AI 调用失败，已使用本地业务模板。原因：${e?.message || String(e)}`)
@@ -1703,8 +2968,26 @@ async function runGenerateTaskWorker(jobId: string) {
       await appendGenerateTaskLog(jobId, "[5.5/6] Build 验收失败，当前项目将保留并继续使用自身 fallback")
     } else {
       logs.push("[WARN] Build validation skipped")
+      if (!fallbackReason) {
+        fallbackReason =
+          current.region === "cn"
+            ? "当前环境缺少可用验证条件，build 验收被跳过。"
+            : "Build validation was skipped because the current environment does not have the required validation runtime."
+      }
       await appendGenerateTaskLog(jobId, "[5.5/6] Build 验收被跳过：当前环境缺少可用验证条件")
     }
+
+    acceptance = buildGenerationAcceptance({
+      prompt: rawPrompt,
+      planner,
+      plannedSpec,
+      workflowMode,
+      buildResult,
+      context: requestContext,
+      contextSummary: current.contextSummary,
+      fallbackReason: fallbackReason || undefined,
+      changedFiles,
+    })
 
     await appendProjectHistory(current.projectId, {
       id: `evt_${Date.now()}`,
@@ -1726,10 +3009,15 @@ async function runGenerateTaskWorker(jobId: string) {
       changedFiles,
       buildStatus: buildResult.status,
       buildLogs: buildResult.logs,
+      workflowMode,
+      planner: plannerSnapshot,
+      acceptance,
       error: undefined,
     }))
+    clearBuilderWatchdog()
     await appendGenerateTaskLog(jobId, "[6/6] 生成完成")
   } catch (e: any) {
+    clearBuilderWatchdog()
     const err = e?.message || String(e)
     await appendProjectHistory(current.projectId, {
       id: `evt_${Date.now()}`,
@@ -1761,14 +3049,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}))
     const rawPrompt = String(body?.prompt ?? "").trim()
+    const region = (body?.region === "cn" ? "cn" : "intl") as Region
     const requestedTemplateId = String(body?.templateId ?? "").trim()
-    const inferredKind = inferAppKind(rawPrompt)
-    const templateId =
-      inferredKind === "code_platform"
-        ? ""
-        : requestedTemplateId || inferTemplateIdFromPrompt(rawPrompt) || ""
-    const template = getTemplateById(templateId)
-    const templatePrompt = String(body?.templatePrompt ?? "").trim()
     const current = await getCurrentSession()
     const latestCompletedPayment = current ? await getLatestCompletedPayment(current.user.id) : null
     const maxPlanTier = (latestCompletedPayment?.planId as PlanTier | undefined) ?? "free"
@@ -1778,7 +3060,21 @@ export async function POST(req: Request) {
       getPlanRank(requestedPlanTier) <= getPlanRank(maxPlanTier)
         ? requestedPlanTier
         : maxPlanTier
-    const region = (body?.region === "cn" ? "cn" : "intl") as Region
+    const provisionalContext = resolveGenerateWorkspaceContext({
+      body,
+      prompt: rawPrompt,
+      region,
+      planTier: planTierForGeneration,
+      deploymentTarget: normalizeDeploymentTarget(String(body?.deploymentTarget ?? ""), region),
+      databaseTarget: normalizeDatabaseTarget(String(body?.databaseTarget ?? ""), region),
+    })
+    const inferredKind = resolveContextAppKind(rawPrompt, provisionalContext)
+    const templateId =
+      inferredKind === "code_platform"
+        ? ""
+        : requestedTemplateId || resolveTemplateId(rawPrompt, provisionalContext) || ""
+    const template = getTemplateById(templateId)
+    const templatePrompt = String(body?.templatePrompt ?? "").trim()
     const shouldInjectTemplateBaseline = Boolean(template && requestedTemplateId && inferredKind !== "code_platform")
     const resolvedTemplateBaseline =
       template && shouldInjectTemplateBaseline ? templatePrompt || (region === "cn" ? template.promptZh : template.promptEn) : ""
@@ -1791,6 +3087,21 @@ export async function POST(req: Request) {
 
     const deploymentTarget = normalizeDeploymentTarget(String(body?.deploymentTarget ?? ""), region)
     const databaseTarget = normalizeDatabaseTarget(String(body?.databaseTarget ?? ""), region)
+    const requestContext = resolveGenerateWorkspaceContext({
+      body,
+      prompt: rawPrompt,
+      region,
+      planTier: planTierForGeneration,
+      deploymentTarget,
+      databaseTarget,
+      templateId: template?.id,
+      templateTitle: template ? (region === "cn" ? template.titleZh : template.titleEn) : undefined,
+    })
+    const workflowMode = normalizeGenerateWorkflowMode(
+      body?.workflowMode ?? body?.generationMode ?? body?.assistantMode,
+      requestContext
+    )
+    const contextSummary = buildGenerateContextSummary(requestContext, region)
     const projectId = createProjectId()
     const createdAt = new Date().toISOString()
 
@@ -1823,6 +3134,9 @@ export async function POST(req: Request) {
       templateTitle: template ? (region === "cn" ? template.titleZh : template.titleEn) : undefined,
       planTier: planTierForGeneration,
       region,
+      requestContext,
+      contextSummary: contextSummary || undefined,
+      workflowMode,
     })
     scheduleGenerateTaskWorker(task.jobId)
 
@@ -1837,6 +3151,9 @@ export async function POST(req: Request) {
       region,
       deploymentTarget,
       databaseTarget,
+      workflowMode,
+      context: requestContext,
+      contextSummary: contextSummary || undefined,
     })
   } catch (e: any) {
     return NextResponse.json({ status: "error", error: e?.message || String(e) }, { status: 500 })
@@ -1857,9 +3174,16 @@ export async function GET(req: Request) {
     : await findLatestTaskByProject(maybeProjectId)
 
   if (task) {
-    if ((task.status === "queued" || task.status === "running") && Date.now() - Date.parse(task.updatedAt) > STALE_TASK_MS) {
-      if ((task.retries ?? 0) < 1) {
-        await updateGenerateTask(task.jobId, (t) => ({
+    let liveTask = task as GenerateTaskRecord
+    if (liveTask.status === "running") {
+      const forced = await forceFinishStalledBuilderTask(liveTask)
+      if (forced) {
+        liveTask = forced as GenerateTaskRecord
+      }
+    }
+    if ((liveTask.status === "queued" || liveTask.status === "running") && Date.now() - Date.parse(liveTask.updatedAt) > STALE_TASK_MS) {
+      if ((liveTask.retries ?? 0) < 1) {
+        await updateGenerateTask(liveTask.jobId, (t) => ({
           ...t,
           status: "queued",
           error: undefined,
@@ -1869,9 +3193,9 @@ export async function GET(req: Request) {
             "[WARN] 任务在生成中被中断，系统已自动尝试恢复一次",
           ],
         }))
-        scheduleGenerateTaskWorker(task.jobId)
+        scheduleGenerateTaskWorker(liveTask.jobId)
       } else {
-        await updateGenerateTask(task.jobId, (t) => ({
+        await updateGenerateTask(liveTask.jobId, (t) => ({
           ...t,
           status: "error",
           error: "Generate worker was interrupted twice. Please retry generation.",
@@ -1879,15 +3203,19 @@ export async function GET(req: Request) {
         }))
       }
     }
-    const latest = (await getGenerateTask(task.jobId)) as GenerateTaskRecord | null
-    const currentTask = (latest ?? task) as GenerateTaskRecord
-    const outDir = await resolveProjectPath(task.projectId)
+    const latest = (await getGenerateTask(liveTask.jobId)) as GenerateTaskRecord | null
+    const currentTask = (latest ?? liveTask) as GenerateTaskRecord
+    const outDir = await resolveProjectPath(currentTask.projectId)
     return NextResponse.json({
       projectId: currentTask.projectId,
       jobId: currentTask.jobId,
       status: currentTask.status,
       logs: currentTask.logs ?? [],
       summary: currentTask.summary,
+      contextSummary: currentTask.contextSummary,
+      workflowMode: currentTask.workflowMode,
+      planner: currentTask.planner,
+      acceptance: currentTask.acceptance,
       changedFiles: currentTask.changedFiles ?? [],
       buildStatus: currentTask.buildStatus,
       buildLogs: currentTask.buildLogs ?? [],
@@ -1945,6 +3273,10 @@ export async function GET(req: Request) {
           "[OK] Generated Prisma + SQLite setup",
         ],
     summary: latestGenerate?.summary,
+    contextSummary: undefined,
+    workflowMode: undefined,
+    planner: undefined,
+    acceptance: undefined,
     changedFiles: latestGenerate?.changedFiles ?? [],
     buildStatus: latestGenerate?.buildStatus,
     buildLogs: latestGenerate?.buildLogs ?? [],

@@ -1,7 +1,7 @@
 import crypto from "crypto"
 import path from "path"
 import { promises as fs } from "fs"
-import { ensureDir, getWorkspacesDir, writeTextFile } from "@/lib/project-workspace"
+import { ensureDir, getWorkspacesDir, writeAtomicTextFile, writeTextFile } from "@/lib/project-workspace"
 
 export type AuthUser = {
   id: string
@@ -25,6 +25,7 @@ type AuthStore = {
 }
 
 const AUTH_FILE = path.join(getWorkspacesDir(), "_auth.json")
+const STORE_READ_RETRY_MS = 25
 
 async function exists(filePath: string) {
   try {
@@ -33,6 +34,10 @@ async function exists(filePath: string) {
   } catch {
     return false
   }
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function createSeedUsers(): AuthUser[] {
@@ -57,6 +62,15 @@ function createSeedUsers(): AuthUser[] {
   ]
 }
 
+async function readAuthStoreOnce(): Promise<AuthStore> {
+  const raw = await fs.readFile(AUTH_FILE, "utf8")
+  const parsed = JSON.parse(raw) as AuthStore
+  return {
+    users: Array.isArray(parsed?.users) ? parsed.users : createSeedUsers(),
+    sessions: Array.isArray(parsed?.sessions) ? parsed.sessions : [],
+  }
+}
+
 async function readStore(): Promise<AuthStore> {
   await ensureDir(path.dirname(AUTH_FILE))
   if (!(await exists(AUTH_FILE))) {
@@ -67,16 +81,28 @@ async function readStore(): Promise<AuthStore> {
     await writeTextFile(AUTH_FILE, JSON.stringify(initial, null, 2))
     return initial
   }
-  const raw = await fs.readFile(AUTH_FILE, "utf8")
-  const parsed = JSON.parse(raw) as AuthStore
-  return {
-    users: Array.isArray(parsed?.users) ? parsed.users : createSeedUsers(),
-    sessions: Array.isArray(parsed?.sessions) ? parsed.sessions : [],
+  try {
+    return await readAuthStoreOnce()
+  } catch (error) {
+    await sleep(STORE_READ_RETRY_MS)
+    try {
+      return await readAuthStoreOnce()
+    } catch {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/Unexpected end of JSON input/i.test(message)) {
+        return {
+          users: createSeedUsers(),
+          sessions: [],
+        }
+      }
+      throw error
+    }
   }
 }
 
 async function writeStore(store: AuthStore) {
-  await writeTextFile(AUTH_FILE, JSON.stringify(store, null, 2))
+  const serialized = JSON.stringify(store, null, 2)
+  await writeAtomicTextFile(AUTH_FILE, serialized)
 }
 
 export async function findUserByCredentials(email: string, password: string) {

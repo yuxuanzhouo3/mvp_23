@@ -34,7 +34,7 @@ export default function SettingsPage() {
   const { t, locale } = useLocale()
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [loadingBilling, setLoadingBilling] = useState(true)
-  const [profile, setProfile] = useState({ name: "Developer", email: "dev@mornhub.app" })
+  const [profile, setProfile] = useState({ name: "Developer", email: "dev@mornscience.app" })
 
   useEffect(() => {
     fetch("/api/payment/list")
@@ -51,7 +51,7 @@ export default function SettingsPage() {
         if (json?.authenticated && json.user) {
           setProfile({
             name: String(json.user.name ?? "").trim() || "Developer",
-            email: String(json.user.email ?? "").trim() || "dev@mornhub.app",
+            email: String(json.user.email ?? "").trim() || "dev@mornscience.app",
           })
         }
       })

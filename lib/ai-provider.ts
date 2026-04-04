@@ -145,43 +145,52 @@ export async function requestJsonChatCompletion(args: {
 
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(payload),
-    signal: ctrl.signal,
-  })
-  clearTimeout(timer)
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    })
 
-  if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(`Model request failed (${res.status}): ${txt}`)
+    if (!res.ok) {
+      const txt = await res.text()
+      throw new Error(`Model request failed (${res.status}): ${txt}`)
+    }
+
+    const streamed = await readStreamText(res)
+    if (streamed.content) {
+      return streamed
+    }
+
+    const fallbackPayload = { ...payload, stream: false }
+    const fallbackRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(fallbackPayload),
+      signal: ctrl.signal,
+    })
+
+    if (!fallbackRes.ok) {
+      const txt = await fallbackRes.text()
+      throw new Error(`Model fallback request failed (${fallbackRes.status}): ${txt}`)
+    }
+
+    const json = await fallbackRes.json()
+    const content = String(json?.choices?.[0]?.message?.content ?? "").trim()
+    return { content, reasoning: streamed.reasoning }
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Model request timed out after ${timeoutMs}ms`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
   }
-
-  const streamed = await readStreamText(res)
-  if (streamed.content) {
-    return streamed
-  }
-
-  const fallbackPayload = { ...payload, stream: false }
-  const fallbackRes = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(fallbackPayload),
-  })
-
-  if (!fallbackRes.ok) {
-    const txt = await fallbackRes.text()
-    throw new Error(`Model fallback request failed (${fallbackRes.status}): ${txt}`)
-  }
-
-  const json = await fallbackRes.json()
-  const content = String(json?.choices?.[0]?.message?.content ?? "").trim()
-  return { content, reasoning: streamed.reasoning }
 }

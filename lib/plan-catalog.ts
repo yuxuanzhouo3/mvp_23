@@ -112,8 +112,34 @@ export function getPlanDefinition(planId: string | null | undefined) {
   return PLAN_CATALOG[(planId as PlanTier) || "free"] ?? PLAN_CATALOG.free
 }
 
+export function normalizePlanTier(planId: string | null | undefined): PlanTier {
+  return getPlanDefinition(planId).id
+}
+
+export function findPlanTierByLabel(label: string | null | undefined): PlanTier | null {
+  const normalized = String(label ?? "").trim().toLowerCase()
+  if (!normalized) return null
+  const matched = (Object.keys(PLAN_CATALOG) as PlanTier[]).find((planId) => {
+    const plan = PLAN_CATALOG[planId]
+    return [
+      plan.id,
+      plan.nameCn,
+      plan.nameEn,
+      plan.badgeCn,
+      plan.badgeEn,
+    ]
+      .filter(Boolean)
+      .some((item) => String(item).trim().toLowerCase() === normalized)
+  })
+  return matched ?? null
+}
+
 export function getPlanRank(planId: PlanTier | string | null | undefined) {
   return getPlanDefinition(planId).rank
+}
+
+export function isPaidPlanTier(planId: PlanTier | string | null | undefined) {
+  return PAID_PLAN_IDS.includes(normalizePlanTier(planId))
 }
 
 export function getAccessiblePlanTiers(maxPlanId: PlanTier): PlanTier[] {

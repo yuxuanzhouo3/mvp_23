@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { submitDirectGenerate } from "@/lib/direct-generate-client"
+import {
+  getCurrentDomainRegion,
+  loadGenerationPreferences,
+} from "@/lib/generation-preferences"
+import { useLocale } from "@/lib/i18n"
 import { RecentGenerations } from "@/components/dashboard/recent-generations"
 
 type ProjectItem = {
@@ -66,6 +72,7 @@ function buildPreviewLabel(status?: "idle" | "building" | "ready" | "failed") {
 }
 
 export default function ProjectsPage() {
+  const { locale } = useLocale()
   const [projects, setProjects] = useState<ProjectItem[]>([])
   const [prompt, setPrompt] = useState("")
   const [creating, setCreating] = useState(false)
@@ -80,31 +87,26 @@ export default function ProjectsPage() {
   }
 
   async function createProject() {
-    const text = prompt.trim()
-    if (!text) {
-      setStatus("Please enter a prompt.")
-      return
-    }
     try {
       setCreating(true)
-      setStatus("Generating project...")
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: text }),
+      const preferences = loadGenerationPreferences(getCurrentDomainRegion())
+      const result = await submitDirectGenerate({
+        prompt,
+        locale,
+        preferences,
+        onStatus: setStatus,
+        messages: {
+          emptyPrompt: locale === "zh" ? "请先输入需求。" : "Please enter a prompt.",
+          creating: locale === "zh" ? "正在生成项目..." : "Generating project...",
+          opening: locale === "zh" ? "项目已创建，正在进入工作区..." : "Project created. Opening workspace...",
+        },
       })
-      const json = await res.json()
-      if (!res.ok) {
-        setStatus(json?.error || "Generate failed")
-        return
-      }
-      const projectId = json.projectId || json.jobId
-      const jobId = json.jobId || json.projectId
+
       setPrompt("")
       await loadProjects()
-      router.push(`/apps/${projectId}?jobId=${encodeURIComponent(jobId)}`)
+      router.push(`/apps/${result.projectId}?jobId=${encodeURIComponent(result.jobId)}`)
     } catch (e: any) {
-      setStatus(e?.message || "Generate failed")
+      setStatus(e?.message || (locale === "zh" ? "生成失败" : "Generate failed"))
     } finally {
       setCreating(false)
     }

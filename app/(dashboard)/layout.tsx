@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
+import { ProtectedRouteGate } from "@/components/auth/protected-route-gate"
 import { SidebarNav } from "@/components/dashboard/sidebar-nav"
 import { MobileSidebar } from "@/components/dashboard/mobile-sidebar"
 import { TopBar } from "@/components/dashboard/top-bar"
@@ -13,10 +14,8 @@ import { cn } from "@/lib/utils"
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { collapsed } = useRightPanel()
-  const isAppDetail = pathname?.startsWith("/apps/") ?? false
-  const isWorkspaceRoot = /^\/apps\/[^/]+$/.test(pathname ?? "")
   const isHome = pathname === "/"
-  const showAiPanel = collapsed && isAppDetail && !isWorkspaceRoot
+  const showAiPanel = collapsed && !isHome
 
   return (
     <div className="flex flex-1">
@@ -57,17 +56,34 @@ export default function DashboardLayout({
     window.localStorage.setItem("mornstack:sidebar-collapsed", sidebarCollapsed ? "1" : "0")
   }, [sidebarCollapsed])
 
+  const isProtectedRoute =
+    pathname === "/projects" ||
+    pathname === "/activity" ||
+    pathname === "/settings" ||
+    pathname === "/admin" ||
+    pathname === "/market"
+
+  const content = (
+    <div className="flex min-h-screen">
+      <div className="dashboard-shell-sidebar">
+        <SidebarNav collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((value) => !value)} />
+      </div>
+      <div className="dashboard-shell-mobile">
+        <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      </div>
+
+      <div className="dashboard-shell-main flex flex-1 min-w-0 flex-col">
+        <div className="dashboard-shell-topbar">
+          <TopBar onMenuToggle={() => setSidebarOpen(true)} />
+        </div>
+        <DashboardContent>{children}</DashboardContent>
+      </div>
+    </div>
+  )
+
   return (
     <RightPanelProvider>
-      <div className="flex min-h-screen">
-        <SidebarNav collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((value) => !value)} />
-        <MobileSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
-        <div className="flex flex-1 flex-col min-w-0">
-          <TopBar onMenuToggle={() => setSidebarOpen(true)} />
-          <DashboardContent>{children}</DashboardContent>
-        </div>
-      </div>
+      <ProtectedRouteGate enabled={isProtectedRoute}>{content}</ProtectedRouteGate>
     </RightPanelProvider>
   )
 }

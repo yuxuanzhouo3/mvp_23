@@ -245,7 +245,7 @@ export function SidebarNav({ collapsed, onToggleCollapsed }: SidebarNavProps) {
         {!collapsed && (
           <>
             <p className="text-[10px] text-muted-foreground">{t("copyright")}</p>
-            <p className="text-[10px] text-muted-foreground">mornhub.app</p>
+            <p className="text-[10px] text-muted-foreground">www.mornscience.app</p>
           </>
         )}
       </div>

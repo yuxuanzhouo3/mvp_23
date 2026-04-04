@@ -5,7 +5,7 @@ import { Circle } from "lucide-react"
 import { useLocale } from "@/lib/i18n"
 
 const terminalLines = [
-  { text: '$ curl -X POST https://api.mornhub.app/generate \\', type: "command" as const, delay: 0 },
+  { text: '$ curl -X POST https://api.mornscience.app/generate \\', type: "command" as const, delay: 0 },
   { text: '  -H "Content-Type: application/json" \\', type: "command" as const, delay: 200 },
   { text: '  -d \'{"prompt": "kanban board with AI suggestions"}\'', type: "command" as const, delay: 400 },
   { text: "", type: "blank" as const, delay: 600 },
@@ -13,7 +13,7 @@ const terminalLines = [
   { textKey: "terminalFrontend" as const, type: "success" as const, delay: 2000 },
   { textKey: "terminalBackend" as const, type: "success" as const, delay: 2600 },
   { textKey: "terminalDatabase" as const, type: "success" as const, delay: 3200 },
-  { text: "Your app: https://kanban-ai.mornhub.app", type: "link" as const, delay: 3800 },
+  { text: "Your app: https://kanban-ai.mornscience.app", type: "link" as const, delay: 3800 },
   { text: "GitHub repo: github.com/mornfullstack/kanban-ai", type: "link" as const, delay: 4200 },
 ]
 

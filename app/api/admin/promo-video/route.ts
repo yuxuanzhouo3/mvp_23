@@ -17,8 +17,8 @@ function normalizeHighlights(input: unknown) {
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as PromoVideoRequest
-  const appName = String(body.appName ?? "").trim() || "mornFullStack"
-  const websiteUrl = String(body.websiteUrl ?? "").trim() || "https://mornhub.app"
+  const appName = String(body.appName ?? "").trim() || "MornstackIntl"
+  const websiteUrl = String(body.websiteUrl ?? "").trim() || "https://www.mornscience.app/"
   const audience = String(body.audience ?? "").trim() || "AI app builders and product teams"
   const highlights = normalizeHighlights(body.highlights)
 

@@ -2,6 +2,7 @@ import { ArrowRight, BarChart3, BookOpen, Download, ExternalLink, Globe2, LockKe
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DELIVERY_CODEPACKS, DELIVERY_PERMISSION_RULES, DELIVERY_TRACKS, getDeliveryStatusLabel } from "@/lib/delivery-readiness"
 import { siteLinks } from "@/lib/site-links"
 
 const docsLinks = [
@@ -236,6 +237,68 @@ export default function MarketPage() {
             <div className="rounded-2xl border border-border p-4">2. 查看文档中心与 API 资料，确认接入方式</div>
             <div className="rounded-2xl border border-border p-4">3. 根据地区进入账号入口，完成登录与体验</div>
             <div className="rounded-2xl border border-border p-4">4. 查看下载页与开通方案，继续评估使用路径</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              4.14 终验交付看板
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {DELIVERY_TRACKS.map((track) => (
+              <div key={track.id} className="rounded-2xl border border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{track.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{track.summary}</div>
+                  </div>
+                  <Badge variant={track.status === "ready" ? "secondary" : track.status === "blocked" ? "destructive" : "outline"}>
+                    {getDeliveryStatusLabel(track.status, "zh")}
+                  </Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {track.outputs.slice(0, 3).map((item) => (
+                    <span key={item} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
+              代码交付包与套餐限制
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {DELIVERY_CODEPACKS.map((pack) => (
+              <div key={pack.id} className="rounded-2xl border border-border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{pack.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{pack.summary}</div>
+                  </div>
+                  <Badge variant={pack.status === "ready" ? "secondary" : "outline"}>{getDeliveryStatusLabel(pack.status, "zh")}</Badge>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">Doc: {pack.docPath}</div>
+              </div>
+            ))}
+            {DELIVERY_PERMISSION_RULES.map((rule) => (
+              <div key={rule.plan} className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                <div className="font-medium text-foreground uppercase">{rule.plan}</div>
+                <div className="mt-1">{rule.summary}</div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </div>

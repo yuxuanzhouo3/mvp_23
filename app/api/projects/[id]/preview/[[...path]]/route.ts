@@ -3,7 +3,7 @@ import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/projec
 import { buildCanonicalPreviewUrl, isRuntimePreviewRootSegment } from "@/lib/preview-url"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
-import { resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
+import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"

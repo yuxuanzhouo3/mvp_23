@@ -52,11 +52,25 @@ export type WorkspaceSessionContext = {
   specKind?: string
   workspaceSurface?: string
   activeSection?: string
+  routeId?: string
+  routeLabel?: string
+  filePath?: string
+  symbolName?: string
+  elementName?: string
   deploymentTarget?: string
   databaseTarget?: string
   region?: WorkspaceRegion
+  selectedPlanId?: string
+  selectedPlanName?: string
   selectedTemplate?: string
+  codeExportAllowed?: boolean
+  databaseAccessMode?: string
   workspaceStatus?: string
+  lastIntent?: string
+  lastAction?: string
+  lastChangedFile?: string
+  lastChangedAt?: string
+  readiness?: string
 }
 
 function normalizeFilePath(filePath?: string | null) {

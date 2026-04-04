@@ -258,6 +258,7 @@ export function inferAppKind(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
   if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) return "code_platform"
   if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) return "crm"
+  if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) return "blog"
   if (/blog|article|post|博客|文章|内容/.test(text)) return "blog"
   if (/community|club|social|group|社区|社团|社交/.test(text)) return "community"
   return "task"
@@ -269,6 +270,9 @@ function inferTemplateIdFromPrompt(prompt: string) {
     return "siteforge"
   }
   if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+    return "opsdesk"
+  }
+  if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
     return "opsdesk"
   }
   if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) {
@@ -583,10 +587,14 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
   const templateKind =
     template?.id === "siteforge"
       ? "code_platform"
-      : template?.id === "serenity" || template?.id === "orbital" || template?.id === "launchpad"
-      ? "community"
-      : template?.id === "taskflow" || template?.id === "opsdesk"
-        ? "task"
+      : template?.id === "orbital"
+        ? "community"
+        : template?.id === "serenity" || template?.id === "launchpad"
+          ? "blog"
+          : template?.id === "opsdesk"
+            ? "crm"
+            : template?.id === "taskflow"
+              ? "task"
         : undefined
   const kind =
     inferredKind !== "task"
@@ -666,8 +674,8 @@ function extractTitleFromPrompt(prompt: string) {
 
 function extractProductNameFromPrompt(prompt: string) {
   const patterns = [
-    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
-    /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40})["”'`]?/i,
+    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|要求|并且|用于|for)\b|[,.，。]|$)["”'`]?/i,
+    /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|for|that)\b|[,.，。]|$)["”'`]?/i,
   ]
   for (const re of patterns) {
     const match = prompt.match(re)
@@ -727,11 +735,13 @@ function getCodePlatformContextModules(pageId: string, region: Region) {
 function applyIterationContextToSpec(spec: AppSpec, modules: string[], features: SpecFeature[], context?: SpecIterationContext) {
   if (!context) return
 
-  const currentFilePath = normalizeSpecContextPath(context.currentFilePath)
-  const currentRoute = normalizeSpecContextRoute(context.currentRoute)
-  const currentPageId = normalizeSpecContextLabel(context.currentPage?.id || context.sharedSession?.activeSection).toLowerCase()
-  const currentModuleName = normalizeSpecContextLabel(context.currentModule?.name)
-  const currentElementName = normalizeSpecContextLabel(context.currentElement?.name)
+  const currentFilePath = normalizeSpecContextPath(context.currentFilePath || context.sharedSession?.filePath)
+  const currentRoute = normalizeSpecContextRoute(context.currentRoute || context.currentPage?.route)
+  const currentPageId = normalizeSpecContextLabel(
+    context.currentPage?.id || context.sharedSession?.routeId || context.sharedSession?.activeSection
+  ).toLowerCase()
+  const currentModuleName = normalizeSpecContextLabel(context.currentModule?.name || context.sharedSession?.symbolName)
+  const currentElementName = normalizeSpecContextLabel(context.currentElement?.name || context.sharedSession?.elementName)
   const selectedTemplate = normalizeSpecContextLabel(context.sharedSession?.selectedTemplate)
   const workspaceSurface = normalizeSpecContextLabel(context.sharedSession?.workspaceSurface).toLowerCase()
   const workspaceStatus = normalizeSpecContextLabel(context.sharedSession?.workspaceStatus)
@@ -1825,7 +1835,8 @@ function renderArchetypeConsolePage(spec: AppSpec, route: string) {
   const surface = archetype === "api_platform" ? "rgba(15,23,42,0.78)" : "#f8fafc"
   const border = archetype === "api_platform" ? "1px solid rgba(148,163,184,0.12)" : "1px solid rgba(148,163,184,0.16)"
 
-  return `import Link from "next/link";
+  return `// @ts-nocheck
+import Link from "next/link";
 
 export default function GeneratedConsolePage() {
   const isCn = ${isCn ? "true" : "false"};
@@ -2395,7 +2406,7 @@ export default function Page() {
           </div>
           <div style={{ borderRadius: 28, background: "linear-gradient(135deg,#111827,#1f2937)", padding: 24, color: "#f9fafb", minHeight: 420 }}>
             <div style={{ borderRadius: 20, background: "rgba(255,255,255,0.06)", padding: 20 }}>
-              <div style={{ fontSize: 14, color: "#cbd5e1" }}>mornstack.vercel.app</div>
+              <div style={{ fontSize: 14, color: "#cbd5e1" }}>www.mornscience.app</div>
               <div style={{ marginTop: 12, fontSize: 28, fontWeight: 900 }}>{isCn ? "国内 / 国际统一主域名分入口" : "Unified domain with regional entry points"}</div>
               <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
                 {["/cn","/intl","/download/android","/download/ios","/api-docs"].map((item) => (
@@ -4704,7 +4715,8 @@ export default function AnalyticsPage() {
       : "Trend and owner distribution generated from current workspace data."
   const ownerDistributionTitle = spec.region === "cn" ? "负责人分布" : "Owner distribution"
   const unassignedLabel = spec.region === "cn" ? "未分配" : "Unassigned"
-  return `"use client";
+  return `// @ts-nocheck
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -5230,13 +5242,13 @@ function buildCodePlatformIterationSeed(
 ): CodePlatformIterationSeed {
   const allFiles = fileGroups.flatMap((group) => group.files)
   const pageRoute =
-    findCodePlatformRouteById(routes, context?.currentPage?.id || context?.sharedSession?.activeSection) ??
-    findCodePlatformRouteByFilePath(routes, context?.currentFilePath) ??
-    findCodePlatformRouteByHref(routes, context?.currentRoute) ??
+    findCodePlatformRouteById(routes, context?.currentPage?.id || context?.sharedSession?.routeId || context?.sharedSession?.activeSection) ??
+    findCodePlatformRouteByFilePath(routes, context?.currentFilePath || context?.sharedSession?.filePath) ??
+    findCodePlatformRouteByHref(routes, context?.currentRoute || context?.currentPage?.route) ??
     routes[0]
   const pageLabel = getLocalizedRouteLabel(pageRoute, spec.region)
   const routeFile =
-    allFiles.find((file) => file.fullPath === normalizeSpecContextPath(context?.currentFilePath)) ??
+    allFiles.find((file) => file.fullPath === normalizeSpecContextPath(context?.currentFilePath || context?.sharedSession?.filePath)) ??
     allFiles.find((file) => file.fullPath === pageRoute.filePath) ??
     allFiles[0]
   const normalizedMode = context?.mode === "explain" || context?.mode === "fix" || context?.mode === "refactor"
@@ -5248,7 +5260,7 @@ function buildCodePlatformIterationSeed(
     templates[0]?.name ||
     ""
   const openTabIds = uniqueStrings([
-    normalizeSpecContextPath(context?.currentFilePath),
+    normalizeSpecContextPath(context?.currentFilePath || context?.sharedSession?.filePath),
     normalizeSpecContextPath(context?.currentPage?.filePath),
     ...((context?.openTabs ?? []).map((item) => normalizeSpecContextPath(item))),
     ...((context?.relatedPaths ?? []).map((item) => normalizeSpecContextPath(item))),
@@ -5258,12 +5270,12 @@ function buildCodePlatformIterationSeed(
     .slice(0, 4)
 
   const moduleName =
-    normalizeSpecContextLabel(context?.currentModule?.name) ||
+    normalizeSpecContextLabel(context?.currentModule?.name || context?.sharedSession?.symbolName) ||
     routeFile?.symbols[0] ||
     pageRoute.symbols[0] ||
     (spec.region === "cn" ? "主模块" : "Primary module")
   const elementName =
-    normalizeSpecContextLabel(context?.currentElement?.name) ||
+    normalizeSpecContextLabel(context?.currentElement?.name || context?.sharedSession?.elementName) ||
     routeElements[0] ||
     (spec.region === "cn" ? "主容器" : "Primary surface")
   const aiPrompt = sanitizeUiText(spec.prompt) || (spec.region === "cn" ? "继续沿当前文件上下文扩展工作区能力。" : "Keep extending the workspace from the current file context.")
@@ -9749,6 +9761,181 @@ export default function TeamPage() {
 `
 }
 
+function extractPlannedRouteNames(spec: AppSpec) {
+  const routes = new Set<string>()
+  for (const moduleName of spec.modules) {
+    const match = String(moduleName)
+      .trim()
+      .toLowerCase()
+      .match(/^([a-z0-9_-]+)\s+page$/)
+    if (match?.[1]) {
+      routes.add(match[1])
+    }
+  }
+  if (spec.kind === "code_platform") {
+    ;["dashboard", "editor", "runs", "templates", "pricing", "settings"].forEach((route) => routes.add(route))
+  }
+  if (hasFeature(spec, "about_page")) routes.add("about")
+  if (hasFeature(spec, "analytics_page")) routes.add("analytics")
+  if (spec.planTier === "elite") {
+    routes.add("reports")
+    routes.add("team")
+  }
+  return Array.from(routes)
+}
+
+function getGeneratedRouteLabel(route: string, isCn: boolean) {
+  const labels: Record<string, [string, string]> = {
+    dashboard: ["Dashboard", "Dashboard"],
+    tasks: ["Tasks", "Tasks"],
+    settings: ["Settings", "Settings"],
+    analytics: ["Analytics", "Analytics"],
+    pricing: ["Pricing", "Pricing"],
+    reports: ["Reports", "Reports"],
+    team: ["Team", "Team"],
+    members: ["Members", "Members"],
+    feedback: ["Feedback", "Feedback"],
+    website: ["Website", "Website"],
+    downloads: ["Downloads", "Downloads"],
+    docs: ["Docs", "Docs"],
+    admin: ["Admin", "Admin"],
+  }
+  const mapped = labels[route]
+  if (mapped) return isCn ? mapped[0] : mapped[1]
+  return route
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function renderGenericPlannerPage(spec: AppSpec, route: string, plannedRoutes: string[]) {
+  const isCn = spec.region === "cn"
+  const label = getGeneratedRouteLabel(route, isCn)
+  const navItems = plannedRoutes
+    .filter((item) => item !== "home")
+    .slice(0, 8)
+    .map((item) => ({
+      href: `/${item}`,
+      label: getGeneratedRouteLabel(item, isCn),
+      active: item === route,
+    }))
+  const focusAreas = spec.modules
+    .filter((item) => !/^([a-z0-9_-]+)\s+page$/i.test(item))
+    .slice(0, 6)
+  const records = (isCn
+    ? [
+        { title: `${label} 视图`, meta: "已按生成规划落地为独立路由", status: "Ready" },
+        { title: "权限与套餐约束", meta: `当前套餐 ${spec.planTier} 的限制已并入生成结果`, status: "Synced" },
+        { title: "后续迭代入口", meta: "可继续通过 iterate 围绕当前页面做定点改写", status: "Open" },
+      ]
+    : [
+        { title: `${label} surface`, meta: "Landed as a dedicated route from the generated plan", status: "Ready" },
+        { title: "Plan and policy constraints", meta: `The ${spec.planTier} tier policy is reflected in the generated shell`, status: "Synced" },
+        { title: "Follow-up iteration", meta: "This route is ready for focused iterate edits", status: "Open" },
+      ]) as Array<{ title: string; meta: string; status: string }>
+  const actions = isCn
+    ? ["继续补真实数据读写", "围绕当前页面做上下文改写", "把权限和交付链路接到真实接口"]
+    : ["Connect real data reads and writes", "Iterate directly on this page context", "Wire permissions and delivery flows to real APIs"]
+
+  return `// @ts-nocheck
+import Link from "next/link";
+
+export default function GeneratedPlannerPage() {
+  const spec = ${JSON.stringify(spec, null, 2)} as const;
+  const navItems = ${JSON.stringify(navItems, null, 2)} as const;
+  const focusAreas = ${JSON.stringify(focusAreas, null, 2)} as const;
+  const records = ${JSON.stringify(records, null, 2)} as const;
+  const actions = ${JSON.stringify(actions, null, 2)} as const;
+  const isCn = spec.region === "cn";
+
+  return (
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: "linear-gradient(180deg,#f8fafc 0%,#ffffff 54%,#eef4ff 100%)", color: "#0f172a" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 28, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(15,23,42,0.06)", color: "#2563eb", fontSize: 12, fontWeight: 800 }}>
+                {spec.title}
+              </div>
+              <h1 style={{ margin: "14px 0 8px", fontSize: 34, fontWeight: 900 }}>${label}</h1>
+              <p style={{ margin: 0, maxWidth: 860, color: "#64748b", lineHeight: 1.8 }}>
+                {isCn
+                  ? "这一页来自生成规划里的独立模块，不再被塞回首页或一块静态演示卡片里。"
+                  : "This route comes directly from the generated plan instead of being collapsed back into a single poster-like homepage."}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {navItems.map((item) => (
+                <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 14, padding: "10px 14px", background: item.active ? "#2563eb" : "#f8fafc", color: item.active ? "#ffffff" : "#0f172a", border: item.active ? "none" : "1px solid rgba(148,163,184,0.16)", fontWeight: 700 }}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+          {[
+            { label: isCn ? "当前路由" : "Current route", value: ${JSON.stringify(route)} },
+            { label: isCn ? "套餐层级" : "Plan tier", value: spec.planTier },
+            { label: isCn ? "模块数量" : "Linked modules", value: String(focusAreas.length) },
+            { label: isCn ? "数据目标" : "Database target", value: spec.databaseTarget },
+          ].map((item) => (
+            <div key={item.label} style={{ borderRadius: 22, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 18 }}>
+              <div style={{ color: "#64748b", fontSize: 12 }}>{item.label}</div>
+              <div style={{ marginTop: 12, fontSize: 24, fontWeight: 900 }}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+
+        <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "页面记录" : "Route records"}</div>
+            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+              {records.map((item) => (
+                <div key={item.title} style={{ borderRadius: 16, background: "#f8fafc", border: "1px solid rgba(148,163,184,0.14)", padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ borderRadius: 999, padding: "4px 10px", background: "rgba(37,99,235,0.08)", color: "#2563eb", fontSize: 11, fontWeight: 800 }}>
+                      {item.status}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, color: "#64748b", lineHeight: 1.7, fontSize: 13 }}>{item.meta}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "核心模块" : "Core modules"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {focusAreas.map((item, index) => (
+                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? "rgba(37,99,235,0.08)" : "#f8fafc", border: "1px solid rgba(148,163,184,0.14)" }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {actions.map((item) => (
+                  <div key={item} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "#cbd5e1", fontSize: 13 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+}
+
 export async function buildSpecDrivenWorkspaceFiles(
   projectDir: string,
   spec: AppSpec,
@@ -9859,10 +10046,15 @@ export async function buildSpecDrivenWorkspaceFiles(
       reason: "Initialize workspace data file",
     },
   ]
+  const pushWorkspaceFile = (file: WorkspaceFile) => {
+    if (!files.some((item) => item.path === file.path)) {
+      files.push(file)
+    }
+  }
   const archetype = getScaffoldArchetype(spec)
 
   if (spec.planTier !== "free" && spec.planTier !== "starter") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/tasks/page.tsx",
       content: renderTasksPage(spec),
       reason: "Add generated tasks entry page for non-basic tiers",
@@ -9870,7 +10062,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.kind === "code_platform" || archetype !== "task" || spec.planTier === "pro" || spec.planTier === "elite") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/dashboard/page.tsx",
       content: renderDashboardPage(spec),
       reason: spec.kind === "code_platform"
@@ -9882,27 +10074,35 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.kind === "code_platform") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/editor/page.tsx",
         content: renderCodeEditorPage(spec, iterationContext),
         reason: "Add dedicated editor page for code-platform projects",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/runs/page.tsx",
         content: renderCodeRunsPage(spec),
         reason: "Add runtime and preview page for code-platform projects",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/templates/page.tsx",
         content: renderCodeTemplatesPage(spec),
         reason: "Add template gallery page for code-platform projects",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/pricing/page.tsx",
         content: renderCodePricingPage(spec),
         reason: "Add upgrade and pricing page for code-platform projects",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/settings/page.tsx",
         content: renderCodeSettingsPage(spec),
@@ -9912,22 +10112,28 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (archetype === "crm") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/leads/page.tsx",
         content: renderArchetypeConsolePage(spec, "leads") ?? renderTemplateExtraPage(spec, "leads"),
         reason: "Add lead pool page for CRM scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/pipeline/page.tsx",
         content: renderArchetypeConsolePage(spec, "pipeline") ?? renderTasksPage(spec),
         reason: "Add deal progression page for CRM scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/customers/page.tsx",
         content: renderArchetypeConsolePage(spec, "customers") ?? renderTasksPage(spec),
         reason: "Add customer account page for CRM scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/automations/page.tsx",
         content: renderArchetypeConsolePage(spec, "automations") ?? renderTasksPage(spec),
@@ -9937,22 +10143,28 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (archetype === "api_platform") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/endpoints/page.tsx",
         content: renderArchetypeConsolePage(spec, "endpoints") ?? renderTemplateExtraPage(spec, "incidents"),
         reason: "Add endpoint catalog page for API platform scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/logs/page.tsx",
         content: renderArchetypeConsolePage(spec, "logs") ?? renderTemplateExtraPage(spec, "incidents"),
         reason: "Add logs and diagnostics page for API platform scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/auth/page.tsx",
         content: renderArchetypeConsolePage(spec, "auth") ?? renderTasksPage(spec),
         reason: "Add auth and policy page for API platform scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/environments/page.tsx",
         content: renderArchetypeConsolePage(spec, "environments") ?? renderTasksPage(spec),
@@ -9962,22 +10174,28 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (archetype === "marketing_admin") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/website/page.tsx",
         content: renderArchetypeConsolePage(spec, "website") ?? renderTasksPage(spec),
         reason: "Add website structure page for marketing-admin scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/downloads/page.tsx",
         content: renderArchetypeConsolePage(spec, "downloads") ?? renderTemplateExtraPage(spec, "downloads"),
         reason: "Add download center page for marketing-admin scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/docs/page.tsx",
         content: renderArchetypeConsolePage(spec, "docs") ?? renderTasksPage(spec),
         reason: "Add docs center page for marketing-admin scaffold",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/admin/page.tsx",
         content: renderArchetypeConsolePage(spec, "admin") ?? renderTasksPage(spec),
@@ -9987,7 +10205,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (archetype === "community") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/events/page.tsx",
         content: renderTemplateExtraPage(spec, "events"),
@@ -9997,7 +10215,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (hasFeature(spec, "about_page")) {
-    files.push({
+    pushWorkspaceFile({
       path: "app/about/page.tsx",
       content: renderAboutPage(spec),
       reason: "Add about page requested in spec",
@@ -10005,7 +10223,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (hasFeature(spec, "analytics_page")) {
-    files.push({
+    pushWorkspaceFile({
       path: "app/analytics/page.tsx",
       content: renderAnalyticsPage(spec),
       reason: "Add analytics page requested in spec",
@@ -10013,7 +10231,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.templateId === "opsdesk" && archetype !== "crm") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/leads/page.tsx",
       content: renderTemplateExtraPage(spec, "leads"),
       reason: "Add dedicated lead pool page for CRM-style products",
@@ -10021,7 +10239,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.templateId === "taskflow" && archetype !== "api_platform") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/incidents/page.tsx",
       content: renderTemplateExtraPage(spec, "incidents"),
       reason: "Add dedicated incident page for API platform products",
@@ -10029,7 +10247,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.templateId === "orbital" && archetype !== "community") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/events/page.tsx",
       content: renderTemplateExtraPage(spec, "events"),
       reason: "Add event page for community-oriented products",
@@ -10037,20 +10255,44 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
 
   if (spec.templateId === "launchpad" && archetype !== "marketing_admin") {
-    files.push({
+    pushWorkspaceFile({
       path: "app/downloads/page.tsx",
       content: renderTemplateExtraPage(spec, "downloads"),
       reason: "Add download center for launch and website products",
     })
   }
 
+  const plannedRoutes = extractPlannedRouteNames(spec)
+  for (const route of plannedRoutes) {
+    if (route === "home") continue
+    const filePath = `app/${route}/page.tsx`
+    if (files.some((item) => item.path === filePath)) continue
+    const content =
+      route === "dashboard"
+        ? renderDashboardPage(spec)
+        : route === "tasks"
+          ? renderTasksPage(spec)
+          : route === "analytics"
+            ? renderAnalyticsPage(spec)
+            : route === "about"
+              ? renderAboutPage(spec)
+              : renderArchetypeConsolePage(spec, route) ?? renderGenericPlannerPage(spec, route, plannedRoutes)
+    pushWorkspaceFile({
+      path: filePath,
+      content,
+      reason: `Add planned ${route} page inferred from the generation spec`,
+    })
+  }
+
   if (spec.planTier === "elite") {
-    files.push(
+    pushWorkspaceFile(
       {
         path: "app/reports/page.tsx",
         content: renderReportsPage(spec),
         reason: "Add elite reporting page for deeper project structure",
-      },
+      }
+    )
+    pushWorkspaceFile(
       {
         path: "app/team/page.tsx",
         content: renderTeamPage(spec),

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { ArrowRight, Blocks, BriefcaseBusiness, Database, Layers3, Sparkles, Users2, Workflow } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { submitDirectGenerate } from "@/lib/direct-generate-client"
 import { useLocale } from "@/lib/i18n"
 import { getCurrentDomainRegion, loadGenerationPreferences, saveGenerationPreferences } from "@/lib/generation-preferences"
 import { siteLinks } from "@/lib/site-links"
@@ -16,12 +17,6 @@ import {
   type DatabaseTarget,
   type DeploymentTarget,
 } from "@/lib/fullstack-targets"
-
-type GeneratePostResp = {
-  projectId?: string
-  jobId?: string
-  error?: string
-}
 
 type RecentApp = {
   projectId: string
@@ -73,44 +68,25 @@ export default function DashboardPage() {
   }, [])
 
   async function handleGenerate() {
-    const text = prompt.trim()
-    if (!text) {
-      setStatus(isZh ? "先写一句你要做什么。" : "Start with one sentence.")
-      return
-    }
-
-    const prefs = loadGenerationPreferences(region)
-    const nextPrefs = { ...prefs, region, deploymentTarget, databaseTarget }
-    saveGenerationPreferences(nextPrefs)
-
     try {
       setSubmitting(true)
-      setStatus(isZh ? "正在创建项目..." : "Creating project...")
-
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: text,
-          region: nextPrefs.region,
-          deploymentTarget: nextPrefs.deploymentTarget,
-          databaseTarget: nextPrefs.databaseTarget,
-        }),
+      const prefs = loadGenerationPreferences(region)
+      const nextPrefs = { ...prefs, region, deploymentTarget, databaseTarget }
+      const result = await submitDirectGenerate({
+        prompt,
+        locale,
+        preferences: nextPrefs,
+        onStatus: setStatus,
+        messages: {
+          emptyPrompt: isZh ? "先写一句你要做什么。" : "Start with one sentence.",
+          creating: isZh ? "正在创建项目..." : "Creating project...",
+          opening: isZh ? "项目已创建，正在进入工作区..." : "Project created. Opening workspace...",
+          missingIds: isZh ? "生成成功但没有返回项目编号。" : "Project created without ids.",
+          failed: isZh ? "创建失败，请重试。" : "Creation failed.",
+        },
       })
 
-      const json = (await res.json().catch(() => ({}))) as GeneratePostResp
-      if (!res.ok) {
-        throw new Error(String(json?.error ?? "Generate failed"))
-      }
-
-      const projectId = String(json.projectId ?? "").trim()
-      const jobId = String(json.jobId ?? "").trim()
-      if (!projectId || !jobId) {
-        throw new Error(isZh ? "生成成功但没有返回项目编号。" : "Project created without ids.")
-      }
-
-      setStatus(isZh ? "项目已创建，正在进入工作区..." : "Project created. Opening workspace...")
-      router.push(`/apps/${projectId}?jobId=${encodeURIComponent(jobId)}`)
+      router.push(`/apps/${result.projectId}?jobId=${encodeURIComponent(result.jobId)}`)
     } catch (error: any) {
       setStatus(error?.message || (isZh ? "创建失败，请重试。" : "Creation failed."))
     } finally {

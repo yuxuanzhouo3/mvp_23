@@ -27,7 +27,7 @@ export function getConfiguredSiteOrigin(fallbackOrigin?: string) {
   if (fallbackOrigin) {
     return trimTrailingSlash(fallbackOrigin)
   }
-  return "https://mornstack.vercel.app"
+  return "https://www.mornscience.app"
 }
 
 export function getPublicSiteMap(fallbackOrigin?: string) {

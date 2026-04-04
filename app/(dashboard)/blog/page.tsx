@@ -42,7 +42,7 @@ export default function BlogPage() {
       </div>
 
       <Button variant="outline" asChild>
-        <a href="https://blog.mornhub.app" target="_blank" rel="noopener noreferrer">
+        <a href="https://blog.mornscience.app" target="_blank" rel="noopener noreferrer">
           <PenLine className="h-4 w-4 mr-2" />
           {t("visitBlog")}
         </a>

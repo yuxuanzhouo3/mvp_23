@@ -22,6 +22,32 @@ export async function GET() {
 
   const providers: PublicProviderDescriptor[] = [
     {
+      key: "supabase-password",
+      label: "Supabase Password",
+      region: "intl",
+      category: "auth",
+      enabled: true,
+      configured: auth.supabaseConfigured,
+      realFlowImplemented: true,
+      status: auth.intlMode === "supabase" && auth.supabaseConfigured ? "live" : auth.supabaseConfigured ? "credential_ready" : "demo",
+      startPath: "/login",
+      callbackUrl: "",
+      fallbackLabel: "local email/password sign-in",
+    },
+    {
+      key: "password",
+      label: "Email Password",
+      region: "cn",
+      category: "auth",
+      enabled: true,
+      configured: true,
+      realFlowImplemented: true,
+      status: auth.cnMode === "password" ? "live" : "credential_ready",
+      startPath: "/login",
+      callbackUrl: "",
+      fallbackLabel: "primary phase-1 auth path",
+    },
+    {
       key: "google",
       label: "Google",
       region: "intl",
@@ -32,7 +58,7 @@ export async function GET() {
       status: !auth.googleEnabled ? "disabled" : auth.supabaseConfigured && auth.googleConfigured ? "credential_ready" : "demo",
       startPath: "/api/auth/google/start",
       callbackUrl: site.authCallbacks.google,
-      fallbackLabel: "demo social session",
+      fallbackLabel: "phase-2 social login",
     },
     {
       key: "facebook",
@@ -45,7 +71,7 @@ export async function GET() {
       status: !auth.facebookEnabled ? "disabled" : auth.supabaseConfigured && auth.facebookConfigured ? "credential_ready" : "demo",
       startPath: "/api/auth/facebook/start",
       callbackUrl: site.authCallbacks.facebook,
-      fallbackLabel: "demo social session",
+      fallbackLabel: "phase-2 social login",
     },
     {
       key: "wechat-login",
@@ -55,10 +81,10 @@ export async function GET() {
       enabled: true,
       configured: auth.wechatConfigured,
       realFlowImplemented: true,
-      status: auth.wechatConfigured ? "live" : "demo",
+      status: auth.cnMode === "wechat" && auth.wechatConfigured ? "live" : auth.wechatConfigured ? "credential_ready" : "demo",
       startPath: "/api/auth/wechat/start",
       callbackUrl: site.authCallbacks.wechat,
-      fallbackLabel: "email/password login",
+      fallbackLabel: "phase-2 login after password launch",
     },
     {
       key: "stripe",
@@ -70,7 +96,7 @@ export async function GET() {
       realFlowImplemented: true,
       status: payment.stripeConfigured ? "live" : "demo",
       webhookUrl: site.paymentWebhooks.stripe,
-      fallbackLabel: "hosted in-product confirmation",
+      fallbackLabel: "phase-1 intl checkout target",
     },
     {
       key: "paypal",
@@ -82,7 +108,7 @@ export async function GET() {
       realFlowImplemented: false,
       status: payment.paypalConfigured ? "credential_ready" : "demo",
       webhookUrl: site.paymentWebhooks.paypal,
-      fallbackLabel: "hosted in-product confirmation",
+      fallbackLabel: "phase-2 intl payment option",
     },
     {
       key: "alipay",
@@ -94,7 +120,7 @@ export async function GET() {
       realFlowImplemented: true,
       status: payment.alipayConfigured ? "live" : "demo",
       webhookUrl: site.paymentWebhooks.alipay,
-      fallbackLabel: "hosted in-product confirmation",
+      fallbackLabel: "phase-1 cn checkout target",
     },
     {
       key: "wechatpay",
@@ -104,9 +130,9 @@ export async function GET() {
       enabled: true,
       configured: payment.wechatConfigured,
       realFlowImplemented: true,
-      status: payment.wechatConfigured ? "live" : "demo",
+      status: payment.wechatConfigured ? "credential_ready" : "demo",
       webhookUrl: site.paymentWebhooks.wechatpay,
-      fallbackLabel: "hosted in-product confirmation",
+      fallbackLabel: "phase-2 cn payment option",
     },
   ]
 
@@ -139,29 +165,36 @@ export async function GET() {
       },
     },
     envGuide: {
-      intlAuth: [
+      phase1IntlAuth: [
         "NEXT_PUBLIC_SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
+      ],
+      phase2IntlAuth: [
         "GOOGLE_OAUTH_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_SECRET",
         "FACEBOOK_APP_ID",
         "FACEBOOK_APP_SECRET",
       ],
-      intlPayment: [
+      phase1IntlPayment: [
         "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
         "STRIPE_SECRET_KEY",
+      ],
+      phase2IntlPayment: [
         "PAYPAL_CLIENT_ID",
         "PAYPAL_CLIENT_SECRET",
       ],
-      cnAuth: [
+      phase1CnAuth: [],
+      phase2CnAuth: [
         "NEXT_PUBLIC_WECHAT_APP_ID",
         "WECHAT_APP_SECRET",
       ],
-      cnPayment: [
+      phase1CnPayment: [
         "ALIPAY_APP_ID",
         "ALIPAY_PRIVATE_KEY",
         "ALIPAY_PUBLIC_KEY",
+      ],
+      phase2CnPayment: [
         "WECHAT_PAY_MCH_ID",
         "WECHAT_PAY_API_V3_KEY",
         "WECHAT_PAY_SERIAL_NO",
@@ -175,6 +208,20 @@ export async function GET() {
       ],
       deploymentTargets: DEPLOYMENT_OPTIONS.map((item) => item.id),
       databaseTargets: DATABASE_OPTIONS.map((item) => item.id),
+    },
+    rolloutPlan: {
+      phase1: {
+        intlAuth: "Supabase password",
+        cnAuth: "password",
+        intlPayment: "Stripe",
+        cnPayment: "Alipay",
+      },
+      phase2: {
+        intlAuth: ["Google OAuth", "Facebook OAuth"],
+        cnAuth: ["WeChat Login"],
+        intlPayment: ["PayPal"],
+        cnPayment: ["WeChat Pay"],
+      },
     },
     mcp: {
       supabaseDb: {

@@ -1,7 +1,7 @@
 import crypto from "crypto"
 import path from "path"
 import { promises as fs } from "fs"
-import { ensureDir, getWorkspacesDir, writeTextFile } from "@/lib/project-workspace"
+import { ensureDir, getWorkspacesDir, writeAtomicTextFile, writeTextFile } from "@/lib/project-workspace"
 import type { PlanTier } from "@/lib/plan-catalog"
 
 export type PaymentRecord = {
@@ -23,6 +23,7 @@ type PaymentStore = {
 }
 
 const PAYMENT_FILE = path.join(getWorkspacesDir(), "_payments.json")
+const STORE_READ_RETRY_MS = 25
 
 async function exists(filePath: string) {
   try {
@@ -33,6 +34,16 @@ async function exists(filePath: string) {
   }
 }
 
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function readPaymentStoreOnce(): Promise<PaymentStore> {
+  const raw = await fs.readFile(PAYMENT_FILE, "utf8")
+  const parsed = JSON.parse(raw) as PaymentStore
+  return { payments: Array.isArray(parsed?.payments) ? parsed.payments : [] }
+}
+
 async function readStore(): Promise<PaymentStore> {
   await ensureDir(path.dirname(PAYMENT_FILE))
   if (!(await exists(PAYMENT_FILE))) {
@@ -40,13 +51,25 @@ async function readStore(): Promise<PaymentStore> {
     await writeTextFile(PAYMENT_FILE, JSON.stringify(initial, null, 2))
     return initial
   }
-  const raw = await fs.readFile(PAYMENT_FILE, "utf8")
-  const parsed = JSON.parse(raw) as PaymentStore
-  return { payments: Array.isArray(parsed?.payments) ? parsed.payments : [] }
+  try {
+    return await readPaymentStoreOnce()
+  } catch (error) {
+    await sleep(STORE_READ_RETRY_MS)
+    try {
+      return await readPaymentStoreOnce()
+    } catch {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/Unexpected end of JSON input/i.test(message)) {
+        return { payments: [] }
+      }
+      throw error
+    }
+  }
 }
 
 async function writeStore(store: PaymentStore) {
-  await writeTextFile(PAYMENT_FILE, JSON.stringify(store, null, 2))
+  const serialized = JSON.stringify(store, null, 2)
+  await writeAtomicTextFile(PAYMENT_FILE, serialized)
 }
 
 export async function createPayment(input: Omit<PaymentRecord, "id" | "status" | "createdAt" | "updatedAt">) {

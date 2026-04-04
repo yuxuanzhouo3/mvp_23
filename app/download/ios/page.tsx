@@ -1,14 +1,19 @@
 import { Apple, ArrowRight, BadgeCheck, Smartphone } from "lucide-react"
+import { listDistributionAssets } from "@/lib/distribution-asset-store"
 import { siteLinks } from "@/lib/site-links"
 
 type IosDownloadPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
+export const dynamic = "force-dynamic"
+
 export default async function IosDownloadPage({ searchParams }: IosDownloadPageProps) {
   const params = (await searchParams) ?? {}
   const channelValue = Array.isArray(params.channel) ? params.channel[0] : params.channel
   const isTestFlight = channelValue === "testflight"
+  const iosAsset = (await listDistributionAssets()).find((asset) => asset.id === "ios_store")
+  const currentHref = isTestFlight ? siteLinks.iosTestFlight : iosAsset?.href || siteLinks.iosDownload
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.08),transparent_26%),linear-gradient(180deg,#f8fafc_0%,#ffffff_52%,#f7fafc_100%)] px-6 py-12 text-slate-900">
@@ -39,8 +44,9 @@ export default async function IosDownloadPage({ searchParams }: IosDownloadPageP
                 当前演示地址
               </div>
               <div className="mt-3 break-all text-sm text-slate-500">
-                {isTestFlight ? siteLinks.iosTestFlight : siteLinks.iosDownload}
+                {currentHref}
               </div>
+              {iosAsset?.updatedAt ? <div className="mt-3 text-xs text-slate-500">最近更新：{new Date(iosAsset.updatedAt).toLocaleString()}</div> : null}
             </div>
             <div className="rounded-[24px] border border-slate-200 p-5">
               <div className="flex items-center gap-2 text-sm font-medium text-slate-900">

@@ -441,8 +441,8 @@ function renderPptCopyHtml(bundle: PromoBundle, input: Required<PromoBundleReque
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as PromoBundleRequest
   const normalized: Required<PromoBundleRequest> = {
-    productName: String(body.productName ?? "").trim() || "mornFullStack",
-    websiteUrl: String(body.websiteUrl ?? "").trim() || "https://mornhub.app",
+    productName: String(body.productName ?? "").trim() || "MornstackIntl",
+    websiteUrl: String(body.websiteUrl ?? "").trim() || "https://www.mornscience.app/",
     audience: String(body.audience ?? "").trim() || "product teams and AI app builders",
     highlights: Array.isArray(body.highlights) && body.highlights.length
       ? body.highlights.map((item) => String(item ?? "").trim()).filter(Boolean).slice(0, 8)

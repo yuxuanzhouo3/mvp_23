@@ -75,6 +75,7 @@ export function getPromoAssetsDir() {
 
 const WORKSPACES_DIR = getWorkspacesDir()
 const STORE_FILE = path.join(WORKSPACES_DIR, "_projects.json")
+const STORE_READ_RETRY_MS = 25
 
 export function getProjectsStorePath() {
   return STORE_FILE
@@ -110,18 +111,53 @@ export async function writeTextFile(filePath: string, content: string) {
   await fs.writeFile(filePath, content, "utf8")
 }
 
-async function readStore(): Promise<ProjectsStore> {
-  await ensureDir(WORKSPACES_DIR)
-  if (!(await exists(STORE_FILE))) {
-    return { projects: {} }
+export async function writeAtomicTextFile(filePath: string, content: string) {
+  const directory = path.dirname(filePath)
+  const baseName = path.basename(filePath)
+  const uniqueSuffix = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const tempFile = path.join(directory, `${baseName}.${uniqueSuffix}.tmp`)
+  await writeTextFile(tempFile, content)
+  try {
+    await fs.rename(tempFile, filePath)
+  } finally {
+    await fs.rm(tempFile, { force: true }).catch(() => {})
   }
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function readProjectsStoreOnce(): Promise<ProjectsStore> {
   const raw = await fs.readFile(STORE_FILE, "utf8")
   const parsed = JSON.parse(raw) as ProjectsStore
   return parsed?.projects ? parsed : { projects: {} }
 }
 
+async function readStore(): Promise<ProjectsStore> {
+  await ensureDir(WORKSPACES_DIR)
+  if (!(await exists(STORE_FILE))) {
+    return { projects: {} }
+  }
+  try {
+    return await readProjectsStoreOnce()
+  } catch (error) {
+    await sleep(STORE_READ_RETRY_MS)
+    try {
+      return await readProjectsStoreOnce()
+    } catch {
+      const message = error instanceof Error ? error.message : String(error)
+      if (/Unexpected end of JSON input/i.test(message)) {
+        return { projects: {} }
+      }
+      throw error
+    }
+  }
+}
+
 async function writeStore(store: ProjectsStore) {
-  await writeTextFile(STORE_FILE, JSON.stringify(store, null, 2))
+  const serialized = JSON.stringify(store, null, 2)
+  await writeAtomicTextFile(STORE_FILE, serialized)
 }
 
 export async function upsertProject(record: ProjectRecord) {

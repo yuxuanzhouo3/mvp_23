@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Sparkles, MessageSquare, LayoutTemplate } from "lucide-react"
+import { Sparkles, MessageSquare, LayoutTemplate, Wand2, MessagesSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { submitDirectGenerate } from "@/lib/direct-generate-client"
 import { useLocale } from "@/lib/i18n"
 import { getAccessiblePlanTiers, PLAN_CATALOG, type PlanTier } from "@/lib/plan-catalog"
+import type { GenerateWorkflowMode } from "@/lib/generate-tasks"
 import { getTemplateById } from "@/lib/template-catalog"
 import {
   DATABASE_OPTIONS,
@@ -21,14 +23,6 @@ import {
   type GenerationPreferences,
 } from "@/lib/generation-preferences"
 
-type GeneratePostResp = {
-  projectId?: string
-  jobId?: string
-  status?: string
-  prompt?: string
-  error?: string
-}
-
 export function AiInputPanel() {
   const { t, locale } = useLocale()
   const [value, setValue] = useState("")
@@ -36,6 +30,7 @@ export function AiInputPanel() {
   const [statusText, setStatusText] = useState<string>("")
   const [planTier, setPlanTier] = useState<PlanTier>("free")
   const [selectedPlanTier, setSelectedPlanTier] = useState<PlanTier>("free")
+  const [workflowMode, setWorkflowMode] = useState<GenerateWorkflowMode>("act")
   const [loadedTemplateId, setLoadedTemplateId] = useState("")
   const [generationPreferences, setGenerationPreferences] = useState<GenerationPreferences>({
     region: "intl",
@@ -100,51 +95,29 @@ export function AiInputPanel() {
   }, [locale, searchParams])
 
   async function handleGenerate() {
-    const prompt = value.trim()
-    if (!prompt) {
-      setStatusText("请先输入你的需求（prompt）")
-      return
-    }
-
     try {
       setIsLoading(true)
-      setStatusText("正在创建生成任务...")
-
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 120_000)
-      const postRes = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          region: generationPreferences.region,
+      const result = await submitDirectGenerate({
+        prompt: value,
+        locale,
+        preferences: generationPreferences,
+        extras: {
           generationPlanTier: selectedPlanTier,
           templateId: loadedTemplateId || undefined,
-          deploymentTarget: generationPreferences.deploymentTarget,
-          databaseTarget: generationPreferences.databaseTarget,
-          templatePrompt:
-            activeTemplate ? (locale === "zh" ? activeTemplate.promptZh : activeTemplate.promptEn) : undefined,
-        }),
-        signal: ctrl.signal,
+          templatePrompt: activeTemplate ? (locale === "zh" ? activeTemplate.promptZh : activeTemplate.promptEn) : undefined,
+          workflowMode,
+        },
+        onStatus: setStatusText,
+        messages: {
+          emptyPrompt: locale === "zh" ? "请先输入你的需求（prompt）" : "Enter your prompt first.",
+          opening: locale === "zh" ? "任务已创建，正在打开 AI 工作区..." : "Task created. Opening AI workspace...",
+          failed: locale === "zh" ? "发生未知错误" : "Something went wrong.",
+        },
       })
-      clearTimeout(timer)
 
-      if (!postRes.ok) {
-        const txt = await postRes.text()
-        throw new Error(`POST /api/generate 失败: ${txt}`)
-      }
-
-      const postData = (await postRes.json()) as GeneratePostResp
-      const projectId = String(postData.projectId || "").trim()
-      const jobId = String(postData.jobId || "").trim()
-      if (!projectId || !jobId) {
-        throw new Error("生成成功但未返回 projectId/jobId")
-      }
-      setStatusText("任务已创建，正在打开 AI 工作区...")
-      router.push(`/apps/${projectId}?jobId=${encodeURIComponent(jobId)}`)
+      router.push(`/apps/${result.projectId}?jobId=${encodeURIComponent(result.jobId)}`)
     } catch (e: any) {
-      const msg = e?.name === "AbortError" ? "生成超时，请重试（模型响应较慢，已等待120秒）" : e?.message || "发生未知错误"
-      setStatusText(msg)
+      setStatusText(e?.message || (locale === "zh" ? "发生未知错误" : "Something went wrong."))
     } finally {
       setIsLoading(false)
     }
@@ -160,6 +133,14 @@ export function AiInputPanel() {
     generationPreferences.region === "cn"
       ? (locale === "zh" ? "国内版入口" : "China entry")
       : (locale === "zh" ? "国际版入口" : "International entry")
+  const workflowHint =
+    workflowMode === "act"
+      ? locale === "zh"
+        ? "Act：直接生成完整应用骨架并进入工作台。"
+        : "Act: generate the app skeleton directly and open the workspace."
+      : locale === "zh"
+        ? "Discuss：先产出 plan/spec，再决定是否进入代码生成。"
+        : "Discuss: produce the plan/spec first before committing to code generation."
 
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -198,6 +179,38 @@ export function AiInputPanel() {
       ) : null}
 
       <div className="mb-3 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            {
+              key: "act" as const,
+              label: locale === "zh" ? "Act" : "Act",
+              icon: Wand2,
+            },
+            {
+              key: "discuss" as const,
+              label: locale === "zh" ? "Discuss" : "Discuss",
+              icon: MessagesSquare,
+            },
+          ] satisfies Array<{ key: GenerateWorkflowMode; label: string; icon: typeof Wand2 }>).map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setWorkflowMode(item.key)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition ${
+                  workflowMode === item.key
+                    ? "border-foreground bg-foreground text-background"
+                    : "border-border bg-secondary/40 text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {item.label}
+              </button>
+            )
+          })}
+          <span className="text-xs text-muted-foreground">{workflowHint}</span>
+        </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>{locale === "zh" ? "生成档位" : "Generation tier"}</span>
           <select
@@ -273,7 +286,15 @@ export function AiInputPanel() {
             disabled={isLoading}
           >
             <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
-            {isLoading ? "生成中..." : t("discussWithAI")}
+            {isLoading
+              ? locale === "zh"
+                ? "生成中..."
+                : "Working..."
+              : workflowMode === "discuss"
+                ? locale === "zh"
+                  ? "先输出 Plan / Spec"
+                  : "Plan / Spec first"
+                : t("discussWithAI")}
           </Button>
 
           <Button

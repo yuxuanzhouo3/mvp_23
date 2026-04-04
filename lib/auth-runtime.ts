@@ -33,11 +33,11 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     hasEnv("WECHAT_APP_SECRET")
 
   const intlFallback: AuthMode = supabaseConfigured ? "supabase" : "password"
-  const cnFallback: AuthMode = wechatConfigured ? "wechat" : "password"
+  const cnFallback: AuthMode = "password"
   const intlMode = normalizeMode(process.env.AUTH_MODE_INTL ?? "", ["demo", "password", "supabase"], intlFallback)
   const cnMode = normalizeMode(process.env.AUTH_MODE_CN ?? "", ["demo", "password", "wechat"], cnFallback)
-  const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "true").trim() !== "false"
-  const facebookEnabled = String(process.env.AUTH_ENABLE_FACEBOOK ?? "true").trim() !== "false"
+  const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "false").trim() === "true"
+  const facebookEnabled = String(process.env.AUTH_ENABLE_FACEBOOK ?? "false").trim() === "true"
   const googleConfigured =
     hasEnv("GOOGLE_OAUTH_CLIENT_ID") &&
     hasEnv("GOOGLE_OAUTH_CLIENT_SECRET")

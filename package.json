@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:preview": "node scripts/check-preview-regression.mjs",
+    "check:workspace": "node scripts/check-workspace-health.mjs",
+    "smoke:generate": "node scripts/run-local-generate-smoke.mjs",
+    "smoke:iterate": "node scripts/run-local-iterate-smoke.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

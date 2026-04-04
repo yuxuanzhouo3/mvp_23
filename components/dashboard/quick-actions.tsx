@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { submitDirectGenerate } from "@/lib/direct-generate-client"
 import { useLocale } from "@/lib/i18n"
 import {
   DATABASE_OPTIONS,
@@ -43,48 +44,22 @@ export function QuickActions() {
   }, [])
 
   async function handleGenerate() {
-    const prompt = promptValue.trim()
-    if (!prompt) {
-      setStatusText("请先输入需求")
-      return
-    }
-
     try {
       setIsLoading(true)
-      setStatusText("正在创建生成任务...")
-
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 120_000)
-      const postRes = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt,
-          region: generationPreferences.region,
-          deploymentTarget: generationPreferences.deploymentTarget,
-          databaseTarget: generationPreferences.databaseTarget,
-        }),
-        signal: ctrl.signal,
+      const result = await submitDirectGenerate({
+        prompt: promptValue,
+        locale,
+        preferences: generationPreferences,
+        onStatus: setStatusText,
+        messages: {
+          emptyPrompt: locale === "zh" ? "请先输入需求" : "Enter a prompt first.",
+          opening: locale === "zh" ? "任务已创建，正在打开项目..." : "Task created. Opening project...",
+        },
       })
-      clearTimeout(timer)
 
-      if (!postRes.ok) {
-        const txt = await postRes.text()
-        throw new Error(`POST /api/generate 失败: ${txt}`)
-      }
-
-      const postData = (await postRes.json()) as { projectId?: string; jobId?: string }
-      const projectId = String(postData.projectId || "").trim()
-      const jobId = String(postData.jobId || "").trim()
-      if (!projectId || !jobId) {
-        throw new Error("生成成功但未返回 projectId/jobId")
-      }
-
-      setStatusText("任务已创建，正在打开项目...")
-      router.push(`/apps/${projectId}?jobId=${encodeURIComponent(jobId)}`)
+      router.push(`/apps/${result.projectId}?jobId=${encodeURIComponent(result.jobId)}`)
     } catch (e: any) {
-      const msg = e?.name === "AbortError" ? "生成超时，请重试（模型响应较慢，已等待120秒）" : e?.message || "生成失败"
-      setStatusText(msg)
+      setStatusText(e?.message || (locale === "zh" ? "生成失败" : "Generation failed"))
     } finally {
       setIsLoading(false)
     }

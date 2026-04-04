@@ -13,7 +13,11 @@
 # misc
 .DS_Store
 *.pem
+*.jks
 .env*.local
+key.properties
+**/key.properties
+android/local.properties
 
 # vercel
 .vercel

@@ -18,8 +18,8 @@ Expected:
 Expected:
 - Checkout page loads.
 - Top-bar `中 / EN` switch controls checkout/login language and payment region behavior.
-- `中` shows Chinese copy and `支付宝 / 微信支付`.
-- `EN` shows English copy and `Stripe / PayPal`.
+- `中` shows Chinese copy and phase-1 payment priority led by `支付宝`.
+- `EN` shows English copy and phase-1 payment priority led by `Stripe`.
 - Before login, primary action asks user to sign in first.
 - Page shows current auth mode / provider hint.
 
@@ -34,7 +34,8 @@ Expected:
 - Browser redirects back to checkout.
 - Avatar menu shows user name and email.
 - Login language follows top-bar `中 / EN`, not a separate `CN / INTL` selector.
-- Login page shows current runtime mode (`demo` / `Supabase` / `WeChat`).
+- Login page shows current runtime mode.
+- Phase-1 target is `Supabase` for INTL and `password` for CN.
 
 ## 4. Create a payment
 1. On checkout, select region, plan, and payment method.
@@ -49,6 +50,7 @@ Expected:
   - `/payment/wechat?paymentId=...&codeUrl=...`
 - Payment page shows plan, amount, method, and payment id, or a provider-hosted payment page opens.
 - If production credentials are missing, API returns `fallbackHosted: true`.
+- Phase-1 target is `Stripe` for INTL and `Alipay` for CN.
 
 ## 5. Confirm payment
 1. On hosted payment page, click `确认支付`.
@@ -85,3 +87,36 @@ Expected:
 - Session is cleared.
 - User is redirected to `/login`.
 - Reopening checkout requires sign-in again before paying.
+
+## 9. Migration source and staging
+
+Source repo:
+- `yuxuanzhouo3/mvp_25`
+
+Migration note:
+- `mvp_25` works as a reference repo, but it does not contain the production-ready provider code for `Supabase / Stripe / Alipay`.
+- The current repo remains the real implementation base for phase 1.
+
+Target split:
+- Android phase 1: shell conversion, package rename, JKS signing, APK install path, Alipay payment with `0.1`
+- Android phase 2: WeChat login + WeChat Pay after the credentials are approved
+- Web acceptance: keep checkout, hosted payment, success/cancel, and session APIs aligned with the same plan logic
+
+## 10. Android phase 1 notes
+
+- Reference shell repo/folder: `yuxuanzhouo3/mvp_24/multigptandroid`
+- Keystore: `multigpt-key.jks`
+- Package rule: `com.{englishname}.android.app`
+- Example: `com.mornstack.android.app`
+- Priority verification order:
+  1. Gradle sync succeeds
+  2. Debug build runs on emulator/device
+  3. Release signing is configured
+  4. APK installs successfully
+  5. Alipay `0.1` payment flow is verified
+
+## 11. Keys and manual prerequisites
+
+- WeChat login is not a phase-1 blocker if the credentials are still pending
+- Alipay / WeChat secrets should stay in local secure env or Android signing config, not in git
+- Final device install, payment callback verification, and store submission still require local manual validation
