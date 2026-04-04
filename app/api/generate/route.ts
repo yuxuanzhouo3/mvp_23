@@ -30,6 +30,7 @@ import {
   type GenerateRequestContext,
   type GenerateWorkflowMode,
 } from "@/lib/generate-tasks"
+import { buildWorkspaceBootstrap } from "@/lib/workspace-bootstrap"
 import {
   buildSpecDrivenWorkspaceFiles,
   createAppSpec,
@@ -72,6 +73,10 @@ const STALE_TASK_MS = 8 * 60 * 1000
 const BUILDER_STALL_MS = 2 * 60 * 1000
 const BUILDER_WATCHDOG_MS = 70 * 1000
 const BUILDER_TIMEOUT_MS = 55 * 1000
+
+function shouldInlineGenerateWorker() {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+}
 
 function buildProjectPreviewPath(projectId: string) {
   return buildCanonicalPreviewUrl(projectId)
@@ -1495,6 +1500,13 @@ async function ensureWorkspaceValidationModules(workspacePath: string) {
 }
 
 async function validateGeneratedWorkspace(workspacePath: string): Promise<WorkspaceBuildResult> {
+  if (shouldInlineGenerateWorker()) {
+    return {
+      status: "skipped",
+      logs: ["Skipped: build validation is disabled in the deployed ephemeral runtime."],
+    }
+  }
+
   const packageJsonPath = path.join(workspacePath, "package.json")
   const hostNextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next")
   const hostTscBin = path.join(process.cwd(), "node_modules", "typescript", "bin", "tsc")
@@ -3138,12 +3150,24 @@ export async function POST(req: Request) {
       contextSummary: contextSummary || undefined,
       workflowMode,
     })
-    scheduleGenerateTaskWorker(task.jobId)
+    let currentTask: GenerateTask | null = task
+    let workspaceSnapshot = null
+
+    if (shouldInlineGenerateWorker()) {
+      await runGenerateTaskWorker(task.jobId)
+      currentTask = await getGenerateTask(task.jobId)
+      workspaceSnapshot = await buildWorkspaceBootstrap({
+        projectId,
+        task: currentTask,
+      })
+    } else {
+      scheduleGenerateTaskWorker(task.jobId)
+    }
 
     return NextResponse.json({
       projectId,
       jobId: task.jobId,
-      status: "queued",
+      status: currentTask?.status ?? "queued",
       prompt,
       rawPrompt,
       templateId: template?.id,
@@ -3154,6 +3178,9 @@ export async function POST(req: Request) {
       workflowMode,
       context: requestContext,
       contextSummary: contextSummary || undefined,
+      summary: currentTask?.summary,
+      error: currentTask?.error,
+      workspaceSnapshot,
     })
   } catch (e: any) {
     return NextResponse.json({ status: "error", error: e?.message || String(e) }, { status: 500 })
@@ -3164,6 +3191,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const maybeJobId = String(searchParams.get("jobId") ?? "").replace(/[^a-zA-Z0-9_-]/g, "")
   const maybeProjectId = safeProjectId(String(searchParams.get("projectId") ?? ""))
+  const includeWorkspaceSnapshot = searchParams.get("snapshot") === "1"
 
   if (!maybeJobId && !maybeProjectId) {
     return NextResponse.json({ status: "error", error: "jobId or projectId is required" }, { status: 400 })
@@ -3175,6 +3203,10 @@ export async function GET(req: Request) {
 
   if (task) {
     let liveTask = task as GenerateTaskRecord
+    if (liveTask.status === "queued" && shouldInlineGenerateWorker()) {
+      await runGenerateTaskWorker(liveTask.jobId)
+      liveTask = ((await getGenerateTask(liveTask.jobId)) ?? liveTask) as GenerateTaskRecord
+    }
     if (liveTask.status === "running") {
       const forced = await forceFinishStalledBuilderTask(liveTask)
       if (forced) {
@@ -3193,7 +3225,11 @@ export async function GET(req: Request) {
             "[WARN] 任务在生成中被中断，系统已自动尝试恢复一次",
           ],
         }))
-        scheduleGenerateTaskWorker(liveTask.jobId)
+        if (shouldInlineGenerateWorker()) {
+          await runGenerateTaskWorker(liveTask.jobId)
+        } else {
+          scheduleGenerateTaskWorker(liveTask.jobId)
+        }
       } else {
         await updateGenerateTask(liveTask.jobId, (t) => ({
           ...t,
@@ -3206,6 +3242,10 @@ export async function GET(req: Request) {
     const latest = (await getGenerateTask(liveTask.jobId)) as GenerateTaskRecord | null
     const currentTask = (latest ?? liveTask) as GenerateTaskRecord
     const outDir = await resolveProjectPath(currentTask.projectId)
+    const workspaceSnapshot =
+      includeWorkspaceSnapshot && currentTask.status === "done"
+        ? await buildWorkspaceBootstrap({ projectId: currentTask.projectId, task: currentTask })
+        : null
     return NextResponse.json({
       projectId: currentTask.projectId,
       jobId: currentTask.jobId,
@@ -3229,6 +3269,7 @@ export async function GET(req: Request) {
         "npm install",
         "npx next dev -p 3001",
       ],
+      workspaceSnapshot,
     })
   }
 

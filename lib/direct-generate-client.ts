@@ -7,10 +7,14 @@ import {
 } from "@/lib/generation-preferences"
 import type { PlanTier } from "@/lib/plan-catalog"
 import type { GenerateRequestContext, GenerateWorkflowMode } from "@/lib/generate-tasks"
+import { persistWorkspaceSnapshot, type WorkspaceBootstrapSnapshot } from "@/lib/workspace-snapshot"
 
 type GenerateApiResponse = {
   projectId?: string
   jobId?: string
+  status?: "queued" | "running" | "done" | "error"
+  summary?: string
+  workspaceSnapshot?: WorkspaceBootstrapSnapshot | null
   error?: string
 }
 
@@ -113,6 +117,10 @@ export async function submitDirectGenerate({
 
     if (!projectId || !jobId) {
       throw new Error(copy.missingIds)
+    }
+
+    if (json.workspaceSnapshot) {
+      persistWorkspaceSnapshot(json.workspaceSnapshot)
     }
 
     onStatus?.(copy.opening)

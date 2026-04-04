@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useSearchParams } from "next/navigation"
 import {
   BarChart3,
@@ -52,6 +52,12 @@ import {
   buildPreviewSnapshotAliases,
   type PreviewSnapshot,
 } from "@/lib/preview-snapshot"
+import {
+  persistWorkspaceSnapshot as persistWorkspaceBootstrapSnapshot,
+  readWorkspaceSnapshot,
+  type WorkspaceBootstrapSnapshot,
+  type WorkspaceCodeEntrySnapshot,
+} from "@/lib/workspace-snapshot"
 import { isWorkspaceEditorAiSource } from "@/lib/workspace-editor-link"
 import {
   buildCodePlatformContextRoutes,
@@ -375,6 +381,32 @@ function prioritizeCodeFiles(files: string[]) {
     if (diff !== 0) return diff
     return a.localeCompare(b)
   })
+}
+
+function extractSymbolsFromCode(content: string) {
+  const lines = content.split(/\r?\n/)
+  const symbols: Array<{ kind: string; name: string; line: number }> = []
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim()
+    const patterns: Array<{ kind: string; re: RegExp }> = [
+      { kind: "function", re: /^(?:export\s+)?function\s+([A-Za-z0-9_]+)/ },
+      { kind: "component", re: /^(?:export\s+default\s+)?function\s+([A-Z][A-Za-z0-9_]+)/ },
+      { kind: "const", re: /^(?:export\s+)?const\s+([A-Za-z0-9_]+)/ },
+      { kind: "type", re: /^(?:export\s+)?type\s+([A-Za-z0-9_]+)/ },
+      { kind: "interface", re: /^(?:export\s+)?interface\s+([A-Za-z0-9_]+)/ },
+      { kind: "class", re: /^(?:export\s+)?class\s+([A-Za-z0-9_]+)/ },
+    ]
+    for (const pattern of patterns) {
+      const match = trimmed.match(pattern.re)
+      if (match?.[1]) {
+        symbols.push({ kind: pattern.kind, name: match[1], line: index + 1 })
+        break
+      }
+    }
+  })
+
+  return symbols.slice(0, 40)
 }
 
 function pickPreferredWorkspaceFile(changedFiles: string[] | undefined, fallback?: string) {
@@ -736,6 +768,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const requestedCodeLine = Number(searchParams.get("line") ?? "")
   const hasRequestedCodeLine = Number.isFinite(requestedCodeLine) && requestedCodeLine > 0
   const openedFromAi = isWorkspaceEditorAiSource(requestedEditorSource)
+  const [workspaceSnapshot, setWorkspaceSnapshot] = useState<WorkspaceBootstrapSnapshot | null>(() => readWorkspaceSnapshot(projectId))
+  const [workspaceRecoveredFromCache, setWorkspaceRecoveredFromCache] = useState(false)
+  const [workspaceCodeCache, setWorkspaceCodeCache] = useState<Record<string, WorkspaceCodeEntrySnapshot>>(
+    () => readWorkspaceSnapshot(projectId)?.codeContents ?? {}
+  )
+  const hydrationAttemptRef = useRef(0)
+  const hydrationPromiseRef = useRef<Promise<boolean> | null>(null)
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [projectMissing, setProjectMissing] = useState(false)
@@ -779,6 +818,66 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const [expandedCodeFolders, setExpandedCodeFolders] = useState<string[]>(["app", "components", "lib"])
   const [templateLibraryQuery, setTemplateLibraryQuery] = useState("")
 
+  function persistWorkspaceSnapshotDraft(
+    updater: (current: WorkspaceBootstrapSnapshot | null) => WorkspaceBootstrapSnapshot | null
+  ) {
+    setWorkspaceSnapshot((current) => {
+      const next = updater(current)
+      if (next) {
+        persistWorkspaceBootstrapSnapshot(next)
+      }
+      return next
+    })
+  }
+
+  function applyWorkspaceSnapshot(snapshot: WorkspaceBootstrapSnapshot, options?: { recovered?: boolean }) {
+    setWorkspaceSnapshot(snapshot)
+    setWorkspaceCodeCache(snapshot.codeContents ?? {})
+    setProject(snapshot.project as ProjectDetail)
+    setGenerateTask((current) => current ?? (snapshot.generateTask as GenerateTaskResp | null) ?? null)
+    const prioritized = prioritizeCodeFiles(snapshot.codeFiles ?? Object.keys(snapshot.codeContents ?? {}))
+    setCodeFiles(prioritized)
+    setSelectedCodeFile((current) => (current && prioritized.includes(current) ? current : prioritized[0] || ""))
+    setCodeTabs((current) => {
+      const filtered = current.filter((item) => prioritized.includes(item))
+      return filtered.length ? filtered : prioritized.slice(0, 4)
+    })
+    setExpandedCodeFolders((current) =>
+      Array.from(new Set([...current, ...prioritized.slice(0, 18).flatMap((item) => buildParentPaths(item).slice(0, 2))]))
+    )
+    setProjectMissing(false)
+    setLoading(false)
+    setWorkspaceRecoveredFromCache(Boolean(options?.recovered))
+  }
+
+  async function hydrateWorkspaceFromSnapshot(snapshot: WorkspaceBootstrapSnapshot) {
+    const now = Date.now()
+    if (hydrationPromiseRef.current) {
+      return hydrationPromiseRef.current
+    }
+    if (now - hydrationAttemptRef.current < 8_000) {
+      return false
+    }
+    hydrationAttemptRef.current = now
+    hydrationPromiseRef.current = fetch(`/api/projects/${encodeURIComponent(projectId)}/hydrate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshot }),
+    })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        hydrationPromiseRef.current = null
+      })
+
+    return hydrationPromiseRef.current
+  }
+
+  async function ensureWorkspaceHydrated() {
+    if (!workspaceRecoveredFromCache || !workspaceSnapshot) return false
+    return hydrateWorkspaceFromSnapshot(workspaceSnapshot)
+  }
+
   function persistPreviewSnapshot(snapshot: PreviewSnapshot) {
     if (typeof window === "undefined") return
     try {
@@ -802,22 +901,81 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   async function loadProject() {
     const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
     if (!res.ok) {
+      const cached = workspaceSnapshot ?? readWorkspaceSnapshot(projectId)
+      if (cached) {
+        const restored = await hydrateWorkspaceFromSnapshot(cached)
+        if (restored) {
+          const retried = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
+          if (retried.ok) {
+            const json = await retried.json()
+            const nextProject = json.project as ProjectDetail
+            setProject(nextProject)
+            setProjectMissing(false)
+            setWorkspaceRecoveredFromCache(false)
+            setLoading(false)
+            persistWorkspaceSnapshotDraft((current) => ({
+              projectId: nextProject.projectId,
+              projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
+              region: nextProject.region,
+              createdAt: nextProject.createdAt,
+              updatedAt: nextProject.updatedAt,
+              project: nextProject as WorkspaceBootstrapSnapshot["project"],
+              generateTask: current?.generateTask ?? null,
+              codeFiles: current?.codeFiles ?? [],
+              codeContents: current?.codeContents ?? {},
+              source: "workspace",
+            }))
+            return
+          }
+        }
+        applyWorkspaceSnapshot(cached, { recovered: true })
+        return
+      }
       setProjectMissing(true)
+      setWorkspaceRecoveredFromCache(false)
       setLoading(false)
       return
     }
     const json = await res.json()
-    setProject(json.project as ProjectDetail)
+    const nextProject = json.project as ProjectDetail
+    setProject(nextProject)
     setProjectMissing(false)
+    setWorkspaceRecoveredFromCache(false)
     setLoading(false)
+    persistWorkspaceSnapshotDraft((current) => ({
+      projectId: nextProject.projectId,
+      projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
+      region: nextProject.region,
+      createdAt: nextProject.createdAt,
+      updatedAt: nextProject.updatedAt,
+      project: nextProject as WorkspaceBootstrapSnapshot["project"],
+      generateTask: current?.generateTask ?? null,
+      codeFiles: current?.codeFiles ?? [],
+      codeContents: current?.codeContents ?? {},
+      source: "workspace",
+    }))
   }
 
   async function loadGenerateTask() {
     if (!jobId) return
-    const res = await fetch(`/api/generate?jobId=${encodeURIComponent(jobId)}`)
+    const res = await fetch(
+      `/api/generate?jobId=${encodeURIComponent(jobId)}${workspaceSnapshot ? "" : "&snapshot=1"}`
+    )
     if (!res.ok) return
-    const json = (await res.json()) as GenerateTaskResp
+    const json = (await res.json()) as GenerateTaskResp & { workspaceSnapshot?: WorkspaceBootstrapSnapshot | null }
     setGenerateTask(json)
+    if (json.workspaceSnapshot) {
+      applyWorkspaceSnapshot(json.workspaceSnapshot, { recovered: false })
+    } else {
+      persistWorkspaceSnapshotDraft((current) => {
+        if (!current?.project) return current
+        return {
+          ...current,
+          updatedAt: current.project.updatedAt || new Date().toISOString(),
+          generateTask: json as WorkspaceBootstrapSnapshot["generateTask"],
+        }
+      })
+    }
     if (json.status === "done" || json.status === "error") {
       setGeneratePanelOpen(false)
     } else {
@@ -826,8 +984,28 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   async function loadCodeFiles() {
+    await ensureWorkspaceHydrated()
     const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`)
-    if (!res.ok) return
+    if (!res.ok) {
+      const cached = workspaceSnapshot ?? readWorkspaceSnapshot(projectId)
+      if (!cached) return
+      const prioritized = prioritizeCodeFiles(cached.codeFiles ?? Object.keys(cached.codeContents ?? {}))
+      setCodeFiles(prioritized)
+      setSelectedCodeFile((current) => (current && prioritized.includes(current) ? current : prioritized[0] || ""))
+      setCodeTabs((current) => {
+        const nextTabs = current.filter((item) => prioritized.includes(item))
+        return nextTabs.length ? nextTabs : prioritized.slice(0, 4)
+      })
+      setExpandedCodeFolders((current) =>
+        Array.from(
+          new Set([
+            ...current,
+            ...prioritized.slice(0, 18).flatMap((item) => buildParentPaths(item).slice(0, 2)),
+          ])
+        )
+      )
+      return
+    }
     const json = (await res.json()) as ProjectFilesResp
     const prioritized = prioritizeCodeFiles(json.files)
     setCodeFiles(prioritized)
@@ -846,14 +1024,39 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         ])
       )
     )
+    persistWorkspaceSnapshotDraft((current) => {
+      const baseProject = current?.project ?? (project as WorkspaceBootstrapSnapshot["project"] | null)
+      if (!baseProject) return current
+      return {
+        projectId: current?.projectId || baseProject.projectId,
+        projectSlug: current?.projectSlug || baseProject.projectSlug || baseProject.projectId,
+        region: baseProject.region,
+        createdAt: current?.createdAt || baseProject.createdAt,
+        updatedAt: baseProject.updatedAt || new Date().toISOString(),
+        project: baseProject,
+        generateTask: current?.generateTask ?? (generateTask as WorkspaceBootstrapSnapshot["generateTask"]),
+        codeFiles: prioritized,
+        codeContents: current?.codeContents ?? {},
+        source: "workspace",
+      }
+    })
   }
 
   async function loadCodeFile(filePath: string) {
     if (!filePath) return
+    await ensureWorkspaceHydrated()
     setCodeLoading(true)
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(filePath)}`)
       if (!res.ok) {
+        const cachedEntry = workspaceCodeCache[filePath] ?? (workspaceSnapshot?.codeContents ?? {})[filePath]
+        if (cachedEntry) {
+          setSelectedCodeContent(cachedEntry.content)
+          setDraftCodeContent(cachedEntry.content)
+          setSelectedCodeSymbols(cachedEntry.symbols ?? [])
+          setFocusedLine((current) => current ?? cachedEntry.symbols?.[0]?.line ?? null)
+          return
+        }
         const json = await res.json().catch(() => ({}))
         setSelectedCodeContent(String(json?.error ?? "Failed to load file"))
         return
@@ -864,6 +1067,35 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       setSelectedCodeSymbols(json.symbols ?? [])
       setFocusedLine((current) => current ?? json.symbols?.[0]?.line ?? null)
       setCodeTabs((current) => (current.includes(filePath) ? current : [...current, filePath].slice(-6)))
+      setWorkspaceCodeCache((current) => ({
+        ...current,
+        [filePath]: {
+          content: json.content,
+          symbols: json.symbols ?? [],
+        },
+      }))
+      persistWorkspaceSnapshotDraft((current) => {
+        const baseProject = current?.project ?? (project as WorkspaceBootstrapSnapshot["project"] | null)
+        if (!baseProject) return current
+        return {
+          projectId: current?.projectId || baseProject.projectId,
+          projectSlug: current?.projectSlug || baseProject.projectSlug || baseProject.projectId,
+          region: baseProject.region,
+          createdAt: current?.createdAt || baseProject.createdAt,
+          updatedAt: baseProject.updatedAt || new Date().toISOString(),
+          project: baseProject,
+          generateTask: current?.generateTask ?? (generateTask as WorkspaceBootstrapSnapshot["generateTask"]),
+          codeFiles: current?.codeFiles ?? codeFiles,
+          codeContents: {
+            ...(current?.codeContents ?? {}),
+            [filePath]: {
+              content: json.content,
+              symbols: json.symbols ?? [],
+            },
+          },
+          source: "workspace",
+        }
+      })
     } finally {
       setCodeLoading(false)
     }
@@ -892,6 +1124,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
   async function saveCodeFile() {
     if (!selectedCodeFile) return
+    await ensureWorkspaceHydrated()
     setCodeSaving(true)
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/files`, {
@@ -908,6 +1141,38 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         return
       }
       setSelectedCodeContent(draftCodeContent)
+      setWorkspaceCodeCache((current) => ({
+        ...current,
+        [selectedCodeFile]: {
+          content: draftCodeContent,
+          symbols: extractSymbolsFromCode(draftCodeContent),
+        },
+      }))
+      persistWorkspaceSnapshotDraft((current) => {
+        const baseProject = current?.project ?? (project as WorkspaceBootstrapSnapshot["project"] | null)
+        if (!baseProject) return current
+        return {
+          projectId: current?.projectId || baseProject.projectId,
+          projectSlug: current?.projectSlug || baseProject.projectSlug || baseProject.projectId,
+          region: baseProject.region,
+          createdAt: current?.createdAt || baseProject.createdAt,
+          updatedAt: new Date().toISOString(),
+          project: {
+            ...baseProject,
+            updatedAt: new Date().toISOString(),
+          },
+          generateTask: current?.generateTask ?? (generateTask as WorkspaceBootstrapSnapshot["generateTask"]),
+          codeFiles: current?.codeFiles ?? codeFiles,
+          codeContents: {
+            ...(current?.codeContents ?? {}),
+            [selectedCodeFile]: {
+              content: draftCodeContent,
+              symbols: extractSymbolsFromCode(draftCodeContent),
+            },
+          },
+          source: "workspace",
+        }
+      })
       setRunStatus(`Saved ${selectedCodeFile}`)
     } finally {
       setCodeSaving(false)
@@ -943,6 +1208,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   async function runAction(action: "start" | "stop" | "restart") {
+    await ensureWorkspaceHydrated()
     setRunBusy(true)
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/run`, {
@@ -964,6 +1230,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   async function sandboxAction(action: "start" | "stop" | "restart") {
+    await ensureWorkspaceHydrated()
     setSandboxBusy(true)
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/sandbox`, {
@@ -986,6 +1253,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   async function iterate() {
     const text = prompt.trim()
     if (!text) return
+    await ensureWorkspaceHydrated()
     setIterating(true)
     setIterateStatus(
       aiWorkflowMode === "discuss"
@@ -1093,6 +1361,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   async function revertLastChange() {
+    await ensureWorkspaceHydrated()
     setRevertBusy(true)
     try {
       const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/revert`, {
@@ -1122,6 +1391,16 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     loadProject()
     const timer = setInterval(loadProject, 5000)
     return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  useEffect(() => {
+    const cached = readWorkspaceSnapshot(projectId)
+    setWorkspaceSnapshot(cached)
+    setWorkspaceCodeCache(cached?.codeContents ?? {})
+    if (cached) {
+      applyWorkspaceSnapshot(cached, { recovered: false })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
@@ -2451,10 +2730,15 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     [activeSectionKey, currentCodeRoute, previewTab, selectedCodeFile, workspaceAiRoutes, workspaceRegion]
   )
   const availableAiSymbols = useMemo(() => {
-    const fromFile = selectedCodeSymbols.map((item) => item.name).filter(Boolean)
-    return Array.from(new Set((fromFile.length ? fromFile : aiPageContext.symbols).filter(Boolean)))
+    const fromFile = selectedCodeSymbols.map((item) => item.name).filter((item): item is string => Boolean(item))
+    return Array.from(
+      new Set((fromFile.length ? fromFile : aiPageContext.symbols).filter((item): item is string => Boolean(item)))
+    )
   }, [aiPageContext.symbols, selectedCodeSymbols])
-  const availableAiElements = useMemo(() => Array.from(new Set(aiPageContext.elements.filter(Boolean))), [aiPageContext.elements])
+  const availableAiElements = useMemo(
+    () => Array.from(new Set(aiPageContext.elements.filter((item): item is string => Boolean(item)))),
+    [aiPageContext.elements]
+  )
   useEffect(() => {
     setAiTargetSymbol((current) => (current && availableAiSymbols.includes(current) ? current : focusedSymbolName || availableAiSymbols[0] || ""))
   }, [availableAiSymbols, focusedSymbolName])

@@ -255,6 +255,17 @@ export async function updateGenerateTask(
   return store.tasks[jobId]
 }
 
+export async function upsertGenerateTask(task: GenerateTask): Promise<GenerateTask> {
+  const store = await readStore()
+  store.tasks[task.jobId] = {
+    ...task,
+    updatedAt: task.updatedAt || new Date().toISOString(),
+    createdAt: task.createdAt || new Date().toISOString(),
+  }
+  await writeStore(store)
+  return store.tasks[task.jobId]
+}
+
 export async function findLatestTaskByProject(projectId: string): Promise<GenerateTask | null> {
   const store = await readStore()
   const items = Object.values(store.tasks).filter((t) => t.projectId === projectId)
