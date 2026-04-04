@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { AUTH_COOKIE } from "@/lib/auth"
-import { createSession } from "@/lib/auth-store"
+import { setCurrentSession } from "@/lib/auth"
 import { upsertExternalUser } from "@/lib/auth-store"
 
 export const runtime = "nodejs"
@@ -72,15 +70,11 @@ export async function GET(req: Request) {
       name: nickname,
       region: "cn",
     })
-    const session = await createSession(user.id)
-
-    const cookieStore = await cookies()
-    cookieStore.set(AUTH_COOKIE, session.token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      path: "/",
-      expires: new Date(session.expiresAt),
+    await setCurrentSession({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      region: user.region,
     })
 
     return NextResponse.redirect(redirectUrl)

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createSession, findUserByCredentials, upsertExternalUser } from "@/lib/auth-store"
-import { AUTH_COOKIE } from "@/lib/auth"
+import { findUserByCredentials, upsertExternalUser } from "@/lib/auth-store"
+import { setCurrentSession } from "@/lib/auth"
 import { resolveAuthRuntimeConfig } from "@/lib/auth-runtime"
 import { signInWithSupabasePassword } from "@/lib/supabase-auth"
 
@@ -35,14 +34,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
   }
 
-  const session = await createSession(user.id)
-  const cookieStore = await cookies()
-  cookieStore.set(AUTH_COOKIE, session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: new Date(session.expiresAt),
+  await setCurrentSession({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    region: user.region,
   })
 
   return NextResponse.json({

@@ -1,6 +1,5 @@
-import { cookies } from "next/headers"
-import { AUTH_COOKIE } from "@/lib/auth"
-import { createSession, upsertExternalUser } from "@/lib/auth-store"
+import { setCurrentSession } from "@/lib/auth"
+import { upsertExternalUser } from "@/lib/auth-store"
 
 type DemoOAuthProvider = "google" | "facebook"
 
@@ -32,15 +31,11 @@ export async function createDemoOAuthSession(provider: DemoOAuthProvider) {
     name: preset.name,
     region: "intl",
   })
-  const session = await createSession(user.id)
-
-  const cookieStore = await cookies()
-  cookieStore.set(AUTH_COOKIE, session.token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: false,
-    path: "/",
-    expires: new Date(session.expiresAt),
+  await setCurrentSession({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    region: user.region,
   })
 
   return user
