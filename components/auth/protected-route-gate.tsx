@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 type SessionResp = {
   authenticated?: boolean
@@ -15,9 +15,13 @@ type ProtectedRouteGateProps = {
 export function ProtectedRouteGate({ enabled, children }: ProtectedRouteGateProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
   const [state, setState] = useState<"checking" | "allowed" | "redirecting">(enabled ? "checking" : "allowed")
-  const search = searchParams?.toString() ?? ""
+  const [search, setSearch] = useState("")
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setSearch(window.location.search.replace(/^\?/, ""))
+  }, [pathname])
 
   const redirectTarget = useMemo(() => {
     return `${pathname || "/"}${search ? `?${search}` : ""}`
