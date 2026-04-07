@@ -2295,12 +2295,19 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const absolutePrimaryPreviewUrl = toAbsoluteBrowserUrl(primaryPreviewUrl)
   const absoluteResolvedPreviewUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
   const absoluteAssignedAppUrl = toAbsoluteBrowserUrl(assignedAppDomain)
+  const hostedIntlPreviewBaseUrl = process.env.NEXT_PUBLIC_INTL_PREVIEW_SITE_URL || "https://www.mornscience.app"
+  const hostedIntlPreviewUrl =
+    workspaceRegion === "intl" && canonicalPreviewUrl
+      ? `${hostedIntlPreviewBaseUrl.replace(/\/+$/, "")}${canonicalPreviewUrl.startsWith("/") ? canonicalPreviewUrl : `/${canonicalPreviewUrl}`}`
+      : ""
   const isLocalPreviewHost =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   const openPreviewUrl = isLocalPreviewHost
     ? absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
-    : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
+    : workspaceRegion === "intl"
+      ? hostedIntlPreviewUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+      : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
   const sharedAppUrl = openPreviewUrl
   const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
   const moduleCount = project?.spec?.modules?.length ?? 0
