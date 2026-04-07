@@ -2295,7 +2295,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const absolutePrimaryPreviewUrl = toAbsoluteBrowserUrl(primaryPreviewUrl)
   const absoluteResolvedPreviewUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
   const absoluteAssignedAppUrl = toAbsoluteBrowserUrl(assignedAppDomain)
+  const hostedCnPreviewBaseUrl = process.env.NEXT_PUBLIC_CN_PREVIEW_SITE_URL || "https://mornstack.mornscience.top"
   const hostedIntlPreviewBaseUrl = process.env.NEXT_PUBLIC_INTL_PREVIEW_SITE_URL || "https://www.mornscience.app"
+  const hostedCnPreviewUrl =
+    workspaceRegion === "cn" && canonicalPreviewUrl
+      ? `${hostedCnPreviewBaseUrl.replace(/\/+$/, "")}${canonicalPreviewUrl.startsWith("/") ? canonicalPreviewUrl : `/${canonicalPreviewUrl}`}`
+      : ""
   const hostedIntlPreviewUrl =
     workspaceRegion === "intl" && canonicalPreviewUrl
       ? `${hostedIntlPreviewBaseUrl.replace(/\/+$/, "")}${canonicalPreviewUrl.startsWith("/") ? canonicalPreviewUrl : `/${canonicalPreviewUrl}`}`
@@ -2307,7 +2312,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     ? absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
     : workspaceRegion === "intl"
       ? hostedIntlPreviewUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
-      : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
+      : workspaceRegion === "cn"
+        ? hostedCnPreviewUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+        : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
   const sharedAppUrl = openPreviewUrl
   const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
   const moduleCount = project?.spec?.modules?.length ?? 0
