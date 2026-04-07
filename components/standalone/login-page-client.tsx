@@ -60,6 +60,7 @@ function LoginPageContent() {
   const [runtimeMode, setRuntimeMode] = useState<"demo" | "password" | "supabase" | "wechat" | "phone">("demo")
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [googleEnabled, setGoogleEnabled] = useState(true)
+  const [cnLoginMethod, setCnLoginMethod] = useState<"phone" | "email">("phone")
   const [phone, setPhone] = useState("")
   const [phoneCode, setPhoneCode] = useState("")
   const [sandboxCode, setSandboxCode] = useState("")
@@ -90,6 +91,11 @@ function LoginPageContent() {
       .catch(() => null)
       .finally(() => setAuthResolved(true))
   }, [isCn, registerRequested, switchAccount])
+
+  useEffect(() => {
+    if (!isCn) return
+    setCnLoginMethod(runtimeMode === "phone" ? "phone" : "email")
+  }, [isCn, runtimeMode])
 
   async function handleSwitchAccount() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
@@ -320,7 +326,7 @@ function LoginPageContent() {
   const showAuthForm = authStep !== "authenticated"
   const isRegisterMode = authStep === "register"
   const isPasswordMode = authStep === "password"
-  const cnPhoneFlow = isCn && runtimeMode === "phone"
+  const cnPhoneFlow = isCn && cnLoginMethod === "phone"
   const showGoogleEntry = !isCn && googleEnabled
   const googleRedirect = `/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`
 
@@ -397,6 +403,37 @@ function LoginPageContent() {
                   ) : null}
 
                   <div className="space-y-4">
+                    {isCn ? (
+                      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError("")
+                            setPhoneHint("")
+                            setCnLoginMethod("phone")
+                          }}
+                          className={`h-11 rounded-[14px] text-sm font-medium transition ${
+                            cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          手机号验证码
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError("")
+                            setPhoneHint("")
+                            setCnLoginMethod("email")
+                          }}
+                          className={`h-11 rounded-[14px] text-sm font-medium transition ${
+                            !cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                          }`}
+                        >
+                          邮箱登录
+                        </button>
+                      </div>
+                    ) : null}
+
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-slate-900">{copy.email}</label>
                       <Input
