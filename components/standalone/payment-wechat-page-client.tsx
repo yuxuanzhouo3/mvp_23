@@ -27,7 +27,7 @@ function WechatPaymentPageContent() {
   const [qrError, setQrError] = useState(false)
 
   const qrPreviewUrl = codeUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=12&data=${encodeURIComponent(codeUrl)}`
+    ? `/api/payment/wechat-qr?data=${encodeURIComponent(codeUrl)}`
     : ""
 
   async function refreshStatus() {
