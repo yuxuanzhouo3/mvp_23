@@ -18,6 +18,7 @@ import { RecentGenerations } from "@/components/dashboard/recent-generations"
 
 type ProjectItem = {
   projectId: string
+  projectSlug?: string
   region: "cn" | "intl"
   createdAt: string
   updatedAt: string
@@ -55,6 +56,18 @@ type ProjectItem = {
     supportsDynamicRuntime: boolean
     supportsSandboxRuntime: boolean
   }
+  delivery?: {
+    planId: "free" | "starter" | "builder" | "pro" | "elite"
+    assignedDomain: string
+    subdomainSlots: number
+    generationProfile: "starter" | "builder" | "premium" | "showcase"
+    codeExportLevel: "none" | "manifest" | "full"
+    databaseAccessMode: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+    projectLimit: number
+    collaboratorLimit: number
+    routeBudget: number
+    moduleBudget: number
+  }
 }
 
 function buildAcceptanceLabel(status?: "ok" | "failed" | "skipped" | null) {
@@ -69,6 +82,44 @@ function buildPreviewLabel(status?: "idle" | "building" | "ready" | "failed") {
   if (status === "failed") return "preview: failed"
   if (status === "building") return "preview: building"
   return "preview: idle"
+}
+
+function buildPlanCapabilityLabel(project: ProjectItem) {
+  const planId = project.delivery?.planId ?? "free"
+  const profile = project.delivery?.generationProfile ?? "starter"
+  const exportLevel = project.delivery?.codeExportLevel ?? "none"
+  const dbMode = project.delivery?.databaseAccessMode ?? "online_only"
+  return `${planId} · ${profile} · export:${exportLevel} · db:${dbMode}`
+}
+
+function buildDeliverySummary(project: ProjectItem) {
+  if (!project.delivery) return null
+  return [
+    `routes ${project.delivery.routeBudget}`,
+    `modules ${project.delivery.moduleBudget}`,
+    `projects ${project.delivery.projectLimit}`,
+    `collab ${project.delivery.collaboratorLimit}`,
+    `subdomains ${project.delivery.subdomainSlots}`,
+  ].join(" · ")
+}
+
+function getPlanBadgeVariant(planId?: "free" | "starter" | "builder" | "pro" | "elite") {
+  if (planId === "elite") return "default" as const
+  if (planId === "pro") return "secondary" as const
+  return "outline" as const
+}
+
+function formatExportLevel(level?: "none" | "manifest" | "full") {
+  if (level === "full") return "Full export"
+  if (level === "manifest") return "Manifest export"
+  return "No export"
+}
+
+function formatDatabaseAccess(mode?: "online_only" | "managed_config" | "production_access" | "handoff_ready") {
+  if (mode === "handoff_ready") return "DB: handoff-ready"
+  if (mode === "production_access") return "DB: production"
+  if (mode === "managed_config") return "DB: managed"
+  return "DB: online-only"
 }
 
 export default function ProjectsPage() {
@@ -182,12 +233,35 @@ export default function ProjectsPage() {
                 <Badge variant="outline">{buildAcceptanceLabel(project.generation?.buildStatus)}</Badge>
                 <Badge variant="outline">{buildPreviewLabel(project.preview?.status)}</Badge>
                 {project.preview?.activeMode ? <Badge variant="outline">{project.preview.activeMode}</Badge> : null}
+                {project.delivery ? (
+                  <>
+                    <Badge variant={getPlanBadgeVariant(project.delivery.planId)}>
+                      {project.delivery.planId.toUpperCase()}
+                    </Badge>
+                    <Badge variant="outline">{buildPlanCapabilityLabel(project)}</Badge>
+                    <Badge variant="outline">{formatExportLevel(project.delivery.codeExportLevel)}</Badge>
+                    <Badge variant="outline">{formatDatabaseAccess(project.delivery.databaseAccessMode)}</Badge>
+                  </>
+                ) : null}
               </div>
               <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <span>Region: {project.region.toUpperCase()}</span>
                 <span>Events: {project.historyCount}</span>
                 <span>Updated: {new Date(project.updatedAt).toLocaleString()}</span>
               </div>
+              {project.delivery ? (
+                <div className="mt-3 rounded-2xl border border-border/60 bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium text-foreground/90">
+                      {project.delivery.assignedDomain.replace(/^https?:\/\//, "")}
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      {project.delivery.subdomainSlots} slot{project.delivery.subdomainSlots > 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+                  <div className="mt-1">{buildDeliverySummary(project)}</div>
+                </div>
+              ) : null}
               {project.preview?.fallbackReason ? (
                 <p className="mt-3 text-xs text-amber-700">{project.preview.fallbackReason}</p>
               ) : null}

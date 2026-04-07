@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentSession } from "@/lib/auth"
-import { getPayment } from "@/lib/payment-store"
+import { getPayment, updatePaymentStatus } from "@/lib/payment-store"
+import { mapWechatTradeStateToPaymentStatus, queryWechatPayTransactionByOutTradeNo } from "@/lib/payment/providers/wechatpay"
 
 export const runtime = "nodejs"
 
@@ -21,5 +22,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Payment not found" }, { status: 404 })
   }
 
-  return NextResponse.json({ ok: true, payment })
+  let resolvedPayment = payment
+  const shouldRefreshProvider =
+    payment.method === "wechatpay" &&
+    payment.status === "pending" &&
+    String(searchParams.get("refresh") ?? "").trim() !== "0"
+
+  if (shouldRefreshProvider) {
+    try {
+      const transaction = await queryWechatPayTransactionByOutTradeNo(payment.id)
+      const nextStatus = mapWechatTradeStateToPaymentStatus(transaction?.trade_state)
+      if (nextStatus !== payment.status) {
+        resolvedPayment = (await updatePaymentStatus(payment.id, nextStatus)) ?? payment
+      }
+    } catch {
+      resolvedPayment = payment
+    }
+  }
+
+  return NextResponse.json({ ok: true, payment: resolvedPayment })
 }

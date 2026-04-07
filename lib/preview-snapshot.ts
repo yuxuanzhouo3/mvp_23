@@ -8,6 +8,18 @@ export type PreviewSnapshotSpec = {
   databaseTarget?: string
 } | null
 
+export type PreviewSnapshotDelivery = {
+  assignedDomain?: string
+  subdomainSlots?: number
+  generationProfile?: "starter" | "builder" | "premium" | "showcase"
+  codeExportLevel?: "none" | "manifest" | "full"
+  databaseAccessMode?: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+  projectLimit?: number
+  collaboratorLimit?: number
+  routeBudget?: number
+  moduleBudget?: number
+} | null
+
 export type PreviewSnapshotPresentation = {
   displayName: string
   subtitle: string
@@ -33,6 +45,7 @@ export type PreviewSnapshot = {
   projectSlug: string
   region: "cn" | "intl"
   spec: PreviewSnapshotSpec
+  delivery?: PreviewSnapshotDelivery
   presentation: PreviewSnapshotPresentation
   history: PreviewSnapshotHistoryItem[]
   updatedAt: string

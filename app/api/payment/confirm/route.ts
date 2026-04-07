@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentSession } from "@/lib/auth"
-import { getPayment } from "@/lib/payment-store"
+import { getPayment, updatePaymentStatus } from "@/lib/payment-store"
+import { mapWechatTradeStateToPaymentStatus, queryWechatPayTransactionByOutTradeNo } from "@/lib/payment/providers/wechatpay"
 
 export const runtime = "nodejs"
 
@@ -19,6 +20,44 @@ export async function POST(req: Request) {
   const payment = await getPayment(paymentId)
   if (!payment || payment.userId !== current.user.id) {
     return NextResponse.json({ error: "Payment not found" }, { status: 404 })
+  }
+
+  if (payment.status === "pending" && payment.method === "wechatpay") {
+    try {
+      const transaction = await queryWechatPayTransactionByOutTradeNo(payment.id)
+      const nextStatus = mapWechatTradeStateToPaymentStatus(transaction?.trade_state)
+      if (nextStatus !== payment.status) {
+        const updated = await updatePaymentStatus(payment.id, nextStatus)
+        if (updated) {
+          if (updated.status === "completed") {
+            return NextResponse.json({
+              ok: true,
+              payment: updated,
+              message: "WeChat Pay verified successfully.",
+            })
+          }
+          if (updated.status === "cancelled") {
+            return NextResponse.json(
+              {
+                ok: false,
+                payment: updated,
+                error: "Payment has been cancelled.",
+              },
+              { status: 409 }
+            )
+          }
+        }
+      }
+    } catch (error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          payment,
+          error: error instanceof Error ? error.message : "WeChat Pay verification failed.",
+        },
+        { status: 502 }
+      )
+    }
   }
 
   if (payment.status === "completed") {

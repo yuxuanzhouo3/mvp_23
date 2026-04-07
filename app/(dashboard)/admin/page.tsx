@@ -238,6 +238,32 @@ function fromDateTimeLocal(value: string) {
   return parsed.toISOString()
 }
 
+function getPlanBadgeVariant(plan: "free" | "starter" | "builder" | "pro" | "elite") {
+  if (plan === "elite") return "default" as const
+  if (plan === "pro") return "secondary" as const
+  return "outline" as const
+}
+
+function formatExportLevel(level: "none" | "manifest" | "full") {
+  if (level === "full") return "Full export"
+  if (level === "manifest") return "Manifest export"
+  return "No code export"
+}
+
+function formatDbMode(mode: "online_only" | "managed_config" | "production_access" | "handoff_ready") {
+  if (mode === "handoff_ready") return "DB: handoff-ready"
+  if (mode === "production_access") return "DB: production access"
+  if (mode === "managed_config") return "DB: managed config"
+  return "DB: online-only"
+}
+
+function formatGenerationProfile(profile: "starter" | "builder" | "premium" | "showcase") {
+  if (profile === "showcase") return "Generation: showcase"
+  if (profile === "premium") return "Generation: premium"
+  if (profile === "builder") return "Generation: builder"
+  return "Generation: starter"
+}
+
 export default function AdminPage() {
   const [appName, setAppName] = useState("MornstackIntl")
   const [websiteUrl, setWebsiteUrl] = useState(siteLinks.websiteIntl)
@@ -1080,11 +1106,28 @@ export default function AdminPage() {
             {DELIVERY_PERMISSION_RULES.map((rule) => (
               <div key={rule.plan} className="rounded-2xl border border-border p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium uppercase">{rule.plan}</div>
-                  <Badge variant={rule.status === "ready" ? "secondary" : "outline"}>{getDeliveryStatusLabel(rule.status, "zh")}</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium uppercase">{rule.plan}</div>
+                    <Badge variant={getPlanBadgeVariant(rule.plan)}>{rule.plan.toUpperCase()}</Badge>
+                  </div>
+                  <Badge variant={rule.status === "ready" ? "secondary" : "outline"}>
+                    {getDeliveryStatusLabel(rule.status, "zh")}
+                  </Badge>
                 </div>
                 <div className="mt-2 text-sm text-foreground">{rule.title}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{rule.summary}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                  <Badge variant="outline">{formatGenerationProfile(rule.generationProfile)}</Badge>
+                  <Badge variant="outline">{formatExportLevel(rule.codeExportLevel)}</Badge>
+                  <Badge variant="outline">{formatDbMode(rule.databaseAccessMode)}</Badge>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                  <div>Routes: {rule.routeBudget}</div>
+                  <div>Modules: {rule.moduleBudget}</div>
+                  <div>Projects: {rule.projectLimit}</div>
+                  <div>Collaborators: {rule.collaboratorLimit}</div>
+                  <div>Subdomain slots: {rule.subdomainSlots}</div>
+                </div>
               </div>
             ))}
           </CardContent>

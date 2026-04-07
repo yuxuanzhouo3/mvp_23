@@ -77,7 +77,7 @@ function getMissingFields(record: DeliveryHandoffRecord) {
 export async function listDeliveryHandoffs() {
   const store = await readStore()
   const gitMeta = await readGitMeta()
-  const baselineVerifiedAt = "2026-04-03T00:41:35+08:00"
+  const baselineVerifiedAt = "2026-04-06T10:30:00+08:00"
 
   const defaults: DeliveryHandoffRecord[] = [
     {
@@ -85,22 +85,23 @@ export async function listDeliveryHandoffs() {
       title: "International web delivery pack",
       regionLabel: "INTL",
       status: "in_progress",
-      phase: "2026-04-07 Web acceptance closure",
+      phase: "2026-04-13 acceptance prep",
       branchName: gitMeta?.branch || "",
       commitHash: gitMeta?.commit || "",
       productionUrl: siteLinks.websiteIntl,
       previewUrl: siteLinks.bossDemo,
-      runtimeGuide: "Next.js + one Vercel project + canonical intl public origin https://www.mornscience.app/",
-      databaseChoice: "Supabase / Neon / managed Postgres",
+      runtimeGuide: "Next.js + one Vercel project + canonical intl public origin + preview / auth / payment callbacks on the same origin family",
+      databaseChoice: "Supabase / Neon / managed Postgres (target login: Google + email)",
       lastBuildNote:
-        "2026-04-03: live /api/iterate smoke suite (explain + generate + fix + refactor) passed on port 3103 for project_1774869442252 and stayed anchored to app/editor/page.tsx. The sample workspace still reported pre-existing build failures during generate/fix/refactor.",
+        "2026-04-06: latest Next build passed after plan-policy, preview/subdomain, auth-payment readiness, phone-OTP sandbox, and WeChat Pay readiness updates. Keep a fresh build note after the next generate/iterate smoke sweep.",
       latestVerification:
-        "2026-04-03: live /api/iterate explain/generate/fix/refactor smoke passed on port 3103. The online chain stayed anchored to app/editor/page.tsx on /editor, preserved current-file/current-page/current-module priority, and kept the build-failed sample-workspace state separate from the context-priority verification.",
+        "2026-04-06: the intl surface keeps Google + email as the target auth shape, build is green, and preview/subdomain/export policy are still aligned with the B-line workspace flow.",
       verifiedAt: baselineVerifiedAt,
       mustCloseItems: [
-        "Confirm the final international preview URL used for boss-demo review.",
+        "Confirm the final Vercel production URL and preview URL used for boss-demo review.",
         "Lock the release branch name used for the international handoff package.",
-        "Keep the recorded iterate smoke note aligned between /admin and the final handoff docs if the B-line prompt/context strategy changes again.",
+        "Complete one fresh generate + iterate smoke on the current branch and sync the note into /admin.",
+        "Replace Google sandbox callback with the real OAuth exchange once the official keys are approved.",
       ],
       deferredItems: [
         "International Android packaging remains after the compressed Web closure.",
@@ -109,10 +110,9 @@ export async function listDeliveryHandoffs() {
       notes: [
         "Canonical intl public URL: https://www.mornscience.app/",
         "The older mornhub alias belongs to the same Vercel project but is no longer the delivery default",
-        "Live iterate smoke suite passed on 2026-04-03 and confirmed editor-context priority online",
-        "Generate / fix / refactor all stayed anchored to app/editor/page.tsx on /editor",
-        "The smoke workspace still has pre-existing build failures, so sample-workspace build cleanup remains separate from the context verification",
-        "Confirm the final auth + payment provider setup",
+        "Target intl auth shape is Google + email; current Google route is still sandbox/demo-social until real OAuth keys land",
+        "Target intl payment shape is sandbox-first checkout during staging; real merchant secrets can be added later without changing the current checkout surface",
+        "Keep Vercel env, callback URLs, and assigned-subdomain presentation aligned before 4/8 full online testing",
       ],
     },
     {
@@ -120,31 +120,34 @@ export async function listDeliveryHandoffs() {
       title: "China web delivery pack",
       regionLabel: "CN",
       status: "in_progress",
-      phase: "2026-04-07 Web acceptance closure",
+      phase: "2026-04-13 acceptance prep",
       branchName: gitMeta?.branch || "",
       commitHash: gitMeta?.commit || "",
       productionUrl: siteLinks.websiteCn,
       previewUrl: siteLinks.bossDemo,
-      runtimeGuide: "Next.js + China-facing host + domestic service split",
-      databaseChoice: "CloudBase document or mainland-hosted database",
-      lastBuildNote: "Latest local pnpm build passed",
+      runtimeGuide: "Next.js + Tencent Cloud / CloudBase-facing host + domestic service split + same-origin preview/payment callback strategy",
+      databaseChoice: "CloudBase document or mainland-hosted database (target login: phone verification code + email)",
+      lastBuildNote: "2026-04-06: latest Next build passed after China phone-OTP sandbox login and WeChat Pay readiness updates.",
       latestVerification:
-        "2026-04-02: local pnpm build compiled successfully; CN delivery stays on the same admin/download registry, but domestic runtime/database and payment-smoke wording still need final closure.",
+        "2026-04-06: China delivery stays on the same admin/download registry, phone verification sandbox is wired, and WeChat Pay can already create/query/update orders with the current merchant credentials.",
       verifiedAt: baselineVerifiedAt,
       mustCloseItems: [
-        "Confirm the final China production URL that will be handed off on 2026-04-07.",
+        "Confirm the final Tencent Cloud production URL that will be handed off on 2026-04-13.",
         "Confirm the final China preview URL used for review.",
         "Lock the China-facing release branch name for handoff.",
-        "Record the latest successful build and payment-smoke note for the China track.",
+        "Run one current-branch payment smoke with WeChat Pay staging credentials and record the result.",
+        "Keep the phone verification sandbox path ready to swap to the real SMS provider without UI changes.",
       ],
       deferredItems: [
-        "WeChat login remains phase 2 until the credentials are approved.",
-        "WeChat Pay remains phase 2 until merchant configuration is ready.",
+        "WeChat login remains optional after the primary phone verification path is approved.",
+        "WeChat Pay webhook signature verification becomes complete once the platform public key and serial are available.",
         "Android real-device payment verification remains a follow-up item after the compressed Web closure.",
       ],
       notes: [
-        "Confirm the domestic database choice in the final handoff sheet",
-        "Keep WeChat login/pay marked as phase 2 until credentials are ready",
+        "Primary CN login target is phone verification code + email; the current implementation is sandbox-first until SMS provider credentials land",
+        "Current WeChat Pay credentials are already present locally and should be mirrored to Tencent Cloud env at deployment time",
+        "Keep the domestic database choice explicit in the final handoff sheet",
+        "Keep Alipay and WeChat Pay visible as the domestic checkout pair during acceptance prep",
       ],
     },
   ]

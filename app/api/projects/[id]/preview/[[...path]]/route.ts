@@ -164,6 +164,8 @@ async function renderFallbackPreview(projectId: string) {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
+      "x-mornstack-preview-state": "fallback",
+      "x-mornstack-preview-strategy": "structured_fallback",
     },
   })
 }
@@ -187,7 +189,7 @@ function rewriteHtmlForPreview(html: string, projectId: string) {
   return next
 }
 
-async function proxy(req: Request, projectIdRaw: string, pathSegments: string[]) {
+export async function handleProjectPreviewRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
   const projectId = safeProjectId(projectIdRaw)
   const project = await getProject(projectId)
   const runtimeState = project?.runtime
@@ -230,6 +232,8 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
   headers.delete("connection")
   headers.delete("host")
   headers.set("cache-control", "no-store")
+  headers.set("x-mornstack-preview-state", "runtime")
+  headers.set("x-mornstack-preview-strategy", "iframe")
 
   const contentType = headers.get("content-type") || ""
   if (contentType.includes("text/html")) {
@@ -250,25 +254,25 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
 
 export async function GET(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
-  return proxy(req, id, path ?? [])
+  return handleProjectPreviewRequest(req, id, path ?? [])
 }
 
 export async function POST(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
-  return proxy(req, id, path ?? [])
+  return handleProjectPreviewRequest(req, id, path ?? [])
 }
 
 export async function PUT(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
-  return proxy(req, id, path ?? [])
+  return handleProjectPreviewRequest(req, id, path ?? [])
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
-  return proxy(req, id, path ?? [])
+  return handleProjectPreviewRequest(req, id, path ?? [])
 }
 
 export async function DELETE(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
-  return proxy(req, id, path ?? [])
+  return handleProjectPreviewRequest(req, id, path ?? [])
 }

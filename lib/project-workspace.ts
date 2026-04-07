@@ -1,4 +1,5 @@
 import path from "path"
+import { randomUUID } from "crypto"
 import { promises as fs } from "fs"
 import type { DatabaseTarget, DeploymentTarget } from "@/lib/fullstack-targets"
 import type { PreviewMode } from "@/lib/preview-url"
@@ -85,8 +86,16 @@ export function safeProjectId(id: string) {
   return id.replace(/[^a-zA-Z0-9_-]/g, "")
 }
 
+export function normalizeProjectSlug(input?: string | null) {
+  return String(input ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
 export function createProjectId() {
-  return safeProjectId(`project_${Date.now()}`)
+  return safeProjectId(`project_${Date.now()}_${randomUUID().slice(0, 8)}`)
 }
 
 export function getWorkspacePath(projectId: string) {
@@ -191,6 +200,34 @@ export async function getProject(projectId: string) {
 export async function listProjects() {
   const store = await readStore()
   return Object.values(store.projects).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+}
+
+export async function reserveProjectSlug(
+  preferredSlug?: string | null,
+  options?: {
+    fallbackSlug?: string | null
+    excludeProjectId?: string | null
+  }
+) {
+  const baseSlug = normalizeProjectSlug(preferredSlug) || normalizeProjectSlug(options?.fallbackSlug) || "app"
+  const excludeProjectId = safeProjectId(String(options?.excludeProjectId ?? ""))
+  const store = await readStore()
+  const used = new Set(
+    Object.values(store.projects)
+      .filter((project) => project.projectId !== excludeProjectId)
+      .flatMap((project) => [project.projectId, project.projectSlug])
+      .map((value) => String(value ?? "").trim().toLowerCase())
+      .filter(Boolean)
+  )
+
+  if (!used.has(baseSlug)) return baseSlug
+
+  for (let index = 2; index < 5000; index += 1) {
+    const candidate = `${baseSlug}-${index}`
+    if (!used.has(candidate)) return candidate
+  }
+
+  return `${baseSlug}-${Date.now()}`
 }
 
 export async function appendProjectHistory(

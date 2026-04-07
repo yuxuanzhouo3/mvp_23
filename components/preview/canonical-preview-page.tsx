@@ -13,6 +13,18 @@ type PreviewSpec = {
   databaseTarget?: string
 } | null
 
+type PreviewDelivery = {
+  assignedDomain?: string
+  subdomainSlots?: number
+  generationProfile?: "starter" | "builder" | "premium" | "showcase"
+  codeExportLevel?: "none" | "manifest" | "full"
+  databaseAccessMode?: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+  projectLimit?: number
+  collaboratorLimit?: number
+  routeBudget?: number
+  moduleBudget?: number
+} | null
+
 type PreviewPresentation = {
   displayName: string
   subtitle: string
@@ -39,6 +51,7 @@ type CanonicalPreviewPageProps = {
   region: "cn" | "intl"
   page: string
   spec: PreviewSpec
+  delivery?: PreviewDelivery
   presentation: PreviewPresentation
   history: PreviewHistoryItem[]
 }
@@ -59,14 +72,78 @@ function getNavLabel(route: string, isCn: boolean) {
   const key = route.replace(/^\//, "")
   const labels: Record<string, { cn: string; en: string }> = {
     dashboard: { cn: "总览", en: "Dashboard" },
+    tasks: { cn: "任务", en: "Tasks" },
     editor: { cn: "编辑器", en: "Editor" },
     runs: { cn: "运行", en: "Runs" },
     templates: { cn: "模板库", en: "Templates" },
     pricing: { cn: "升级", en: "Pricing" },
     settings: { cn: "设置", en: "Settings" },
+    analytics: { cn: "分析", en: "Analytics" },
+    reports: { cn: "汇报", en: "Reports" },
+    automations: { cn: "自动化", en: "Automations" },
+    team: { cn: "团队", en: "Team" },
+    approvals: { cn: "审批", en: "Approvals" },
+    handoff: { cn: "交接", en: "Handoff" },
+    playbooks: { cn: "手册", en: "Playbooks" },
+    about: { cn: "关于", en: "About" },
+    downloads: { cn: "下载", en: "Downloads" },
+    docs: { cn: "文档", en: "Docs" },
+    admin: { cn: "后台", en: "Admin" },
     home: { cn: "首页", en: "Home" },
   }
   return isCn ? labels[key]?.cn ?? titleCase(key) : labels[key]?.en ?? titleCase(key)
+}
+
+function getPlanLabel(planTier: string | undefined, isCn: boolean) {
+  if (isCn) {
+    if (planTier === "elite") return "精英版"
+    if (planTier === "pro") return "专业版"
+    if (planTier === "builder") return "建造者版"
+    if (planTier === "starter") return "启动版"
+    return "免费版"
+  }
+  if (planTier === "elite") return "Elite"
+  if (planTier === "pro") return "Pro"
+  if (planTier === "builder") return "Builder"
+  if (planTier === "starter") return "Starter"
+  return "Free"
+}
+
+function getGenerationProfileLabel(profile: string | undefined, isCn: boolean) {
+  if (isCn) {
+    if (profile === "showcase") return "展示级"
+    if (profile === "premium") return "高级"
+    if (profile === "builder") return "建造者"
+    return "基础"
+  }
+  if (profile === "showcase") return "Showcase"
+  if (profile === "premium") return "Premium"
+  if (profile === "builder") return "Builder"
+  return "Starter"
+}
+
+function getExportLabel(level: string | undefined, isCn: boolean) {
+  if (isCn) {
+    if (level === "full") return "完整导出"
+    if (level === "manifest") return "清单导出"
+    return "仅在线"
+  }
+  if (level === "full") return "Full export"
+  if (level === "manifest") return "Manifest export"
+  return "Online only"
+}
+
+function getDatabaseModeLabel(mode: string | undefined, isCn: boolean) {
+  if (isCn) {
+    if (mode === "handoff_ready") return "交接就绪"
+    if (mode === "production_access") return "正式环境"
+    if (mode === "managed_config") return "托管配置"
+    return "仅在线"
+  }
+  if (mode === "handoff_ready") return "Handoff ready"
+  if (mode === "production_access") return "Production access"
+  if (mode === "managed_config") return "Managed config"
+  return "Online only"
 }
 
 function formatDate(value: string, locale: string) {
@@ -263,6 +340,7 @@ export function CanonicalPreviewPage({
   region,
   page,
   spec,
+  delivery,
   presentation,
   history,
 }: CanonicalPreviewPageProps) {
@@ -320,7 +398,23 @@ export function CanonicalPreviewPage({
   const [aiMode, setAiMode] = useState<"explain" | "fix" | "generate" | "refactor">("generate")
   const [runsFilter, setRunsFilter] = useState<"all" | "running" | "failed" | "ready">("all")
   const [templateCategory, setTemplateCategory] = useState<"product" | "ops" | "data">("product")
-  const [pricingFocus, setPricingFocus] = useState<"free" | "pro" | "elite">("pro")
+  const [pricingFocus, setPricingFocus] = useState<"free" | "starter" | "builder" | "pro" | "elite">(
+    spec?.planTier === "elite" || spec?.planTier === "pro" || spec?.planTier === "builder" || spec?.planTier === "starter"
+      ? spec.planTier
+      : "builder"
+  )
+  const planLabel = getPlanLabel(spec?.planTier, isCn)
+  const generationProfileLabel = getGenerationProfileLabel(delivery?.generationProfile, isCn)
+  const exportLabel = getExportLabel(delivery?.codeExportLevel, isCn)
+  const databaseModeLabel = getDatabaseModeLabel(delivery?.databaseAccessMode, isCn)
+  const previewSummaryCards = [
+    { label: isCn ? "产品类型" : "Product type", value: spec?.kind ?? "workspace", color: "#8b5cf6" },
+    { label: isCn ? "套餐档位" : "Plan tier", value: planLabel, color: "#f59e0b" },
+    { label: isCn ? "生成档位" : "Generation", value: generationProfileLabel, color: "#22c55e" },
+    { label: isCn ? "代码导出" : "Code export", value: exportLabel, color: "#38bdf8" },
+    { label: isCn ? "数据库权限" : "Database mode", value: databaseModeLabel, color: "#f97316" },
+    { label: isCn ? "分配子域名" : "Assigned domain", value: delivery?.assignedDomain ? delivery.assignedDomain.replace(/^https?:\/\//, "") : "n/a", color: "#a78bfa" },
+  ]
 
   const selectedFile = workbenchFiles.find((item) => item.id === selectedFileId) ?? workbenchFiles[0]
 
@@ -458,13 +552,8 @@ export function CanonicalPreviewPage({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-          {[
-            { label: isCn ? "产品类型" : "Product type", value: spec?.kind ?? "workspace", color: "#8b5cf6" },
-            { label: isCn ? "部署环境" : "Deployment", value: spec?.deploymentTarget ?? "cloudbase", color: "#22c55e" },
-            { label: isCn ? "数据方案" : "Data path", value: spec?.databaseTarget ?? "cloudbase_document", color: "#38bdf8" },
-            { label: isCn ? "当前控制块" : "Active block", value: dashboardSection, color: "#f59e0b" },
-          ].map((item) => (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 14 }}>
+          {previewSummaryCards.map((item) => (
             <div key={item.label} style={cardStyle()}>
               <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 12 }}>{item.label}</div>
               <div style={{ marginTop: 10, fontSize: 24, fontWeight: 900, color: item.color }}>{item.value}</div>
@@ -478,6 +567,13 @@ export function CanonicalPreviewPage({
           <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
             {[
               isCn ? `当前展示 ${dashboardSection} 控制块，适合演示给老板或客户。` : `Showing the ${dashboardSection} control block for stakeholder demos.`,
+              delivery?.assignedDomain
+                ? isCn
+                  ? `这个应用已经保留子域名 ${delivery.assignedDomain}，后续可以直接承接线上预览与分享。`
+                  : `This app already reserves ${delivery.assignedDomain} for preview and share flows.`
+                : isCn
+                  ? "当前项目还没有拿到可展示的子域名。"
+                  : "This project does not have an assigned showcase subdomain yet.",
               spec?.kind === "crm"
                 ? isCn ? "当前控制台偏向线索、自动化和团队交付，不再伪装成代码平台。" : "This console leans into leads, automations, and team handoff instead of pretending to be a coding platform."
                 : spec?.kind === "community"
@@ -798,6 +894,8 @@ export function CanonicalPreviewPage({
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {[
           { key: "free", label: isCn ? "免费版" : "Free" },
+          { key: "starter", label: isCn ? "启动版" : "Starter" },
+          { key: "builder", label: isCn ? "建造者版" : "Builder" },
           { key: "pro", label: isCn ? "专业版" : "Pro" },
           { key: "elite", label: isCn ? "精英版" : "Elite" },
         ].map((item) => (
@@ -818,17 +916,21 @@ export function CanonicalPreviewPage({
           </button>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16 }}>
         {(isCn
           ? [
-              ["free", "免费版", "基础生成与 canonical preview"],
-              ["pro", "专业版", "更强多页面结构、模板深度与交付块"],
-              ["elite", "精英版", "更完整工作台、AI 联动与高保真输出"],
+              ["free", "免费版", "基础生成与 canonical preview，代码仅在线查看，数据库仅在线试用"],
+              ["starter", "启动版", "保留稳定生成和单子域名位，仍然不开放代码导出"],
+              ["builder", "建造者版", "开始开放更厚的多页面、manifest 导出和更多业务模块"],
+              ["pro", "专业版", "更强多页面结构、正式数据库接入与完整导出"],
+              ["elite", "精英版", "更完整工作台、AI 联动、高保真输出与交接能力"],
             ]
           : [
-              ["free", "Free", "Core generation and canonical preview"],
-              ["pro", "Pro", "Richer multi-page, templates, and delivery"],
-              ["elite", "Elite", "Deeper workspace, AI loops, and showcase output"],
+              ["free", "Free", "Core generation and canonical preview, with code kept online and DB online-only"],
+              ["starter", "Starter", "Stable generation and one reserved subdomain slot, but still no code export"],
+              ["builder", "Builder", "Thicker multi-page apps, manifest export, and more business modules"],
+              ["pro", "Pro", "Richer delivery depth with production DB access and full export"],
+              ["elite", "Elite", "Deeper workspace, AI loops, showcase output, and handoff-ready delivery"],
             ]).map(([key, title, desc]) => (
           <div
             key={key}

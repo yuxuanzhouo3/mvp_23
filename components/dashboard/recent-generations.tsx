@@ -30,6 +30,13 @@ type RecentGeneration = {
     status?: "idle" | "building" | "ready" | "failed"
     resolvedUrl?: string
   }
+  delivery?: {
+    planId: "free" | "starter" | "builder" | "pro" | "elite"
+    assignedDomain: string
+    generationProfile: "starter" | "builder" | "premium" | "showcase"
+    codeExportLevel: "none" | "manifest" | "full"
+    databaseAccessMode: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+  }
 }
 
 function getGenerationStatus(item: RecentGeneration) {
@@ -52,6 +59,17 @@ const statusConfig = {
     labelKey: "error" as const,
     className: "bg-destructive/15 text-destructive border-destructive/30",
   },
+}
+
+function buildDeliveryTag(item: RecentGeneration) {
+  if (!item.delivery) return ""
+  return `${item.delivery.planId} · ${item.delivery.generationProfile} · ${item.delivery.codeExportLevel} · ${item.delivery.databaseAccessMode}`
+}
+
+function getPlanBadgeVariant(planId?: "free" | "starter" | "builder" | "pro" | "elite") {
+  if (planId === "elite") return "default" as const
+  if (planId === "pro") return "secondary" as const
+  return "outline" as const
 }
 
 export function RecentGenerations() {
@@ -98,7 +116,12 @@ export function RecentGenerations() {
                     {item.presentation.displayName}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground hidden sm:table-cell max-w-[260px] truncate">
-                    {item.presentation.summary}
+                    <div className="truncate">{item.presentation.summary}</div>
+                    {item.delivery ? (
+                      <div className="mt-1 truncate text-[11px] text-muted-foreground/80">
+                        {buildDeliveryTag(item)}
+                      </div>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
@@ -123,8 +146,18 @@ export function RecentGenerations() {
                                 : "Build skipped"
                               : isZh
                                 ? "Build 待验证"
-                                : "Build pending"}
+                              : "Build pending"}
                       </Badge>
+                      {item.delivery ? (
+                        <Badge variant={getPlanBadgeVariant(item.delivery.planId)} className="text-[10px]">
+                          {item.delivery.planId.toUpperCase()}
+                        </Badge>
+                      ) : null}
+                      {item.delivery ? (
+                        <Badge variant="outline" className="text-[10px] hidden lg:inline-flex">
+                          {item.delivery.assignedDomain.replace(/^https?:\/\//, "")}
+                        </Badge>
+                      ) : null}
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground hidden md:table-cell">

@@ -45,8 +45,17 @@ import {
   normalizeDatabaseTarget,
   normalizeDeploymentTarget,
 } from "@/lib/fullstack-targets"
-import { findPlanTierByLabel, getPlanPriceLabel, isPaidPlanTier, normalizePlanTier, PLAN_CATALOG, type PlanTier } from "@/lib/plan-catalog"
+import {
+  findPlanTierByLabel,
+  getPlanPolicy,
+  getPlanPriceLabel,
+  getPreferredExportDownloadMode,
+  normalizePlanTier,
+  PLAN_CATALOG,
+  type PlanTier,
+} from "@/lib/plan-catalog"
 import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl, getResolvedPreviewUrl } from "@/lib/preview-url"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
 import {
   PREVIEW_SNAPSHOT_STORAGE_KEY,
   buildPreviewSnapshotAliases,
@@ -123,11 +132,23 @@ type ProjectDetail = {
     }
   }
   generation?: {
+    jobId?: string | null
     status: "done" | "error" | "idle"
     summary: string
     buildStatus: "ok" | "failed" | "skipped" | null
     buildLogs?: string[]
     createdAt?: string | null
+  }
+  delivery?: {
+    assignedDomain: string
+    subdomainSlots: number
+    generationProfile?: "starter" | "builder" | "premium" | "showcase"
+    codeExportLevel?: "none" | "manifest" | "full"
+    databaseAccessMode?: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+    projectLimit?: number
+    collaboratorLimit?: number
+    routeBudget?: number
+    moduleBudget?: number
   }
   preview?: {
     defaultMode: "static_ssr"
@@ -305,6 +326,7 @@ type PreviewProbeState = {
   responseStatus: number | null
   renderStrategy: "iframe" | "structured_fallback"
   responseUrl?: string
+  responsePreviewState?: string
 }
 
 type AiMode = "explain" | "fix" | "generate" | "refactor"
@@ -329,6 +351,24 @@ function normalizePreviewUrl(projectId: string, url?: string) {
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) return fallback
   if (normalized.startsWith("/api/projects/")) return fallback
   if (!normalized.startsWith("/") && !/^https?:\/\//i.test(normalized)) return fallback
+  return normalized
+}
+
+function toAbsoluteBrowserUrl(url?: string | null) {
+  const normalized = String(url ?? "").trim()
+  if (!normalized) return ""
+  if (/^https?:\/\//i.test(normalized)) return normalized
+  if (normalized.startsWith("/")) {
+    if (typeof window === "undefined") return normalized
+    try {
+      return new URL(normalized, window.location.origin).toString()
+    } catch {
+      return normalized
+    }
+  }
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(normalized)) {
+    return `https://${normalized}`
+  }
   return normalized
 }
 
@@ -758,7 +798,7 @@ function StructuredPreviewFallback({
 
 export function AppWorkspacePage({ projectId, initialSection }: { projectId: string; initialSection?: string }) {
   const searchParams = useSearchParams()
-  const jobId = searchParams.get("jobId") || projectId
+  const requestedJobId = String(searchParams.get("jobId") ?? "").trim()
   const requestedCodeFile = normalizeWorkspaceQueryPath(searchParams.get("file"))
   const requestedAiSymbol = String(searchParams.get("symbol") ?? "").trim()
   const requestedAiElement = String(searchParams.get("element") ?? "").trim()
@@ -804,6 +844,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const [codeTabs, setCodeTabs] = useState<string[]>([])
   const [commandQuery, setCommandQuery] = useState("")
   const [searchResults, setSearchResults] = useState<WorkspaceSearchResp["results"]>([])
+  const jobId =
+    requestedJobId ||
+    generateTask?.jobId ||
+    workspaceSnapshot?.generateTask?.jobId ||
+    project?.generation?.jobId ||
+    ""
   const [focusedLine, setFocusedLine] = useState<number | null>(null)
   const [workspaceRegion, setWorkspaceRegion] = useState<"cn" | "intl">("intl")
   const [workspaceDatabase, setWorkspaceDatabase] = useState<"supabase_postgres" | "cloudbase_document" | "mysql">("supabase_postgres")
@@ -1447,6 +1493,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       projectSlug: project.projectSlug || project.projectId,
       region: project.region,
       spec: project.spec ?? null,
+      delivery: project.delivery ?? null,
       presentation: project.presentation,
       history: [...(project.history ?? [])].reverse().slice(0, 5).map((item) => ({
         createdAt: item.createdAt,
@@ -1467,8 +1514,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       codeFiles.length
     )
     const previewLive =
-      (previewProbe?.renderStrategy === "iframe" && previewProbe?.responseStatus === 200) ||
-      project?.preview?.status === "ready"
+      (previewProbe?.renderStrategy === "iframe" &&
+        previewProbe?.previewStatus === "ready" &&
+        previewProbe?.responseStatus === 200) ||
+      (project?.preview?.status === "ready" && previewProbe?.renderStrategy !== "structured_fallback")
 
     loadGenerateTask()
     if (workspaceReady || previewLive) {
@@ -1487,7 +1536,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     }, 1000)
     return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeFiles.length, jobId, previewProbe?.renderStrategy, previewProbe?.responseStatus, project?.presentation?.displayName, project?.presentation?.routes?.length, project?.preview?.status, project?.spec?.title])
+  }, [codeFiles.length, jobId, previewProbe?.previewStatus, previewProbe?.renderStrategy, previewProbe?.responseStatus, project?.presentation?.displayName, project?.presentation?.routes?.length, project?.preview?.status, project?.spec?.title])
 
   useEffect(() => {
     void loadCodeFiles()
@@ -1635,7 +1684,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     workspaceProfileDesc: isCn
       ? "这里承接应用可见性、分享入口、交付状态和分发操作，不再映射成应用内的业务页面。"
       : "This panel owns visibility, sharing, delivery status, and distribution operations instead of turning them into in-app business pages.",
-    loginProviders: isCn ? "邮箱 / 微信 / Google / Facebook" : "Email / Google / Facebook / WeChat",
+    loginProviders: isCn ? "手机验证码 / 邮箱 / 微信（可选）" : "Google / Email",
     standaloneSurfaces: isCn ? "admin、market、文档与演示资产均作为独立入口维护" : "admin, market, docs, and demo assets are maintained as standalone entry surfaces",
     workspaceTitle: isCn ? "AI 产品工作台" : "AI Product Workspace",
     workspaceSubtitle: isCn ? "左侧 AI 共创面板承接连续修改，右侧主工作区只在 Preview、Dashboard、Code 之间切换。" : "Keep the AI copilot on the left and let the main workspace switch only between Preview, Dashboard, and Code.",
@@ -1689,29 +1738,38 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     projectSlug,
     project?.preview?.sandboxUrl || buildSandboxPreviewUrl(projectSlug)
   )
+  const prefersSandboxPreview = project?.preview?.activeMode === "sandbox_runtime" && project?.preview?.sandboxStatus === "running"
+  const primaryPreviewUrl = prefersSandboxPreview ? (sandboxPreviewUrl || canonicalPreviewUrl) : canonicalPreviewUrl
   const refreshPreview = () => {
     setPreviewRefreshKey((current) => current + 1)
   }
   const resolvedPreviewUrl =
     previewProbe?.resolvedPreviewUrl ||
-    project?.preview?.resolvedUrl ||
-    getResolvedPreviewUrl({
-      projectId: projectSlug,
-      mode: project?.preview?.activeMode ?? "static_ssr",
-      canonicalUrl: canonicalPreviewUrl,
-      runtimeUrl: runtimePreviewUrl,
-      sandboxUrl: sandboxPreviewUrl,
-    })
+    primaryPreviewUrl
+  const iframePreviewUrl = primaryPreviewUrl || resolvedPreviewUrl
+  const previewCommandUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
   const fallbackReason =
     project?.preview?.fallbackReason ||
     (previewProbe?.renderStrategy === "structured_fallback"
       ? (isCn ? "动态预览不可用，已回退到当前项目自己的结构化 fallback。" : "Dynamic preview is unavailable, so the current project fallback is active.")
       : "")
-  const canRenderPreview = Boolean(resolvedPreviewUrl)
-  const rawPreviewReady =
-    Boolean(resolvedPreviewUrl) &&
+  const canRenderPreview = Boolean(iframePreviewUrl)
+  const probeIframeReady =
+    previewProbe?.renderStrategy === "iframe" &&
+    previewProbe?.previewStatus === "ready" &&
+    previewProbe?.responseStatus === 200
+  const canonicalPreviewReady =
+    Boolean(primaryPreviewUrl) &&
     (
-      (previewProbe?.renderStrategy === "iframe" && previewProbe?.responseStatus === 200) ||
+      project?.preview?.status === "ready" ||
+      project?.generation?.buildStatus === "ok" ||
+      (previewProbe?.renderStrategy === "iframe" && previewProbe?.responseStatus === 200)
+    )
+  const rawPreviewReady =
+    Boolean(iframePreviewUrl) &&
+    (
+      probeIframeReady ||
+      canonicalPreviewReady ||
       (!previewProbe?.renderStrategy && project?.preview?.status === "ready")
     )
   const previewStarting = runtime?.status === "starting" || previewBooting
@@ -1720,8 +1778,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     previewStarting ||
     project?.preview?.status === "building" ||
     previewProbe?.previewStatus === "building"
-  const previewShouldStayLoading = previewGenerating || previewBuilding || !rawPreviewReady
-  const previewReady = rawPreviewReady && !previewGenerating && !previewBuilding
+  const previewShouldStayLoading = !rawPreviewReady
+  const previewReady = rawPreviewReady
   const previewLoadingReason = previewGenerating
     ? cleanTimelineLine(generateTask?.logs?.slice(-1)[0] || "") ||
       iterateStatus ||
@@ -1811,7 +1869,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       {
         id: "action:open-preview",
         label: "Open Preview In New Tab",
-        description: resolvedPreviewUrl || "Preview URL unavailable",
+        description: previewCommandUrl || "Preview URL unavailable",
         action: "open-preview",
       },
     ]
@@ -1837,7 +1895,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       if (!query) return true
       return `${item.label} ${item.description}`.toLowerCase().includes(query)
     }).slice(0, 24)
-  }, [codeFiles, commandQuery, resolvedPreviewUrl, searchResults])
+  }, [codeFiles, commandQuery, previewCommandUrl, searchResults])
   const handleWorkspaceCommand = async (command: WorkspaceCommand) => {
     if (command.action === "open-file" && command.target) {
       setSelectedCodeFile(command.target)
@@ -1853,8 +1911,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       await runAction("restart")
       return
     }
-    if (command.action === "open-preview" && resolvedPreviewUrl) {
-      window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer")
+    if (command.action === "open-preview" && previewCommandUrl) {
+      window.open(previewCommandUrl, "_blank", "noopener,noreferrer")
     }
   }
   const aiInterpretation = useMemo(() => {
@@ -1951,16 +2009,6 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       : project?.generation?.buildStatus === "failed"
         ? copy.buildFailed
         : copy.buildPending
-  const dashboardActions = useMemo(
-    () => [
-      { label: isCn ? "打开应用" : "Open App", onClick: () => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer") },
-      { label: isCn ? "打开编辑器" : "Open Editor", onClick: () => window.location.assign(`/apps/${encodeURIComponent(projectId)}/editor`) },
-      { label: isCn ? "打开文档" : "Open Docs", onClick: () => window.open("/api-docs", "_blank", "noopener,noreferrer") },
-      ...(project?.preview?.supportsDynamicRuntime && runtimePreviewUrl ? [{ label: isCn ? "打开运行态" : "Open Runtime", onClick: () => window.open(runtimePreviewUrl, "_blank", "noopener,noreferrer") }] : []),
-      ...(project?.preview?.supportsSandboxRuntime && sandboxPreviewUrl ? [{ label: isCn ? "打开沙箱预览" : "Open Sandbox", onClick: () => window.open(sandboxPreviewUrl, "_blank", "noopener,noreferrer") }] : []),
-    ],
-    [isCn, resolvedPreviewUrl, project?.preview?.supportsDynamicRuntime, project?.preview?.supportsSandboxRuntime, projectId, runtimePreviewUrl, sandboxPreviewUrl]
-  )
   const latestHistoryItem = project?.history?.length ? project.history[project.history.length - 1] : null
   const projectName =
     (project?.presentation?.displayName && !looksLikeInternalProjectId(project.presentation.displayName) ? project.presentation.displayName : "") ||
@@ -1977,6 +2025,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const hasUsableProjectSurface = Boolean(project?.presentation?.displayName || project?.spec?.title || codeFiles.length || pageManifest.length)
   const workspaceStatus = useMemo(() => {
     if (iterating) return { key: "applying", label: isCn ? "修改中" : "Applying", tone: "outline" as const }
+    if (probeIframeReady || canonicalPreviewReady || (project?.preview?.status === "ready" && previewProbe?.renderStrategy !== "structured_fallback")) {
+      return { key: "ready", label: isCn ? "可预览" : "Preview ready", tone: "success" as const }
+    }
     if (project?.preview?.status === "building" || previewStarting || runtime?.status === "starting") {
       return { key: "building", label: isCn ? "预览启动中" : "Preview starting", tone: "outline" as const }
     }
@@ -1986,9 +2037,6 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       }
       if (previewProbe?.renderStrategy === "structured_fallback") {
         return { key: "fallback", label: isCn ? "Fallback 预览" : "Fallback preview", tone: "warning" as const }
-      }
-      if (project?.preview?.status === "ready" || previewProbe?.responseStatus === 200 || resolvedPreviewUrl) {
-        return { key: "ready", label: isCn ? "可预览" : "Preview ready", tone: "success" as const }
       }
       return { key: "workspace", label: isCn ? "工作区就绪" : "Workspace ready", tone: "success" as const }
     }
@@ -2010,13 +2058,15 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     isCn,
     iterating,
     pageManifest.length,
+    canonicalPreviewReady,
+    previewProbe?.previewStatus,
     previewProbe?.renderStrategy,
     previewProbe?.responseStatus,
     previewStarting,
+    probeIframeReady,
     project?.preview?.activeMode,
     project?.preview?.sandboxStatus,
     project?.preview?.status,
-    resolvedPreviewUrl,
     runtime?.status,
   ])
   const buildBadgeLabel =
@@ -2206,16 +2256,52 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     [project?.spec?.planTier, sessionSelectedPlanTier]
   )
   const currentPlanDefinition = PLAN_CATALOG[currentPlanTier]
+  const currentPlanPolicy = getPlanPolicy(currentPlanTier)
   const currentPlanLabel = isCn ? currentPlanDefinition.nameCn : currentPlanDefinition.nameEn
-  const codeExportAllowed = isPaidPlanTier(currentPlanTier)
+  const effectiveGenerationProfile = project?.delivery?.generationProfile || currentPlanPolicy.generationProfile
+  const effectiveCodeExportLevel = project?.delivery?.codeExportLevel || currentPlanPolicy.codeExportLevel
+  const codeExportAllowed = effectiveCodeExportLevel !== "none"
+  const databaseAccessModeKey = project?.delivery?.databaseAccessMode || currentPlanPolicy.databaseAccessMode
+  const effectiveProjectLimit = project?.delivery?.projectLimit ?? currentPlanPolicy.projectLimit
+  const effectiveCollaboratorLimit = project?.delivery?.collaboratorLimit ?? currentPlanPolicy.collaboratorLimit
+  const effectiveSubdomainSlots = project?.delivery?.subdomainSlots ?? currentPlanPolicy.subdomainSlots
+  const effectiveRouteBudget = project?.delivery?.routeBudget ?? currentPlanPolicy.maxGeneratedRoutes
+  const effectiveModuleBudget = project?.delivery?.moduleBudget ?? currentPlanPolicy.maxGeneratedModules
   const databaseAccessMode =
-    currentPlanTier === "free"
+    databaseAccessModeKey === "online_only"
       ? (isCn ? "仅在线使用" : "Online only")
-      : currentPlanTier === "elite"
+      : databaseAccessModeKey === "handoff_ready"
         ? (isCn ? "可配置 + 可交付" : "Managed + handoff")
-        : (isCn ? "可配置" : "Managed config")
+        : databaseAccessModeKey === "production_access"
+          ? (isCn ? "正式连接可用" : "Production access")
+          : (isCn ? "可配置" : "Managed config")
+  const preferredExportDownloadMode = getPreferredExportDownloadMode(currentPlanTier)
+  const codeExportLabel =
+    effectiveCodeExportLevel === "full"
+      ? (isCn ? "完整导出" : "Full export")
+      : effectiveCodeExportLevel === "manifest"
+        ? (isCn ? "清单导出" : "Manifest export")
+        : (isCn ? "未开放" : "Locked")
   const nextUpgradePlan = currentPlanTier === "free" ? "pro" : currentPlanTier === "starter" ? "builder" : currentPlanTier === "builder" ? "pro" : "elite"
   const upgradeHref = `/checkout?plan=${nextUpgradePlan}`
+  const assignedAppDomain =
+    project?.delivery?.assignedDomain ||
+    buildAssignedAppUrl({
+      projectSlug: project?.projectSlug || projectId,
+      projectId,
+      region: workspaceRegion,
+      planTier: currentPlanTier,
+    })
+  const absolutePrimaryPreviewUrl = toAbsoluteBrowserUrl(primaryPreviewUrl)
+  const absoluteResolvedPreviewUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
+  const absoluteAssignedAppUrl = toAbsoluteBrowserUrl(assignedAppDomain)
+  const isLocalPreviewHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+  const openPreviewUrl = isLocalPreviewHost
+    ? absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+    : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
+  const sharedAppUrl = openPreviewUrl
   const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
   const moduleCount = project?.spec?.modules?.length ?? 0
   const featureCount = project?.spec?.features?.length ?? 0
@@ -2236,7 +2322,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   )
   const editorOutputItems = useMemo(
     () => [
-      `${isCn ? "当前预览" : "Preview"}: ${resolvedPreviewUrl || (isCn ? "未就绪" : "pending")}`,
+      `${isCn ? "当前预览" : "Preview"}: ${openPreviewUrl || (isCn ? "未就绪" : "pending")}`,
       `${isCn ? "部署" : "Deployment"}: ${isCn ? deploymentOption.nameCn : deploymentOption.nameEn}`,
       `${isCn ? "数据库" : "Database"}: ${isCn ? databaseOption.nameCn : databaseOption.nameEn}`,
       `${isCn ? "最近更新" : "Latest update"}: ${latestHistoryItem?.summary || generateTask?.summary || copy.applyHint}`,
@@ -2250,18 +2336,27 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       generateTask?.summary,
       isCn,
       latestHistoryItem?.summary,
-      resolvedPreviewUrl,
+      openPreviewUrl,
     ]
   )
   const planShowcase = useMemo(
     () =>
-      (["free", "pro", "elite"] as PlanTier[]).map((planId) => {
+      (["free", "starter", "builder", "pro", "elite"] as PlanTier[]).map((planId) => {
         const plan = PLAN_CATALOG[planId]
+        const policyState = getPlanPolicy(planId)
         const policy =
           planId === "free"
             ? isCn
               ? "代码不可导出，数据库仅限在线使用"
               : "Code export locked, database stays online-only"
+            : planId === "starter"
+              ? isCn
+                ? "继续保留在线编辑与托管数据库，先不开放代码导出"
+                : "Keeps hosted editing and managed database access while code export stays locked"
+              : planId === "builder"
+                ? isCn
+                  ? "开放 AI Builder 与清单导出，适合开始交付可运行 app"
+                  : "Unlocks AI Builder and manifest export to start shipping runnable apps"
             : planId === "pro"
               ? isCn
                 ? "开放导出、更多生成质量与更强交付能力"
@@ -2274,7 +2369,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           name: isCn ? plan.nameCn : plan.nameEn,
           price: getPlanPriceLabel(planId, isCn ? "zh" : "en"),
           summary: isCn ? plan.summaryCn : plan.summaryEn,
-          policy,
+          policy: `${policy} · ${policyState.maxGeneratedRoutes} ${isCn ? "路由" : "routes"} / ${policyState.maxGeneratedModules} ${isCn ? "模块" : "modules"}`,
           deliverables: isCn ? plan.deliverablesCn : plan.deliverablesEn,
           badge: isCn ? plan.badgeCn : plan.badgeEn,
         }
@@ -2333,9 +2428,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           ? isCn
             ? "当前套餐已开放导出与更完整的数据交付路径。"
             : "The current plan unlocks export and a fuller data handoff path."
-          : isCn
-            ? "免费用户代码不可导出，数据库保持在线使用。"
-            : "Free users keep code export locked while database usage stays online-first.",
+          : currentPlanTier === "free"
+            ? isCn
+              ? "免费用户代码不可导出，数据库保持在线使用。"
+              : "Free users keep code export locked while database usage stays online-first."
+            : isCn
+              ? "当前套餐仍锁定代码导出，但数据库和资源额度已经开始分层。"
+              : "This tier still keeps code export locked, while database and resource quotas are already tiered.",
         href: `${workspaceRootHref}/pricing`,
       },
     ],
@@ -2359,7 +2458,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       {
         id: "preview-story",
         title: isCn ? "预览叙事" : "Preview narrative",
-        summary: resolvedPreviewUrl || (isCn ? "当前等待预览地址解析" : "Waiting for the preview address to resolve"),
+        summary: primaryPreviewUrl || (isCn ? "当前等待预览地址解析" : "Waiting for the preview address to resolve"),
         href: workspaceRootHref,
         actionLabel: copy.preview,
       },
@@ -2396,7 +2495,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       deploymentOption.nameEn,
       isCn,
       recentRunItems,
-      resolvedPreviewUrl,
+      primaryPreviewUrl,
       selectedFileSummary,
       workspaceRootHref,
     ]
@@ -2408,22 +2507,48 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         title: isCn ? "代码导出包" : "Code export pack",
         summary: codeExportAllowed
           ? isCn
-            ? "当前套餐已开放代码清单导出，可以继续做交付打包。"
-            : "The current plan unlocks code manifest export for delivery handoff."
-          : isCn
-            ? "免费版先保留在线编辑，代码导出在升级后开放。"
-            : "The free tier keeps editing online while code export unlocks after upgrade.",
+            ? effectiveCodeExportLevel === "full"
+              ? "当前套餐已开放完整代码导出，可继续做交付打包。"
+              : "当前套餐已开放代码清单导出，可以继续做交付打包。"
+            : effectiveCodeExportLevel === "full"
+              ? "The current plan unlocks full code export for delivery handoff."
+              : "The current plan unlocks code manifest export for delivery handoff."
+          : currentPlanTier === "free"
+            ? isCn
+              ? "免费版先保留在线编辑，代码导出在升级后开放。"
+              : "The free tier keeps editing online while code export unlocks after upgrade."
+            : isCn
+              ? "当前套餐仍保留在线编辑，代码导出将在更高套餐开放。"
+              : "This tier keeps editing online, while code export unlocks on a higher plan.",
         note: codeExportAllowed
           ? isCn
-            ? "导出入口先走文件清单与工作区交接，后续可继续补 zip/package。"
-            : "The export path currently uses the file manifest and workspace handoff, with room for a later zip/package flow."
-          : isCn
-            ? "这样不会影响在线工作区，但会明确挡住免费导出。"
-            : "This keeps the hosted editor usable while clearly blocking free export.",
-        state: codeExportAllowed ? (isCn ? "已开放" : "Unlocked") : (isCn ? "免费锁定" : "Locked on free"),
+            ? effectiveCodeExportLevel === "full"
+              ? "当前会导出完整文件 bundle，方便直接落地到本地继续使用。"
+              : "当前先走文件清单与工作区交接，后续可继续补 zip/package。"
+            : effectiveCodeExportLevel === "full"
+              ? "The export path now returns a full workspace bundle for local handoff."
+              : "The export path currently uses the file manifest and workspace handoff, with room for a later zip/package flow."
+          : currentPlanTier === "free"
+            ? isCn
+              ? "这样不会影响在线工作区，但会明确挡住免费导出。"
+              : "This keeps the hosted editor usable while clearly blocking free export."
+            : isCn
+              ? "这样不会影响在线工作区，同时会明确保留当前套餐的导出边界。"
+              : "This keeps the hosted editor usable while preserving this tier's export boundary.",
+        state:
+          codeExportAllowed
+            ? (isCn ? "已开放" : "Unlocked")
+            : currentPlanTier === "free"
+              ? (isCn ? "免费锁定" : "Locked on free")
+              : (isCn ? "当前档位锁定" : "Locked on this tier"),
         available: codeExportAllowed,
-        actionLabel: codeExportAllowed ? (isCn ? "导出代码清单" : "Export manifest") : (isCn ? "升级后导出" : "Upgrade to export"),
-        href: codeExportAllowed ? `/api/projects/${encodeURIComponent(projectId)}/files` : upgradeHref,
+        actionLabel:
+          codeExportAllowed
+            ? effectiveCodeExportLevel === "full"
+              ? (isCn ? "导出代码包" : "Export code")
+              : (isCn ? "导出代码清单" : "Export manifest")
+            : (isCn ? "升级后导出" : "Upgrade to export"),
+        href: codeExportAllowed ? `/api/projects/${encodeURIComponent(projectId)}/files?download=${preferredExportDownloadMode}` : upgradeHref,
         external: codeExportAllowed,
       },
       {
@@ -2463,8 +2588,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
               ? "免费层先保留只读分享和老板演示，不把深协作默认打开。"
               : "The free layer keeps read-only sharing and boss demos without opening deeper collaboration by default."
             : isCn
-              ? "付费层开始承接成员、权限和更完整的交付流程。"
-              : "Paid tiers start carrying members, permissions, and a fuller delivery flow.",
+              ? `当前套餐开始承接成员、权限和更完整的交付流程，协作人数上限 ${effectiveCollaboratorLimit}。`
+              : `This plan starts carrying members, permissions, and fuller delivery flow with ${effectiveCollaboratorLimit} collaborator seats.`,
         note:
           currentPlanTier === "free"
             ? isCn
@@ -2473,7 +2598,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
             : isCn
               ? "可以从 Users / Settings 路径继续接权限和审批。"
               : "Continue from the Users / Settings lanes to wire permissions and approvals.",
-        state: currentPlanTier === "free" ? (isCn ? "只读分享" : "Read-only") : (isCn ? "团队协作" : "Collaborative"),
+        state:
+          currentPlanTier === "free"
+            ? (isCn ? "只读分享" : "Read-only")
+            : isCn
+              ? `${effectiveCollaboratorLimit} 人协作`
+              : `${effectiveCollaboratorLimit} seats`,
         available: currentPlanTier !== "free",
         actionLabel: currentPlanTier !== "free" ? (isCn ? "打开 Users 轨道" : "Open users lane") : (isCn ? "升级后开放协作" : "Upgrade for collaboration"),
         href: currentPlanTier !== "free" ? `${workspaceRootHref}/users` : upgradeHref,
@@ -2489,7 +2619,17 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         href: "/download",
       },
     ],
-    [codeExportAllowed, currentPlanTier, databaseAccessMode, isCn, projectId, upgradeHref, workspaceRootHref]
+    [
+      codeExportAllowed,
+      currentPlanPolicy,
+      currentPlanTier,
+      databaseAccessMode,
+      isCn,
+      preferredExportDownloadMode,
+      projectId,
+      upgradeHref,
+      workspaceRootHref,
+    ]
   )
   const runPipelineStages = useMemo(
     () => [
@@ -2637,7 +2777,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       {
         title: isCn ? "发布与预览" : "Publish and preview",
         summary: isCn ? "统一处理 canonical preview、runtime 和后续独立访问入口。" : "Handle canonical preview, runtime, and future standalone access in one place.",
-        items: [resolvedPreviewUrl || (isCn ? "预览待解析" : "Preview pending"), isCn ? deploymentOption.nameCn : deploymentOption.nameEn, workspaceStatus.label],
+        items: [primaryPreviewUrl || (isCn ? "预览待解析" : "Preview pending"), isCn ? deploymentOption.nameCn : deploymentOption.nameEn, workspaceStatus.label],
       },
       {
         title: isCn ? "环境与数据" : "Environment and data",
@@ -2656,7 +2796,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       deploymentOption.nameCn,
       deploymentOption.nameEn,
       isCn,
-      resolvedPreviewUrl,
+      primaryPreviewUrl,
       workspaceStatus.label,
     ]
   )
@@ -2793,7 +2933,15 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       selectedPlanName: currentPlanLabel,
       selectedTemplate: generateTask?.templateTitle || sharedSessionSnapshot?.selectedTemplate || undefined,
       codeExportAllowed,
-      databaseAccessMode,
+      codeExportLevel: effectiveCodeExportLevel,
+      databaseAccessMode: databaseAccessModeKey,
+      generationProfile: effectiveGenerationProfile,
+      routeBudget: effectiveRouteBudget,
+      moduleBudget: effectiveModuleBudget,
+      projectLimit: effectiveProjectLimit,
+      collaboratorLimit: effectiveCollaboratorLimit,
+      subdomainSlots: effectiveSubdomainSlots,
+      assignedDomain: assignedAppDomain,
       workspaceStatus: workspaceStatus.label,
       lastIntent: prompt.trim() || sharedSessionSnapshot?.lastIntent || undefined,
       lastChangedFile: sharedSessionSnapshot?.lastChangedFile || selectedCodeFile || aiPageContext.filePath,
@@ -2810,8 +2958,11 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       codeExportAllowed,
       codeTabs.length,
       currentPlanLabel,
+      effectiveGenerationProfile,
+      currentPlanPolicy,
       currentPlanTier,
-      databaseAccessMode,
+      databaseAccessModeKey,
+      assignedAppDomain,
       generateTask?.templateTitle,
       sharedSessionSnapshot,
       normalizedDatabaseTarget,
@@ -3461,20 +3612,27 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
     const previewMode = projectRecord.preview?.activeMode ?? "static_ssr"
     const preferredPreviewUrl =
-      projectRecord.preview?.resolvedUrl ||
-      (previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running"
-        ? sandboxPreviewUrl
-        : runtime?.status === "running"
-          ? runtimePreviewUrl
-          : canonicalPreviewUrl)
-    const candidates = Array.from(new Set([preferredPreviewUrl, canonicalPreviewUrl].filter(Boolean)))
+      previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running"
+        ? sandboxPreviewUrl || canonicalPreviewUrl
+        : canonicalPreviewUrl
+    const candidates = Array.from(
+      new Set(
+        [
+          preferredPreviewUrl,
+          previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running" ? sandboxPreviewUrl : runtimePreviewUrl,
+          canonicalPreviewUrl,
+        ].filter(Boolean)
+      )
+    )
     let cancelled = false
 
     async function resolvePreviewTarget() {
+      const serverPreviewStatus = projectRecord.preview?.status ?? "idle"
+      const staticPreviewReady = previewMode === "static_ssr" && serverPreviewStatus === "ready"
       let nextState: PreviewProbeState = {
         projectSlug,
         previewMode,
-        previewStatus: projectRecord.preview?.status ?? "idle",
+        previewStatus: serverPreviewStatus,
         canonicalPreviewUrl,
         runtimePreviewUrl,
         sandboxPreviewUrl,
@@ -3488,6 +3646,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         fallbackUsed: true,
         responseStatus: null,
         renderStrategy: "structured_fallback",
+        responsePreviewState: "pending",
       }
 
       for (const candidate of candidates) {
@@ -3512,28 +3671,47 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
               })()
             : candidate
 
+          const responsePreviewState = response.headers.get("x-mornstack-preview-state") || undefined
+          const responseResolvedToCanonical = responsePath === canonicalPreviewUrl
+          const shouldUseIframe =
+            response.ok &&
+            (
+              candidate === canonicalPreviewUrl
+                ? serverPreviewStatus === "ready"
+                : previewMode === "static_ssr"
+                  ? staticPreviewReady && responsePreviewState !== "fallback"
+                  : responsePreviewState === "runtime" || responsePreviewState === "sandbox" || !responseResolvedToCanonical
+            )
+
           nextState = {
             projectSlug,
             previewMode,
-            previewStatus: response.ok ? "ready" : projectRecord.preview?.status ?? "failed",
+            previewStatus: shouldUseIframe
+              ? "ready"
+              : response.ok
+                ? serverPreviewStatus
+                : serverPreviewStatus === "ready"
+                  ? "failed"
+                  : serverPreviewStatus,
             canonicalPreviewUrl,
             runtimePreviewUrl,
             sandboxPreviewUrl,
-            resolvedPreviewUrl: response.ok ? responsePath : canonicalPreviewUrl,
-            fallbackUsed: candidate !== responsePath || responsePath === canonicalPreviewUrl,
+            resolvedPreviewUrl: shouldUseIframe ? responsePath : canonicalPreviewUrl,
+            fallbackUsed: !shouldUseIframe || candidate !== responsePath || responseResolvedToCanonical,
             responseStatus: response.status,
-            renderStrategy: response.ok ? "iframe" : "structured_fallback",
+            renderStrategy: shouldUseIframe ? "iframe" : "structured_fallback",
             responseUrl: response.url,
+            responsePreviewState,
           }
 
-          if (response.ok) {
+          if (shouldUseIframe) {
             break
           }
         } catch {
           nextState = {
             projectSlug,
             previewMode,
-            previewStatus: projectRecord.preview?.status ?? "failed",
+            previewStatus: serverPreviewStatus === "ready" ? "failed" : serverPreviewStatus,
             canonicalPreviewUrl,
             runtimePreviewUrl,
             sandboxPreviewUrl,
@@ -3541,6 +3719,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
             fallbackUsed: true,
             responseStatus: 0,
             renderStrategy: "structured_fallback",
+            responsePreviewState: "error",
           }
         }
       }
@@ -4020,11 +4199,11 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                       <RefreshCw className="mr-2 h-4 w-4" />
                       {copy.refresh}
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(resolvedPreviewUrl || "")} className="h-10 rounded-2xl bg-white">
+                    <Button variant="outline" size="sm" onClick={() => void navigator.clipboard?.writeText(openPreviewUrl || "")} className="h-10 rounded-2xl bg-white">
                       {copy.copyLink}
                     </Button>
                     <a
-                      href={resolvedPreviewUrl}
+                      href={openPreviewUrl || "#"}
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex h-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 px-4 text-sm font-medium text-white transition hover:bg-slate-800"
@@ -4048,7 +4227,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                           <span className="h-2.5 w-2.5 rounded-full bg-[#fbbf24]" />
                           <span className="h-2.5 w-2.5 rounded-full bg-[#34d399]" />
                         </div>
-                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">{resolvedPreviewUrl || "/"}</div>
+                        <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">{openPreviewUrl || absolutePrimaryPreviewUrl || "/"}</div>
                       </div>
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
                         {previewReady ? (isCn ? "Ready" : "Ready") : previewGenerating ? "Generating" : workspaceStatus.label}
@@ -4064,6 +4243,8 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                           <div>previewMode: {previewProbe?.previewMode ?? (project.preview?.activeMode || "static_ssr")}</div>
                           <div>previewStatus: {previewProbe?.previewStatus ?? (project.preview?.status || "idle")}</div>
                           <div>resolvedPreviewUrl: {previewProbe?.resolvedPreviewUrl ?? resolvedPreviewUrl}</div>
+                          <div>primaryPreviewUrl: {primaryPreviewUrl}</div>
+                          <div>openPreviewUrl: {openPreviewUrl}</div>
                           <div>responseStatus: {String(previewProbe?.responseStatus ?? "pending")}</div>
                         </div>
                       ) : null}
@@ -4083,9 +4264,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                         </div>
                       ) : canRenderPreview ? (
                         <iframe
-                          key={`${resolvedPreviewUrl}:${previewRefreshKey}`}
+                          key={`${iframePreviewUrl}:${previewRefreshKey}`}
                           title="app-preview"
-                          src={resolvedPreviewUrl}
+                          src={iframePreviewUrl}
                           className="h-full min-h-[66vh] w-full rounded-[26px] border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
                         />
                       ) : (
@@ -4166,10 +4347,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                               <span>{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "Global"}</span>
                             </div>
                             <div className="mt-5 flex flex-wrap gap-3">
-                              <Button onClick={() => resolvedPreviewUrl && window.open(resolvedPreviewUrl, "_blank", "noopener,noreferrer")} className="h-11 rounded-2xl bg-slate-950 px-5 text-white hover:bg-slate-800">
+                              <Button onClick={() => sharedAppUrl && window.open(sharedAppUrl, "_blank", "noopener,noreferrer")} className="h-11 rounded-2xl bg-slate-950 px-5 text-white hover:bg-slate-800">
                                 {isCn ? "打开应用" : "Open App"}
                               </Button>
-                              <Button variant="outline" onClick={() => void navigator.clipboard?.writeText(resolvedPreviewUrl || "")} className="h-11 rounded-2xl bg-white px-5">
+                              <Button variant="outline" onClick={() => void navigator.clipboard?.writeText(sharedAppUrl || "")} className="h-11 rounded-2xl bg-white px-5">
                                 {isCn ? "分享应用" : "Share App"}
                               </Button>
                             </div>
@@ -4192,11 +4373,36 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                             <div className="mt-1 text-sm text-slate-500">{copy.moveToWorkspaceDesc}</div>
                           </div>
                           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "分配子域名" : "Assigned subdomain"}</div>
+                            <div className="mt-2 break-all text-sm font-semibold text-slate-950">{assignedAppDomain}</div>
+                            <div className="mt-1 text-sm text-slate-500">
+                              {isCn
+                                ? `当前套餐可保留 ${effectiveSubdomainSlots} 个 app 子域名位。`
+                                : `This plan reserves ${effectiveSubdomainSlots} app subdomain slot(s).`}
+                            </div>
+                            <div className="mt-3">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void navigator.clipboard?.writeText(assignedAppDomain)}
+                                className="h-9 rounded-xl bg-white px-3"
+                              >
+                                {isCn ? "复制子域名" : "Copy subdomain"}
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
                             <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "平台标识" : "Platform Badge"}</div>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{isCn ? deploymentOption.nameCn : deploymentOption.nameEn}</span>
                               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{isCn ? databaseOption.nameCn : databaseOption.nameEn}</span>
                               <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{currentPlanLabel}</span>
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{codeExportLabel}</span>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                              {isCn
+                                ? `项目上限 ${effectiveProjectLimit} · 协作人数 ${effectiveCollaboratorLimit} · DB ${databaseAccessMode}`
+                                : `Projects ${effectiveProjectLimit} · collaborators ${effectiveCollaboratorLimit} · DB ${databaseAccessMode}`}
                             </div>
                           </div>
                         </div>
@@ -4287,7 +4493,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                             {codeSaving ? copy.saving : copy.save}
                           </Button>
                           <a
-                            href={resolvedPreviewUrl || "#"}
+                            href={openPreviewUrl || absolutePrimaryPreviewUrl || "#"}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex h-9 items-center justify-center rounded-2xl border border-white/15 px-3 text-sm text-white/80 transition hover:bg-white/10"

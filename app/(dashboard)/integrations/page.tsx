@@ -20,10 +20,11 @@ const cnIntegrations = [
 
 type ReadinessResp = {
   auth?: {
-    intlMode: "demo" | "password" | "supabase" | "wechat"
-    cnMode: "demo" | "password" | "supabase" | "wechat"
+    intlMode: "demo" | "password" | "supabase" | "wechat" | "phone"
+    cnMode: "demo" | "password" | "supabase" | "wechat" | "phone"
     supabaseConfigured: boolean
     wechatConfigured: boolean
+    phoneOtpConfigured?: boolean
     googleEnabled: boolean
     facebookEnabled: boolean
     googleConfigured: boolean
@@ -34,6 +35,7 @@ type ReadinessResp = {
     paypalConfigured: boolean
     alipayConfigured: boolean
     wechatConfigured: boolean
+    wechatWebhookVerificationConfigured?: boolean
   }
   deployment?: {
     intl: {
@@ -55,6 +57,7 @@ type ReadinessResp = {
     intlAuth: string[]
     intlPayment: string[]
     cnAuth: string[]
+    cnAuthOptional?: string[]
     cnPayment: string[]
     cnInfra: string[]
     deploymentTargets?: string[]
@@ -281,16 +284,16 @@ export default function IntegrationsPage() {
                   <div className="font-medium">{isZh ? "登录" : "Auth"}</div>
                   <div className="mt-1 text-muted-foreground">
                     {isZh
-                      ? `邮箱密码: 已支持 · 微信: ${readiness.auth?.wechatConfigured ? "已配置" : "待配置"}`
-                      : `Email/password: supported · WeChat: ${readiness.auth?.wechatConfigured ? "configured" : "missing"}`}
+                      ? `邮箱: 已支持 · 手机验证码: ${readiness.auth?.phoneOtpConfigured ? "已配置" : "沙盒已接入"} · 微信登录: ${readiness.auth?.wechatConfigured ? "已配置" : "可选"}`
+                      : `Email: supported · Phone OTP: ${readiness.auth?.phoneOtpConfigured ? "configured" : "sandbox ready"} · WeChat login: ${readiness.auth?.wechatConfigured ? "configured" : "optional"}`}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border p-3">
                   <div className="font-medium">{isZh ? "支付" : "Payments"}</div>
                   <div className="mt-1 text-muted-foreground">
                     {isZh
-                      ? `支付宝: ${readiness.payment?.alipayConfigured ? "已配置" : "待配置"} · 微信支付: ${readiness.payment?.wechatConfigured ? "已配置" : "待配置"}`
-                      : `Alipay: ${readiness.payment?.alipayConfigured ? "configured" : "missing"} · WeChat Pay: ${readiness.payment?.wechatConfigured ? "configured" : "missing"}`}
+                      ? `支付宝: ${readiness.payment?.alipayConfigured ? "已配置" : "待配置"} · 微信支付: ${readiness.payment?.wechatConfigured ? "已配置" : "待配置"} · 回调验签: ${readiness.payment?.wechatWebhookVerificationConfigured ? "已配置" : "建议补齐"}`
+                      : `Alipay: ${readiness.payment?.alipayConfigured ? "configured" : "missing"} · WeChat Pay: ${readiness.payment?.wechatConfigured ? "configured" : "missing"} · webhook signature: ${readiness.payment?.wechatWebhookVerificationConfigured ? "configured" : "recommended"}`}
                   </div>
                 </div>
                 <div className="rounded-xl border border-border p-3">
@@ -310,6 +313,7 @@ export default function IntegrationsPage() {
               { title: isZh ? "国际登录变量" : "Intl auth env", icon: Puzzle, values: readiness.envGuide?.intlAuth ?? [] },
               { title: isZh ? "支付变量" : "Payment env", icon: CreditCard, values: [...(readiness.envGuide?.intlPayment ?? []), ...(readiness.envGuide?.cnPayment ?? [])] },
               { title: isZh ? "国内基础设施变量" : "China infra env", icon: Database, values: readiness.envGuide?.cnInfra ?? [] },
+              { title: isZh ? "国内登录变量" : "China auth env", icon: ShieldCheck, values: [...(readiness.envGuide?.cnAuth ?? []), ...(readiness.envGuide?.cnAuthOptional ?? [])] },
             ].map((group) => (
               <Card key={group.title}>
                 <CardHeader className="flex flex-row items-center gap-3">

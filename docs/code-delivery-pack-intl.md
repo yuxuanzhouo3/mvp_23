@@ -43,6 +43,9 @@ This handoff pack is for the global-facing Mornstack product surface.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_DB_URL`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
 - `STRIPE_SECRET_KEY`
 - `PAYPAL_CLIENT_ID`
 - `PAYPAL_CLIENT_SECRET`
@@ -51,7 +54,8 @@ This handoff pack is for the global-facing Mornstack product surface.
 
 - Preferred hosted path: Supabase / Neon / managed Postgres
 - Keep auth, preview, and payment callbacks on the same public site origin
-- Document whether the final handoff uses Supabase auth, local password auth, or a mixed setup
+- Current target auth shape: `Google + email`
+- Current staging payment shape: sandbox-first checkout flow until the final merchant keys are approved
 
 ## Branch and release notes
 
@@ -59,6 +63,7 @@ This handoff pack is for the global-facing Mornstack product surface.
 - Keep the latest preview-ready branch name in the final handoff sheet
 - Record the deployed production URL and preview URL
 - Record the last known successful `pnpm build`
+- Record the latest generate + iterate smoke note before `2026-04-13`
 
 ## Android intl metadata
 
@@ -67,9 +72,11 @@ This handoff pack is for the global-facing Mornstack product surface.
 - Android package name: `com.mornstack.android.global`
 - Application ID: `com.mornstack.android.global`
 
-## Acceptance expectations before 2026-04-14
+## Acceptance expectations before 2026-04-13
 
 - International website is reachable
 - Market/download/admin surfaces are reachable
 - iOS / desktop / docs links are visible
 - Plan and export restrictions remain visible in the product surface
+- Google login entry remains visible even before final OAuth keys are approved
+- Assigned subdomain, preview loading, and workspace export differences remain visible during boss-demo review

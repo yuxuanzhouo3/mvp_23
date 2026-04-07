@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { Check, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -22,12 +23,18 @@ function WechatPaymentPageContent() {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<"pending" | "completed" | "cancelled">("pending")
   const [message, setMessage] = useState("")
+  const [copied, setCopied] = useState(false)
+  const [qrError, setQrError] = useState(false)
+
+  const qrPreviewUrl = codeUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=12&data=${encodeURIComponent(codeUrl)}`
+    : ""
 
   async function refreshStatus() {
     if (!paymentId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/payment/status?paymentId=${encodeURIComponent(paymentId)}`)
+      const res = await fetch(`/api/payment/status?paymentId=${encodeURIComponent(paymentId)}&refresh=1`)
       const json = (await res.json().catch(() => ({}))) as PaymentResp
       setStatus(json?.payment?.status ?? "pending")
     } finally {
@@ -61,6 +68,17 @@ function WechatPaymentPageContent() {
     }
   }
 
+  async function copyCodeUrl() {
+    if (!codeUrl) return
+    try {
+      await navigator.clipboard.writeText(codeUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setMessage("复制二维码链接失败，请手动复制下面的内容。")
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl">
       <Card className="border-border/80">
@@ -74,11 +92,34 @@ function WechatPaymentPageContent() {
         </CardHeader>
         <CardContent className="space-y-5">
           <p className="text-sm text-muted-foreground">
-            请使用微信完成支付，支付结果会自动同步到当前订单。
+            请使用微信扫码完成支付。订单页会主动向微信支付查单，并在收到回调后同步最新状态。
           </p>
-          <div className="rounded-2xl border border-border p-4 text-sm break-all">
-            <div className="font-medium mb-2">二维码链接</div>
-            <div className="text-muted-foreground">{codeUrl || "暂无二维码链接"}</div>
+          <div className="grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
+            <div className="rounded-3xl border border-border bg-white p-4">
+              <div className="mb-3 text-sm font-medium">扫码支付</div>
+              {qrPreviewUrl && !qrError ? (
+                <img
+                  src={qrPreviewUrl}
+                  alt="WeChat Pay QR"
+                  className="mx-auto aspect-square w-full max-w-[320px] rounded-2xl border border-border object-contain"
+                  onError={() => setQrError(true)}
+                />
+              ) : (
+                <div className="flex aspect-square w-full items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 px-6 text-center text-sm text-muted-foreground">
+                  二维码预览暂时不可用，请复制右侧链接后使用微信扫一扫。
+                </div>
+              )}
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border p-4 text-sm break-all">
+                <div className="mb-2 font-medium">二维码链接</div>
+                <div className="text-muted-foreground">{codeUrl || "暂无二维码链接"}</div>
+              </div>
+              <Button variant="outline" className="w-full" onClick={copyCodeUrl} disabled={!codeUrl}>
+                {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                {copied ? "已复制二维码链接" : "复制二维码链接"}
+              </Button>
+            </div>
           </div>
           <div className="rounded-2xl border border-border p-4 text-sm break-all">
             <div className="font-medium mb-2">订单号</div>

@@ -19,7 +19,7 @@ function rewriteHtmlForSandboxPreview(html: string, projectId: string) {
   return next
 }
 
-async function proxy(req: Request, projectIdRaw: string, pathSegments: string[]) {
+export async function handlePreviewRuntimeRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
   const projectId = safeProjectId(projectIdRaw)
   const project = await getProject(projectId)
   const fallback = buildCanonicalPreviewUrl(project?.projectSlug || projectId, pathSegments.join("/"))
@@ -75,10 +75,10 @@ async function proxy(req: Request, projectIdRaw: string, pathSegments: string[])
 
 export async function GET(req: Request, context: { params: Promise<{ projectId: string; path?: string[] }> }) {
   const { projectId, path } = await context.params
-  return proxy(req, projectId, path ?? [])
+  return handlePreviewRuntimeRequest(req, projectId, path ?? [])
 }
 
 export async function POST(req: Request, context: { params: Promise<{ projectId: string; path?: string[] }> }) {
   const { projectId, path } = await context.params
-  return proxy(req, projectId, path ?? [])
+  return handlePreviewRuntimeRequest(req, projectId, path ?? [])
 }

@@ -5,6 +5,7 @@ export type PaymentAdapterConfig = {
   paypalConfigured: boolean
   alipayConfigured: boolean
   wechatConfigured: boolean
+  wechatWebhookVerificationConfigured: boolean
 }
 
 export type PaymentCreateResult = {
@@ -20,7 +21,7 @@ import { createHostedPayment } from "@/lib/payment/providers/hosted"
 import { createStripePayment } from "@/lib/payment/providers/stripe"
 import { createPaypalPayment } from "@/lib/payment/providers/paypal"
 import { createAlipayPayment } from "@/lib/payment/providers/alipay"
-import { createWechatPayPayment } from "@/lib/payment/providers/wechatpay"
+import { createWechatPayPayment, isWechatPayConfigured, isWechatPayWebhookVerificationConfigured } from "@/lib/payment/providers/wechatpay"
 
 function hasEnv(name: string) {
   return Boolean(String(process.env[name] ?? "").trim())
@@ -34,10 +35,8 @@ export function resolvePaymentAdapterConfig(): PaymentAdapterConfig {
       hasEnv("ALIPAY_APP_ID") &&
       hasEnv("ALIPAY_PRIVATE_KEY") &&
       hasEnv("ALIPAY_PUBLIC_KEY"),
-    wechatConfigured:
-      hasEnv("WECHAT_PAY_MCH_ID") &&
-      hasEnv("WECHAT_PAY_API_V3_KEY") &&
-      hasEnv("WECHAT_PAY_SERIAL_NO"),
+    wechatConfigured: isWechatPayConfigured(),
+    wechatWebhookVerificationConfigured: isWechatPayWebhookVerificationConfigured(),
   }
 }
 

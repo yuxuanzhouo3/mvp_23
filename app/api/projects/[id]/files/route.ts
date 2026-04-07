@@ -1,6 +1,8 @@
 import path from "path"
 import { promises as fs } from "fs"
 import { NextResponse } from "next/server"
+import { canExportCode, getPlanPolicy, getPreferredExportDownloadMode } from "@/lib/plan-catalog"
+import { readProjectSpec } from "@/lib/project-spec"
 import { resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 
 export const runtime = "nodejs"
@@ -30,6 +32,28 @@ async function walkFiles(root: string, current = ""): Promise<string[]> {
   }
 
   return files
+}
+
+async function readTextExportEntries(root: string, files: string[]) {
+  const entries: Array<{
+    path: string
+    content: string
+    bytes: number
+  }> = []
+
+  for (const relativePath of files) {
+    const absolutePath = path.resolve(root, relativePath)
+    const stat = await fs.stat(absolutePath).catch(() => null)
+    if (!stat || !stat.isFile()) continue
+    const content = await fs.readFile(absolutePath, "utf8").catch(() => "")
+    entries.push({
+      path: relativePath,
+      content,
+      bytes: Buffer.byteLength(content, "utf8"),
+    })
+  }
+
+  return entries
 }
 
 function extractSymbols(content: string) {
@@ -73,6 +97,93 @@ export async function GET(
   const { searchParams } = new URL(req.url)
   const requestedPath = normalizeRelativePath(searchParams.get("path") || "")
   const searchQuery = String(searchParams.get("q") || "").trim().toLowerCase()
+  const downloadMode = String(searchParams.get("download") || "").trim().toLowerCase()
+
+  if (downloadMode) {
+    const spec = await readProjectSpec(workspacePath)
+    const planTier = spec?.planTier || "free"
+    const planPolicy = getPlanPolicy(planTier)
+    const preferredDownloadMode = getPreferredExportDownloadMode(planTier)
+    if (!canExportCode(planTier)) {
+      return NextResponse.json(
+        {
+          error: "Code export is not available on the current plan.",
+          projectId,
+          planTier,
+        },
+        { status: 403 }
+      )
+    }
+    if (downloadMode !== "manifest" && downloadMode !== "full") {
+      return NextResponse.json(
+        {
+          error: "Unsupported download mode.",
+          projectId,
+          planTier,
+          requestedDownloadMode: downloadMode,
+        },
+        { status: 400 }
+      )
+    }
+    if (downloadMode === "full" && preferredDownloadMode !== "full") {
+      return NextResponse.json(
+        {
+          error: "Full export is not available on the current plan.",
+          projectId,
+          planTier,
+          requestedDownloadMode: downloadMode,
+          preferredDownloadMode,
+        },
+        { status: 403 }
+      )
+    }
+
+    const files = await walkFiles(workspacePath)
+    const resolvedDownloadMode = downloadMode === "full" && preferredDownloadMode === "full" ? "full" : "manifest"
+    if (resolvedDownloadMode === "full") {
+      const entries = await readTextExportEntries(workspacePath, files)
+      return NextResponse.json(
+        {
+          projectId,
+          planTier,
+          requestedDownloadMode: downloadMode,
+          downloadMode: resolvedDownloadMode,
+          codeExportLevel: planPolicy.codeExportLevel,
+          databaseAccessMode: planPolicy.databaseAccessMode,
+          exportedAt: new Date().toISOString(),
+          bundle: {
+            format: "mornstack-full-export-v1",
+            entryCount: entries.length,
+            files: entries,
+          },
+          note: "Full export bundle is active for this plan tier and includes the current workspace files.",
+        },
+        {
+          headers: {
+            "content-disposition": `attachment; filename=\"${projectId}-full-export.json\"`,
+          },
+        }
+      )
+    }
+
+    return NextResponse.json(
+      {
+        projectId,
+        planTier,
+        requestedDownloadMode: downloadMode,
+        downloadMode: resolvedDownloadMode,
+        codeExportLevel: planPolicy.codeExportLevel,
+        databaseAccessMode: planPolicy.databaseAccessMode,
+        files,
+        note: "Manifest export is active for this plan tier.",
+      },
+      {
+        headers: {
+          "content-disposition": `attachment; filename=\"${projectId}-manifest.json\"`,
+        },
+      }
+    )
+  }
 
   if (!requestedPath && !searchQuery) {
     const files = await walkFiles(workspacePath)

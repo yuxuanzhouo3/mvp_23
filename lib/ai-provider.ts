@@ -119,12 +119,14 @@ export async function requestJsonChatCompletion(args: {
   messages: AiChatMessage[]
   temperature?: number
   timeoutMs?: number
+  maxTokens?: number
   mode?: AiTaskMode
 }): Promise<{ content: string; reasoning: string }> {
   const { config, messages } = args
   const mode = args.mode ?? "default"
   const temperature = args.temperature ?? resolveTemperatureForMode(mode, 0.2)
   const timeoutMs = args.timeoutMs ?? 120_000
+  const maxTokens = typeof args.maxTokens === "number" && Number.isFinite(args.maxTokens) && args.maxTokens > 0 ? Math.floor(args.maxTokens) : undefined
   const url = `${config.baseUrl.replace(/\/+$/, "")}/chat/completions`
 
   console.info(`[LLM] mode=${mode} model=${config.model} thinking=${config.enableThinking ? "true" : "false"}`)
@@ -135,6 +137,10 @@ export async function requestJsonChatCompletion(args: {
     stream: true,
     messages,
     response_format: { type: "json_object" },
+  }
+
+  if (maxTokens) {
+    payload.max_tokens = maxTokens
   }
 
   if (config.enableThinking) {

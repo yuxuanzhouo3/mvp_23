@@ -18,16 +18,18 @@ Expected:
 Expected:
 - Checkout page loads.
 - Top-bar `中 / EN` switch controls checkout/login language and payment region behavior.
-- `中` shows Chinese copy and phase-1 payment priority led by `支付宝`.
-- `EN` shows English copy and phase-1 payment priority led by `Stripe`.
+- `中` shows Chinese copy and domestic payment targets led by `微信支付 / 支付宝`.
+- `EN` shows English copy and sandbox-first intl payment entry.
 - Before login, primary action asks user to sign in first.
 - Page shows current auth mode / provider hint.
 
 ## 3. Login flow
 1. Click the top-right avatar menu -> `登录`, or click `登录后支付` from checkout.
-2. Use demo credentials:
-   - CN: `demo-cn@mornscience.ai` / `123456`
-   - INTL: `demo-intl@mornscience.ai` / `123456`
+2. Use one of these:
+   - CN sandbox phone login: enter email + mainland phone number, click `发送验证码`, then use the returned sandbox code
+   - CN fallback demo credentials: `demo-cn@mornscience.ai` / `123456`
+   - INTL demo credentials: `demo-intl@mornscience.ai` / `123456`
+   - INTL Google sandbox entry: click `Log in with Google`
 
 Expected:
 - Login succeeds.
@@ -35,7 +37,7 @@ Expected:
 - Avatar menu shows user name and email.
 - Login language follows top-bar `中 / EN`, not a separate `CN / INTL` selector.
 - Login page shows current runtime mode.
-- Phase-1 target is `Supabase` for INTL and `password` for CN.
+- Current target is `Google + email` for INTL and `phone verification + email` for CN.
 
 ## 4. Create a payment
 1. On checkout, select region, plan, and payment method.
@@ -48,9 +50,9 @@ Expected:
   - real Stripe checkout URL
   - real Alipay payment URL
   - `/payment/wechat?paymentId=...&codeUrl=...`
-- Payment page shows plan, amount, method, and payment id, or a provider-hosted payment page opens.
+- Payment page shows plan, amount, method, payment id, and for WeChat Pay a QR preview plus copyable code URL.
 - If production credentials are missing, API returns `fallbackHosted: true`.
-- Phase-1 target is `Stripe` for INTL and `Alipay` for CN.
+- Current domestic target is `WeChat Pay + Alipay`; current intl target stays sandbox-first until final secrets are approved.
 
 ## 5. Confirm payment
 1. On hosted payment page, click `确认支付`.
@@ -98,9 +100,14 @@ Migration note:
 - The current repo remains the real implementation base for phase 1.
 
 Target split:
+- Web current target:
+  - INTL auth: `Google + email`
+  - CN auth: `phone verification + email`
+  - CN payment: `WeChat Pay + Alipay`
+  - INTL payment: sandbox-first checkout
 - Android phase 1: shell conversion, package rename, JKS signing, APK install path, Alipay payment with `0.1`
 - Android phase 2: WeChat login + WeChat Pay after the credentials are approved
-- Web acceptance: keep checkout, hosted payment, success/cancel, and session APIs aligned with the same plan logic
+- Web acceptance: keep checkout, hosted payment, success/cancel, session APIs, and plan policy aligned with the same limits
 
 ## 10. Android phase 1 notes
 
@@ -117,6 +124,8 @@ Target split:
 
 ## 11. Keys and manual prerequisites
 
-- WeChat login is not a phase-1 blocker if the credentials are still pending
-- Alipay / WeChat secrets should stay in local secure env or Android signing config, not in git
+- Current WeChat Pay merchant credentials are enough to continue order creation / query / callback decryption
+- `WECHAT_PAY_PLATFORM_PUBLIC_KEY` and `WECHAT_PAY_PLATFORM_SERIAL_NO` are still recommended to complete callback signature verification
+- Google OAuth client credentials and the final SMS provider credentials are still pending for the production switch
+- Alipay / WeChat secrets should stay in local secure env or cloud deployment env, not in git
 - Final device install, payment callback verification, and store submission still require local manual validation

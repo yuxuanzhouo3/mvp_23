@@ -21,6 +21,19 @@ export type PlanDefinition = {
   deliverablesEn: string[]
 }
 
+export type PlanPolicy = {
+  planId: PlanTier
+  generationProfile: "starter" | "builder" | "premium" | "showcase"
+  aiBuilderEnabled: boolean
+  maxGeneratedRoutes: number
+  maxGeneratedModules: number
+  codeExportLevel: "none" | "manifest" | "full"
+  databaseAccessMode: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+  projectLimit: number
+  collaboratorLimit: number
+  subdomainSlots: number
+}
+
 export const PLAN_CATALOG: Record<PlanTier, PlanDefinition> = {
   free: {
     id: "free",
@@ -153,4 +166,87 @@ export function getPlanPriceLabel(planId: PlanTier, locale: "zh" | "en", cycle: 
     return cycle === "yearly" ? plan.yearlyPriceCn : plan.monthlyPriceCn
   }
   return cycle === "yearly" ? plan.yearlyPriceEn : plan.monthlyPriceEn
+}
+
+export function getPlanPolicy(planId: PlanTier | string | null | undefined): PlanPolicy {
+  const normalized = normalizePlanTier(planId)
+  if (normalized === "elite") {
+    return {
+      planId: normalized,
+      generationProfile: "showcase",
+      aiBuilderEnabled: true,
+      maxGeneratedRoutes: 10,
+      maxGeneratedModules: 32,
+      codeExportLevel: "full",
+      databaseAccessMode: "handoff_ready",
+      projectLimit: 100,
+      collaboratorLimit: 25,
+      subdomainSlots: 50,
+    }
+  }
+  if (normalized === "pro") {
+    return {
+      planId: normalized,
+      generationProfile: "premium",
+      aiBuilderEnabled: true,
+      maxGeneratedRoutes: 8,
+      maxGeneratedModules: 24,
+      codeExportLevel: "full",
+      databaseAccessMode: "production_access",
+      projectLimit: 30,
+      collaboratorLimit: 10,
+      subdomainSlots: 10,
+    }
+  }
+  if (normalized === "builder") {
+    return {
+      planId: normalized,
+      generationProfile: "builder",
+      aiBuilderEnabled: true,
+      maxGeneratedRoutes: 6,
+      maxGeneratedModules: 18,
+      codeExportLevel: "manifest",
+      databaseAccessMode: "managed_config",
+      projectLimit: 12,
+      collaboratorLimit: 3,
+      subdomainSlots: 3,
+    }
+  }
+  if (normalized === "starter") {
+    return {
+      planId: normalized,
+      generationProfile: "starter",
+      aiBuilderEnabled: false,
+      maxGeneratedRoutes: 5,
+      maxGeneratedModules: 14,
+      codeExportLevel: "none",
+      databaseAccessMode: "managed_config",
+      projectLimit: 5,
+      collaboratorLimit: 1,
+      subdomainSlots: 1,
+    }
+  }
+  return {
+    planId: "free",
+    generationProfile: "starter",
+    aiBuilderEnabled: false,
+    maxGeneratedRoutes: 4,
+    maxGeneratedModules: 10,
+    codeExportLevel: "none",
+    databaseAccessMode: "online_only",
+    projectLimit: 3,
+    collaboratorLimit: 1,
+    subdomainSlots: 1,
+  }
+}
+
+export function canExportCode(planId: PlanTier | string | null | undefined) {
+  return getPlanPolicy(planId).codeExportLevel !== "none"
+}
+
+export function getPreferredExportDownloadMode(planId: PlanTier | string | null | undefined) {
+  const level = getPlanPolicy(planId).codeExportLevel
+  if (level === "full") return "full" as const
+  if (level === "manifest") return "manifest" as const
+  return "none" as const
 }

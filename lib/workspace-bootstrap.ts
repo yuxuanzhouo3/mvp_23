@@ -2,6 +2,8 @@ import net from "net"
 import path from "path"
 import { promises as fs } from "fs"
 import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl } from "@/lib/preview-url"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
+import { getPlanPolicy } from "@/lib/plan-catalog"
 import { readProjectSpec } from "@/lib/project-spec"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import {
@@ -28,6 +30,15 @@ const MAX_BOOTSTRAP_FILE_COUNT = 180
 const MAX_BOOTSTRAP_TOTAL_BYTES = 1_800_000
 const STORE_PRIORITY_RE = /^(app|components|lib|hooks|pages|src|public|styles|spec\.json|package\.json|tsconfig\.json|next\.config|tailwind\.config|postcss\.config)/i
 const SKIPPED_BOOTSTRAP_RE = /(^|\/)(\.env(?:\..+)?)$|\.db$|package-lock\.json$|pnpm-lock\.yaml$|yarn\.lock$/i
+
+type GenerateHistoryRecord = {
+  type: "generate" | "iterate"
+  status: "done" | "error"
+  summary?: string
+  buildStatus?: "ok" | "failed" | "skipped"
+  buildLogs?: string[]
+  createdAt: string
+}
 
 function buildPreviewUrl(projectKey: string) {
   return buildCanonicalPreviewUrl(projectKey)
@@ -62,6 +73,9 @@ function resolvePreviewStatus(args: {
   activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
   runtimeStatus?: "stopped" | "starting" | "running" | "error"
   sandboxStatus?: "stopped" | "starting" | "running" | "error"
+  latestGenerate?: GenerateHistoryRecord | null
+  spec?: { modules?: unknown[] } | null
+  presentation?: ReturnType<typeof buildProjectPresentation> | null
 }) {
   if (args.activeMode === "sandbox_runtime") {
     if (args.sandboxStatus === "running") return "ready" as const
@@ -75,7 +89,16 @@ function resolvePreviewStatus(args: {
     if (args.runtimeStatus === "error") return "failed" as const
     return "idle" as const
   }
-  return "ready" as const
+  if (args.latestGenerate?.status === "error" || args.latestGenerate?.buildStatus === "failed") {
+    return "failed" as const
+  }
+  if (args.latestGenerate?.status !== "done") {
+    return "idle" as const
+  }
+
+  const routes = Array.isArray(args.presentation?.routes) ? args.presentation.routes.filter(Boolean) : []
+  const modules = Array.isArray(args.spec?.modules) ? args.spec.modules.filter(Boolean) : []
+  return routes.length > 0 || modules.length > 0 ? ("ready" as const) : ("building" as const)
 }
 
 function normalizeRuntimeUrl(projectId: string, url?: string) {
@@ -85,21 +108,15 @@ function normalizeRuntimeUrl(projectId: string, url?: string) {
     return buildRuntimePreviewUrl(projectId)
   }
   if (normalized.startsWith("/api/projects/")) {
-    return normalized.endsWith("/preview") ? `${normalized}/` : normalized
+    if (/\/preview\/?$/.test(normalized)) {
+      return buildRuntimePreviewUrl(projectId)
+    }
+    return normalized
   }
   return normalized
 }
 
-function getLatestGenerateRecord(
-  history: Array<{
-    type: "generate" | "iterate"
-    status: "done" | "error"
-    summary?: string
-    buildStatus?: "ok" | "failed" | "skipped"
-    buildLogs?: string[]
-    createdAt: string
-  }> = []
-) {
+function getLatestGenerateRecord(history: GenerateHistoryRecord[] = []) {
   return (
     history
       .slice()
@@ -286,6 +303,9 @@ async function buildProjectDetailSnapshot(projectId: string): Promise<WorkspaceP
       activeMode,
       runtimeStatus: runtime?.status,
       sandboxStatus: project.sandboxRuntime?.status,
+      latestGenerate,
+      spec,
+      presentation,
     }),
     canonicalUrl,
     runtimeUrl,
@@ -315,6 +335,25 @@ async function buildProjectDetailSnapshot(projectId: string): Promise<WorkspaceP
     ...project,
     spec,
     presentation,
+    delivery: (() => {
+      const planPolicy = getPlanPolicy(spec?.planTier)
+      return {
+        generationProfile: planPolicy.generationProfile,
+        codeExportLevel: planPolicy.codeExportLevel,
+        databaseAccessMode: planPolicy.databaseAccessMode,
+        projectLimit: planPolicy.projectLimit,
+        collaboratorLimit: planPolicy.collaboratorLimit,
+        routeBudget: planPolicy.maxGeneratedRoutes,
+        moduleBudget: planPolicy.maxGeneratedModules,
+        subdomainSlots: planPolicy.subdomainSlots,
+        assignedDomain: buildAssignedAppUrl({
+          projectSlug: project.projectSlug || safeId,
+          projectId: safeId,
+          region: project.region,
+          planTier: spec?.planTier,
+        }),
+      }
+    })(),
     generation: {
       status: latestGenerate?.status ?? "idle",
       summary: latestGenerate?.summary ?? "",

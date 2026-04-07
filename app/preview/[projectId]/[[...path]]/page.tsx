@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation"
 import { PreviewRouteClient } from "@/components/preview/preview-route-client"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
 import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
+import { getPlanPolicy } from "@/lib/plan-catalog"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
 import type { PreviewSnapshot } from "@/lib/preview-snapshot"
@@ -26,6 +28,7 @@ export default async function PreviewProjectPage({
   if (project) {
     const projectDir = await resolveProjectPath(projectId)
     const spec = projectDir ? await readProjectSpec(projectDir) : null
+    const planPolicy = getPlanPolicy(spec?.planTier)
     const latestHistory = project.history?.length ? project.history[project.history.length - 1] : null
     const presentation = buildProjectPresentation({
       projectId,
@@ -48,6 +51,22 @@ export default async function PreviewProjectPage({
       projectSlug: lookup.projectSlug || projectId,
       region: project.region,
       spec,
+      delivery: {
+        assignedDomain: buildAssignedAppUrl({
+          projectSlug: lookup.projectSlug || project.projectSlug || projectId,
+          projectId,
+          region: project.region,
+          planTier: spec?.planTier,
+        }),
+        subdomainSlots: planPolicy.subdomainSlots,
+        generationProfile: planPolicy.generationProfile,
+        codeExportLevel: planPolicy.codeExportLevel,
+        databaseAccessMode: planPolicy.databaseAccessMode,
+        projectLimit: planPolicy.projectLimit,
+        collaboratorLimit: planPolicy.collaboratorLimit,
+        routeBudget: planPolicy.maxGeneratedRoutes,
+        moduleBudget: planPolicy.maxGeneratedModules,
+      },
       presentation,
       history: [...project.history].reverse().slice(0, 5),
       updatedAt: project.updatedAt,

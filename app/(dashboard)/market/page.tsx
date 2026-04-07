@@ -25,6 +25,25 @@ const mobileAssets = [
   { label: "iOS TestFlight", href: siteLinks.iosTestFlight, sub: "内测/老板试用入口" },
 ]
 
+function getPlanBadgeVariant(plan: "free" | "starter" | "builder" | "pro" | "elite") {
+  if (plan === "elite") return "default" as const
+  if (plan === "pro") return "secondary" as const
+  return "outline" as const
+}
+
+function formatExportLevel(level: "none" | "manifest" | "full") {
+  if (level === "full") return "Full export"
+  if (level === "manifest") return "Manifest export"
+  return "No export"
+}
+
+function formatDbMode(mode: "online_only" | "managed_config" | "production_access" | "handoff_ready") {
+  if (mode === "handoff_ready") return "DB: handoff-ready"
+  if (mode === "production_access") return "DB: production"
+  if (mode === "managed_config") return "DB: managed"
+  return "DB: online-only"
+}
+
 export default function MarketPage() {
   return (
     <div className="grid gap-6">
@@ -162,12 +181,12 @@ export default function MarketPage() {
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-muted-foreground">
             <a href={siteLinks.loginEntry} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
-              <div className="font-medium text-foreground">国内：微信登录</div>
-              <div className="mt-1">适用于中国区账号接入与快速登录体验。</div>
+              <div className="font-medium text-foreground">国内：手机验证码 / 邮箱</div>
+              <div className="mt-1">当前已接入沙盒验证码流程，后续补齐真实短信服务商即可切到正式发送。</div>
             </a>
             <a href={siteLinks.loginEntry} className="rounded-2xl border border-border p-4 transition hover:bg-secondary/40">
-              <div className="font-medium text-foreground">海外：Google / Facebook</div>
-              <div className="mt-1">适用于国际用户的常见社交账号接入方式。</div>
+              <div className="font-medium text-foreground">海外：Google / 邮箱</div>
+              <div className="mt-1">当前保留 Google 沙盒入口与邮箱链路，补齐正式 OAuth 参数后即可切到真登录。</div>
             </a>
           </CardContent>
         </Card>
@@ -295,8 +314,18 @@ export default function MarketPage() {
             ))}
             {DELIVERY_PERMISSION_RULES.map((rule) => (
               <div key={rule.plan} className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground uppercase">{rule.plan}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="font-medium text-foreground uppercase">{rule.plan}</div>
+                  <Badge variant={getPlanBadgeVariant(rule.plan)}>{rule.plan.toUpperCase()}</Badge>
+                </div>
                 <div className="mt-1">{rule.summary}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                  <Badge variant="outline">{formatExportLevel(rule.codeExportLevel)}</Badge>
+                  <Badge variant="outline">{formatDbMode(rule.databaseAccessMode)}</Badge>
+                  <Badge variant="outline">Routes {rule.routeBudget}</Badge>
+                  <Badge variant="outline">Modules {rule.moduleBudget}</Badge>
+                  <Badge variant="outline">Subdomains {rule.subdomainSlots}</Badge>
+                </div>
               </div>
             ))}
           </CardContent>

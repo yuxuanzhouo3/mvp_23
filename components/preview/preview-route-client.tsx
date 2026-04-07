@@ -82,6 +82,7 @@ export function PreviewRouteClient({
         region={snapshot.region}
         page={normalizedPage}
         spec={snapshot.spec}
+        delivery={snapshot.delivery ?? null}
         presentation={snapshot.presentation}
         history={snapshot.history}
       />

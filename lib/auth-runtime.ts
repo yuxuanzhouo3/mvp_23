@@ -1,10 +1,11 @@
-export type AuthMode = "demo" | "password" | "supabase" | "wechat"
+export type AuthMode = "demo" | "password" | "supabase" | "wechat" | "phone"
 
 export type AuthRuntimeConfig = {
   intlMode: AuthMode
   cnMode: AuthMode
   supabaseConfigured: boolean
   wechatConfigured: boolean
+  phoneOtpConfigured: boolean
   intlEmailPasswordEnabled: boolean
   cnEmailPasswordEnabled: boolean
   googleEnabled: boolean
@@ -31,12 +32,18 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
   const wechatConfigured =
     hasEnv("NEXT_PUBLIC_WECHAT_APP_ID") &&
     hasEnv("WECHAT_APP_SECRET")
+  const phoneOtpConfigured =
+    hasEnv("SMS_PROVIDER_NAME") &&
+    hasEnv("SMS_API_KEY") &&
+    hasEnv("SMS_API_SECRET") &&
+    hasEnv("SMS_SIGN_NAME") &&
+    hasEnv("SMS_TEMPLATE_ID")
 
   const intlFallback: AuthMode = supabaseConfigured ? "supabase" : "password"
-  const cnFallback: AuthMode = "password"
+  const cnFallback: AuthMode = "phone"
   const intlMode = normalizeMode(process.env.AUTH_MODE_INTL ?? "", ["demo", "password", "supabase"], intlFallback)
-  const cnMode = normalizeMode(process.env.AUTH_MODE_CN ?? "", ["demo", "password", "wechat"], cnFallback)
-  const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "false").trim() === "true"
+  const cnMode = normalizeMode(process.env.AUTH_MODE_CN ?? "", ["demo", "password", "wechat", "phone"], cnFallback)
+  const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "true").trim() !== "false"
   const facebookEnabled = String(process.env.AUTH_ENABLE_FACEBOOK ?? "false").trim() === "true"
   const googleConfigured =
     hasEnv("GOOGLE_OAUTH_CLIENT_ID") &&
@@ -50,6 +57,7 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     cnMode,
     supabaseConfigured,
     wechatConfigured,
+    phoneOtpConfigured,
     intlEmailPasswordEnabled: intlMode === "password" || supabaseConfigured,
     cnEmailPasswordEnabled: true,
     googleEnabled,

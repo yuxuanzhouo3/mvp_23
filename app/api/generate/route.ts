@@ -8,6 +8,7 @@ import {
   ensureDir,
   getProject,
   getWorkspacePath,
+  reserveProjectSlug,
   resolveProjectPath,
   safeProjectId,
   updateProject,
@@ -16,6 +17,7 @@ import {
   type Region,
 } from "@/lib/project-workspace"
 import { requestJsonChatCompletion, resolveAiConfig } from "@/lib/ai-provider"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
 import { buildCanonicalPreviewUrl } from "@/lib/preview-url"
 import {
   appendGenerateTaskLog,
@@ -42,7 +44,7 @@ import {
 } from "@/lib/project-spec"
 import { getCurrentSession } from "@/lib/auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
-import { getPlanDefinition, getPlanRank, normalizePlanTier, type PlanTier } from "@/lib/plan-catalog"
+import { getPlanDefinition, getPlanPolicy, getPlanRank, normalizePlanTier, type PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById, type TemplatePreviewStyle } from "@/lib/template-catalog"
 import {
   getDatabaseEnvGuide,
@@ -70,9 +72,12 @@ import {
 
 export const runtime = "nodejs"
 const STALE_TASK_MS = 8 * 60 * 1000
-const BUILDER_STALL_MS = 2 * 60 * 1000
-const BUILDER_WATCHDOG_MS = 70 * 1000
+const BUILDER_STALL_MS = 60 * 1000
 const BUILDER_TIMEOUT_MS = 55 * 1000
+const BUILDER_RETRY_TIMEOUT_MS = 35 * 1000
+const BUILDER_POLISH_TIMEOUT_MS = 22 * 1000
+const PLANNER_TIMEOUT_MS = 30 * 1000
+const BUILDER_WATCHDOG_MS = BUILDER_TIMEOUT_MS + BUILDER_RETRY_TIMEOUT_MS + BUILDER_POLISH_TIMEOUT_MS + 20 * 1000
 
 function shouldInlineGenerateWorker() {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
@@ -243,6 +248,12 @@ function normalizePath(p: string) {
   return p.replace(/\\/g, "/").replace(/^\/+/, "")
 }
 
+function normalizePositiveInteger(value: unknown) {
+  const normalized = Number(value)
+  if (!Number.isFinite(normalized) || normalized <= 0) return undefined
+  return Math.floor(normalized)
+}
+
 function normalizeContextPath(value?: unknown) {
   const normalized = normalizePath(String(value ?? ""))
   return isAllowedFile(normalized) ? normalized : ""
@@ -328,12 +339,38 @@ function normalizeElementContext(value: unknown): WorkspaceElementContext | unde
   }
 }
 
+function hasIncomingGenerateWorkspaceAnchor(body: any, incomingSession?: WorkspaceSessionContext) {
+  const hasOpenTabs = Array.isArray(body?.openTabs) && body.openTabs.some((item: unknown) => normalizeContextPath(item))
+  const hasRelatedPaths =
+    Array.isArray(body?.relatedPaths) && body.relatedPaths.some((item: unknown) => normalizeContextPath(item))
+
+  return Boolean(
+    normalizeContextPath(body?.currentFilePath) ||
+      (typeof body?.currentRoute === "string" && body.currentRoute.trim()) ||
+      normalizePageContext(body?.currentPage) ||
+      normalizeModuleContext(body?.currentModule) ||
+      normalizeElementContext(body?.currentElement) ||
+      hasOpenTabs ||
+      hasRelatedPaths ||
+      incomingSession?.workspaceSurface ||
+      incomingSession?.activeSection ||
+      incomingSession?.routeId ||
+      incomingSession?.routeLabel ||
+      incomingSession?.filePath ||
+      incomingSession?.symbolName ||
+      incomingSession?.elementName ||
+      incomingSession?.lastChangedFile
+  )
+}
+
 function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessionContext | undefined {
   if (!value || typeof value !== "object") return undefined
   const session = value as Record<string, unknown>
   const selectedPlanId = normalizeTextValue(session.selectedPlanId)
   const codeExportAllowedValue = session.codeExportAllowed
+  const codeExportLevel = normalizeTextValue(session.codeExportLevel)
   const databaseAccessMode = normalizeTextValue(session.databaseAccessMode)
+  const generationProfile = normalizeTextValue(session.generationProfile)
   return {
     projectName: normalizeTextValue(session.projectName) || undefined,
     specKind: normalizeTextValue(session.specKind) || undefined,
@@ -351,7 +388,24 @@ function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessi
     selectedPlanName: normalizeTextValue(session.selectedPlanName) || undefined,
     selectedTemplate: normalizeTextValue(session.selectedTemplate) || undefined,
     codeExportAllowed: typeof codeExportAllowedValue === "boolean" ? codeExportAllowedValue : undefined,
+    codeExportLevel:
+      codeExportLevel === "none" || codeExportLevel === "manifest" || codeExportLevel === "full"
+        ? codeExportLevel
+        : undefined,
     databaseAccessMode: databaseAccessMode || undefined,
+    generationProfile:
+      generationProfile === "starter" ||
+      generationProfile === "builder" ||
+      generationProfile === "premium" ||
+      generationProfile === "showcase"
+        ? generationProfile
+        : undefined,
+    routeBudget: normalizePositiveInteger(session.routeBudget),
+    moduleBudget: normalizePositiveInteger(session.moduleBudget),
+    projectLimit: normalizePositiveInteger(session.projectLimit),
+    collaboratorLimit: normalizePositiveInteger(session.collaboratorLimit),
+    subdomainSlots: normalizePositiveInteger(session.subdomainSlots),
+    assignedDomain: normalizeTextValue(session.assignedDomain) || undefined,
     workspaceStatus: normalizeTextValue(session.workspaceStatus) || undefined,
     lastIntent: normalizeTextValue(session.lastIntent) || undefined,
     lastAction: normalizeTextValue(session.lastAction) || undefined,
@@ -411,9 +465,14 @@ function resolveTemplateId(prompt: string, context?: GenerateRequestContext) {
   return inferTemplateIdFromPrompt(prompt)
 }
 
+function looksLikeCodePlatformPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(text)
+}
+
 function inferPromptOnlyPlannerProductType(prompt: string): PlannerProductType {
   const text = String(prompt ?? "").toLowerCase()
-  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
+  if (looksLikeCodePlatformPrompt(text)) {
     return "ai_code_platform"
   }
   if (/api|sdk|developer portal|endpoint|endpoints|auth|environment|environments|webhook|logs|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
@@ -439,6 +498,7 @@ function resolvePlannerProductType(prompt: string, context?: GenerateRequestCont
   if (kind === "code_platform") return "ai_code_platform"
   if (kind === "crm") return "crm_workspace"
   if (kind === "community") return "community_hub"
+  if (looksLikeCodePlatformPrompt(prompt)) return "ai_code_platform"
   if (kind === "blog" || /website|landing|homepage|download|官网|下载站|落地页|文档/i.test(prompt)) return "content_site"
   const promptOnly = inferPromptOnlyPlannerProductType(prompt)
   if (promptOnly !== "task_workspace") return promptOnly
@@ -460,6 +520,8 @@ function resolveGenerateWorkspaceContext(args: {
 }): GenerateRequestContext | undefined {
   const { body, prompt, region, planTier, deploymentTarget, databaseTarget, templateId, templateTitle } = args
   const incomingSession = normalizeSessionContext(body?.sharedSession, region)
+  const hasExplicitWorkspaceAnchor = hasIncomingGenerateWorkspaceAnchor(body, incomingSession)
+  const planPolicy = getPlanPolicy(planTier)
   const currentFilePath =
     normalizeContextPath(body?.currentFilePath) ||
     normalizeContextPath(incomingSession?.lastChangedFile) ||
@@ -476,6 +538,7 @@ function resolveGenerateWorkspaceContext(args: {
   ])
 
   const shouldUseCodePlatformContext =
+    hasExplicitWorkspaceAnchor &&
     resolveContextAppKind(prompt, {
       currentFilePath,
       currentRoute,
@@ -539,6 +602,10 @@ function resolveGenerateWorkspaceContext(args: {
     (currentPage?.id === "editor" ? "code" : currentPage?.id === "dashboard" ? "dashboard" : undefined) ||
     (currentKind === "code_platform" ? "preview" : undefined)
 
+  if (!hasExplicitWorkspaceAnchor) {
+    return undefined
+  }
+
   const resolvedSession: WorkspaceSessionContext = {
     ...incomingSession,
     projectName: incomingSession?.projectName || deriveProjectHeadline(prompt),
@@ -558,8 +625,24 @@ function resolveGenerateWorkspaceContext(args: {
       incomingSession?.selectedPlanName || getPlanDefinition(planTier)[region === "cn" ? "nameCn" : "nameEn"],
     selectedTemplate: incomingSession?.selectedTemplate || templateTitle || templateId || undefined,
     codeExportAllowed:
-      typeof incomingSession?.codeExportAllowed === "boolean" ? incomingSession.codeExportAllowed : planTier !== "free",
-    databaseAccessMode: incomingSession?.databaseAccessMode || (planTier === "free" ? "online_only" : "managed_config"),
+      typeof incomingSession?.codeExportAllowed === "boolean"
+        ? incomingSession.codeExportAllowed
+        : planPolicy.codeExportLevel !== "none",
+    codeExportLevel: incomingSession?.codeExportLevel || planPolicy.codeExportLevel,
+    databaseAccessMode: incomingSession?.databaseAccessMode || planPolicy.databaseAccessMode,
+    generationProfile: incomingSession?.generationProfile || planPolicy.generationProfile,
+    routeBudget: incomingSession?.routeBudget || planPolicy.maxGeneratedRoutes,
+    moduleBudget: incomingSession?.moduleBudget || planPolicy.maxGeneratedModules,
+    projectLimit: incomingSession?.projectLimit || planPolicy.projectLimit,
+    collaboratorLimit: incomingSession?.collaboratorLimit || planPolicy.collaboratorLimit,
+    subdomainSlots: incomingSession?.subdomainSlots || planPolicy.subdomainSlots,
+    assignedDomain:
+      incomingSession?.assignedDomain ||
+      buildAssignedAppUrl({
+        projectSlug: deriveProjectHeadline(prompt),
+        region,
+        planTier,
+      }),
     workspaceStatus: incomingSession?.workspaceStatus || "queued",
     lastIntent: incomingSession?.lastIntent || sanitizeUiText(prompt).slice(0, 240),
     lastChangedFile: incomingSession?.lastChangedFile || currentFilePath || currentPage?.filePath,
@@ -593,6 +676,7 @@ function resolveGenerateWorkspaceContext(args: {
 
 function buildGenerateContextSummary(context?: GenerateRequestContext, region: Region = "intl") {
   if (!context) return ""
+  if (!hasMeaningfulGenerateContext(context)) return ""
   const parts = [
     context.sharedSession?.workspaceSurface,
     context.currentPage?.label || context.sharedSession?.routeLabel,
@@ -660,7 +744,15 @@ function serializeGenerateContextForPrompt(context?: GenerateRequestContext) {
         typeof context.sharedSession.codeExportAllowed === "boolean"
           ? `Code export allowed: ${context.sharedSession.codeExportAllowed ? "yes" : "no"}`
           : "",
+        context.sharedSession.codeExportLevel ? `Code export level: ${context.sharedSession.codeExportLevel}` : "",
         context.sharedSession.databaseAccessMode ? `Database access mode: ${context.sharedSession.databaseAccessMode}` : "",
+        context.sharedSession.generationProfile ? `Generation profile: ${context.sharedSession.generationProfile}` : "",
+        context.sharedSession.routeBudget ? `Route budget: ${context.sharedSession.routeBudget}` : "",
+        context.sharedSession.moduleBudget ? `Module budget: ${context.sharedSession.moduleBudget}` : "",
+        context.sharedSession.projectLimit ? `Project limit: ${context.sharedSession.projectLimit}` : "",
+        context.sharedSession.collaboratorLimit ? `Collaborator limit: ${context.sharedSession.collaboratorLimit}` : "",
+        context.sharedSession.subdomainSlots ? `Subdomain slots: ${context.sharedSession.subdomainSlots}` : "",
+        context.sharedSession.assignedDomain ? `Assigned domain: ${context.sharedSession.assignedDomain}` : "",
         context.sharedSession.deploymentTarget ? `Deployment target: ${context.sharedSession.deploymentTarget}` : "",
         context.sharedSession.databaseTarget ? `Database target: ${context.sharedSession.databaseTarget}` : "",
         context.sharedSession.workspaceStatus ? `Workspace status: ${context.sharedSession.workspaceStatus}` : "",
@@ -703,10 +795,15 @@ function hasMeaningfulGenerateContext(context?: GenerateRequestContext) {
 function shouldUseDeterministicGeneratePath(args: {
   plannerProductType: PlannerProductType
   workflowMode: GenerateWorkflowMode
+  planTier: PlanTier
   context?: GenerateRequestContext
 }) {
-  void args
-  return true
+  if (args.workflowMode === "discuss") return true
+  if (!getPlanPolicy(args.planTier).aiBuilderEnabled) return true
+  if (hasMeaningfulGenerateContext(args.context) && args.workflowMode === "edit_context") {
+    return false
+  }
+  return false
 }
 
 function normalizeGenerateWorkflowMode(input: unknown, context?: GenerateRequestContext): GenerateWorkflowMode {
@@ -752,8 +849,10 @@ function buildPlannerSnapshot(args: {
   archetype: GenerateArchetype
   deploymentTarget: DeploymentTarget
   databaseTarget: DatabaseTarget
+  context?: GenerateRequestContext
 }): GeneratePlanSnapshot {
-  const { planner, plannedSpec, workflowMode, archetype, deploymentTarget, databaseTarget } = args
+  const { planner, plannedSpec, workflowMode, archetype, deploymentTarget, databaseTarget, context } = args
+  const planPolicy = getPlanPolicy(plannedSpec.planTier)
   const routeMap = planner.pages.map((page) => {
     const normalized = sanitizeUiText(page).toLowerCase()
     if (!normalized || normalized === "home") return "/"
@@ -775,9 +874,8 @@ function buildPlannerSnapshot(args: {
   const constraints = [
     `Deployment target: ${deploymentTarget}`,
     `Database target: ${databaseTarget}`,
-    plannedSpec.planTier === "free"
-      ? "Free tier keeps code export locked and database usage online-only"
-      : `Plan tier ${plannedSpec.planTier} can expose richer delivery controls`,
+    `Plan tier ${plannedSpec.planTier} keeps generation=${planPolicy.generationProfile}, AI builder=${planPolicy.aiBuilderEnabled ? "enabled" : "disabled"}, code export=${planPolicy.codeExportLevel}, database=${planPolicy.databaseAccessMode}, route budget=${planPolicy.maxGeneratedRoutes}, module budget=${planPolicy.maxGeneratedModules}, project limit=${planPolicy.projectLimit}, collaborator limit=${planPolicy.collaboratorLimit}, subdomains=${planPolicy.subdomainSlots}`,
+    context?.sharedSession?.assignedDomain ? `Assigned domain: ${context.sharedSession.assignedDomain}` : "",
   ]
   return {
     workflowMode,
@@ -853,8 +951,44 @@ function getDefaultPlannerPages(productType: PlannerProductType) {
   return ["dashboard", "tasks", "settings", "analytics"]
 }
 
-function getRequiredPlannerPages(productType: PlannerProductType) {
-  return getDefaultPlannerPages(productType)
+function getRequiredPlannerPages(productType: PlannerProductType, planTier?: PlanTier) {
+  if (!planTier) {
+    return getDefaultPlannerPages(productType)
+  }
+  const planId = normalizePlanTier(planTier)
+  if (productType === "ai_code_platform") {
+    if (planId === "free" || planId === "starter") return ["dashboard", "editor", "templates", "settings"]
+    return ["dashboard", "editor", "runs", "templates", "pricing", "settings"]
+  }
+  if (productType === "crm_workspace") {
+    if (planId === "free") return ["dashboard", "leads", "pipeline", "customers"]
+    return ["dashboard", "leads", "pipeline", "customers", "automations"]
+  }
+  if (productType === "api_platform") {
+    if (planId === "free") return ["dashboard", "endpoints", "logs", "auth"]
+    return ["dashboard", "endpoints", "logs", "auth", "environments"]
+  }
+  if (productType === "community_hub") {
+    if (planId === "free") return ["dashboard", "events", "feedback", "settings"]
+    return ["dashboard", "events", "feedback", "members", "settings"]
+  }
+  if (productType === "content_site") {
+    if (planId === "free") return ["dashboard", "website", "downloads", "docs"]
+    return ["dashboard", "website", "downloads", "docs", "admin"]
+  }
+  if (planId === "elite") {
+    return ["dashboard", "tasks", "settings", "analytics", "reports", "automations", "team", "approvals", "handoff", "playbooks"]
+  }
+  if (planId === "pro") {
+    return ["dashboard", "tasks", "settings", "analytics", "reports", "automations", "team", "approvals"]
+  }
+  if (planId === "builder") {
+    return ["dashboard", "tasks", "settings", "analytics", "reports", "automations"]
+  }
+  if (planId === "starter") {
+    return ["dashboard", "tasks", "settings", "analytics", "reports"]
+  }
+  return ["dashboard", "tasks", "settings", "analytics"]
 }
 
 function getDefaultTemplateIdForPlannerProductType(
@@ -904,7 +1038,7 @@ function buildGenerationAcceptance(args: {
     changedFiles,
   } = args
   const archetype = resolveGenerateArchetype(prompt, planner.productType, context)
-  const requiredPages = getRequiredPlannerPages(planner.productType)
+  const requiredPages = getRequiredPlannerPages(planner.productType, plannedSpec.planTier)
   const availablePages = new Set(planner.pages.map((page) => sanitizeUiText(page).toLowerCase()))
   const criticalMissingPieces = requiredPages
     .filter((page) => !availablePages.has(page))
@@ -1000,6 +1134,36 @@ function mergePlannerPages(productType: PlannerProductType, parsedPages: string[
   return merged
 }
 
+function constrainPlannerByPlanTier(planner: PlannerSpec, planTier: PlanTier) {
+  const policy = getPlanPolicy(planTier)
+  const required = getRequiredPlannerPages(planner.productType, planTier)
+  const requiredSet = new Set(required)
+  const routeBudget = policy.maxGeneratedRoutes
+  const trimmedPages: string[] = []
+
+  for (const page of planner.pages) {
+    if (trimmedPages.includes(page)) continue
+    trimmedPages.push(page)
+  }
+
+  for (const page of required) {
+    if (!trimmedPages.includes(page)) {
+      trimmedPages.push(page)
+    }
+  }
+
+  const prioritized = [
+    ...trimmedPages.filter((page) => requiredSet.has(page)),
+    ...trimmedPages.filter((page) => !requiredSet.has(page)),
+  ].slice(0, routeBudget)
+
+  return {
+    ...planner,
+    pages: prioritized,
+    summary: planner.summary,
+  } satisfies PlannerSpec
+}
+
 function inferPlannerProductType(prompt: string, context?: GenerateRequestContext): PlannerProductType {
   return resolvePlannerProductType(prompt, context)
 }
@@ -1040,7 +1204,7 @@ function fallbackPlannerSpec(
         region === "cn"
           ? ["官网与下载站", "销售后台", "API 数据平台", "社区反馈中心"]
           : ["Website and downloads", "Sales admin", "API platform", "Community hub"],
-      plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
+      plans: region === "cn" ? ["免费版", "启动版", "建造者版", "专业版", "精英版"] : ["Free", "Starter", "Builder", "Pro", "Elite"],
       deploymentDefaults: {
         cn: cnDefaults,
         global: globalDefaults,
@@ -1074,7 +1238,7 @@ function fallbackPlannerSpec(
     layout: {},
     aiTools,
     templates: [],
-    plans: region === "cn" ? ["免费版", "专业版", "精英版"] : ["Free", "Pro", "Elite"],
+    plans: region === "cn" ? ["免费版", "启动版", "建造者版", "专业版", "精英版"] : ["Free", "Starter", "Builder", "Pro", "Elite"],
     deploymentDefaults: { cn: cnDefaults, global: globalDefaults },
     preferredScaffold: `${productType}_scaffold`,
     summary:
@@ -1162,6 +1326,173 @@ function getPlanGenerationDirective(planTier: PlanTier, region: Region) {
     : "Target the free or starter tier: keep it complete and usable, but scoped to a solid first version without over-expanding."
 }
 
+function shouldPreferCompactBuilderPass(planTier: PlanTier) {
+  return getPlanRank(planTier) >= getPlanRank("builder")
+}
+
+function shouldAttemptPaidPolishPass(args: {
+  planTier: PlanTier
+  plannerProductType: PlannerProductType
+  aiChangedCount: number
+}) {
+  if (getPlanRank(args.planTier) < getPlanRank("pro")) return false
+  if (args.aiChangedCount <= 0) return false
+  return args.plannerProductType !== "ai_code_platform"
+}
+
+function shouldRetryAfterPrimaryBuilderFailure(args: {
+  planTier: PlanTier
+  compactFirstPass: boolean
+}) {
+  if (!getPlanPolicy(args.planTier).aiBuilderEnabled) return false
+  if (args.compactFirstPass) {
+    return getPlanRank(args.planTier) >= getPlanRank("pro")
+  }
+  return true
+}
+
+function getCompactPlannerPageLimit(planTier: PlanTier) {
+  if (planTier === "elite") return 6
+  if (planTier === "pro") return 5
+  if (planTier === "builder") return 4
+  return 4
+}
+
+function getCompactBriefLimit(planTier: PlanTier) {
+  if (planTier === "elite") return 5
+  if (planTier === "pro") return 4
+  return 4
+}
+
+function getPriorityOnlyPlannerPageLimit(planTier: PlanTier) {
+  if (planTier === "elite") return 4
+  if (planTier === "pro") return 3
+  return 3
+}
+
+function getPriorityOnlyBriefLimit(planTier: PlanTier) {
+  if (planTier === "elite") return 3
+  return 2
+}
+
+function getGeneratorMaxTokens(planTier: PlanTier, options?: {
+  compact?: boolean
+  priorityOnly?: boolean
+}) {
+  if (options?.priorityOnly) {
+    if (planTier === "elite") return 2800
+    if (planTier === "pro") return 2400
+    return 2200
+  }
+  if (options?.compact) {
+    if (planTier === "elite") return 4200
+    if (planTier === "pro") return 3600
+    if (planTier === "builder") return 3200
+  }
+  return undefined
+}
+
+function routeIdToAppPagePath(routeId: string) {
+  const normalized = sanitizeUiText(routeId).replace(/^\/+/, "").toLowerCase()
+  if (!normalized || normalized === "home") return "app/page.tsx"
+  return `app/${normalized}/page.tsx`
+}
+
+function getPriorityGeneratorFileTargets(args: {
+  planner: PlannerSpec
+  planTier: PlanTier
+  context?: GenerateRequestContext
+}) {
+  const { planner, planTier, context } = args
+  const requiredPages = getRequiredPlannerPages(planner.productType, planTier)
+  const plannerPages = planner.pages.length ? planner.pages : requiredPages
+  const files = [
+    context?.currentFilePath || "",
+    context?.sharedSession?.lastChangedFile || "",
+    context?.sharedSession?.filePath || "",
+    "app/layout.tsx",
+    "app/page.tsx",
+    ...requiredPages.map(routeIdToAppPagePath),
+    ...plannerPages.map(routeIdToAppPagePath),
+  ]
+    .map((item) => normalizeContextPath(item))
+    .filter(Boolean)
+
+  return Array.from(new Set(files)).slice(0, 12)
+}
+
+function getPriorityGeneratorRoutes(args: {
+  planner: PlannerSpec
+  planTier: PlanTier
+  context?: GenerateRequestContext
+}) {
+  const requiredPages = getRequiredPlannerPages(args.planner.productType, args.planTier)
+  const plannerPages = args.planner.pages.length ? args.planner.pages : requiredPages
+  const routes = [
+    args.context?.currentRoute || "",
+    args.context?.currentPage?.route || "",
+    ...requiredPages.map((item) => (item === "home" ? "/" : `/${item}`)),
+    ...plannerPages.map((item) => (item === "home" ? "/" : `/${item}`)),
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(routes)).slice(0, 10)
+}
+
+function buildCompactGenerationGuardrails(args: {
+  planner: PlannerSpec
+  planTier: PlanTier
+  context?: GenerateRequestContext
+  region: Region
+}) {
+  const targetFiles = getPriorityGeneratorFileTargets(args)
+  const targetRoutes = getPriorityGeneratorRoutes(args)
+  const isCn = args.region === "cn"
+  const lines = [
+    isCn
+      ? `紧凑模式优先文件：${targetFiles.join(", ")}`
+      : `Compact priority files: ${targetFiles.join(", ")}`,
+    isCn
+      ? `紧凑模式优先路由：${targetRoutes.join(", ")}`
+      : `Compact priority routes: ${targetRoutes.join(", ")}`,
+  ]
+  if (args.context?.currentFilePath || args.context?.currentRoute) {
+    lines.push(
+      isCn
+        ? "若当前有聚焦文件或路由，先把它及其直接相关页面改对，再扩展到其它表层。"
+        : "If a current file or route is focused, fix that surface and its directly related pages first before expanding elsewhere."
+    )
+  }
+  lines.push(
+    isCn
+      ? "优先改 route-level 页面、layout、最显眼的共享组件与必要 API；避免把时间耗在低价值装饰文件。"
+      : "Prioritize route-level pages, layout, the most visible shared components, and necessary API files; avoid spending time on low-value decorative files."
+  )
+  return lines.join("\n")
+}
+
+function buildPlanPolicySummary(planTier: PlanTier, region: Region, assignedDomain?: string) {
+  const policy = getPlanPolicy(planTier)
+  const isCn = region === "cn"
+  const lines = [
+    isCn ? `套餐档位：${planTier}` : `Plan tier: ${planTier}`,
+    isCn ? `生成档位：${policy.generationProfile}` : `Generation profile: ${policy.generationProfile}`,
+    isCn
+      ? `AI Builder：${policy.aiBuilderEnabled ? "已开放" : "未开放"}`
+      : `AI Builder: ${policy.aiBuilderEnabled ? "enabled" : "disabled"}`,
+    isCn ? `页面预算：${policy.maxGeneratedRoutes}` : `Route budget: ${policy.maxGeneratedRoutes}`,
+    isCn ? `模块预算：${policy.maxGeneratedModules}` : `Module budget: ${policy.maxGeneratedModules}`,
+    isCn ? `代码导出：${policy.codeExportLevel}` : `Code export: ${policy.codeExportLevel}`,
+    isCn ? `数据库模式：${policy.databaseAccessMode}` : `Database mode: ${policy.databaseAccessMode}`,
+    isCn ? `项目上限：${policy.projectLimit}` : `Project limit: ${policy.projectLimit}`,
+    isCn ? `协作人数上限：${policy.collaboratorLimit}` : `Collaborator limit: ${policy.collaboratorLimit}`,
+    isCn ? `子域名位：${policy.subdomainSlots}` : `Subdomain slots: ${policy.subdomainSlots}`,
+    assignedDomain ? (isCn ? `分配域名：${assignedDomain}` : `Assigned domain: ${assignedDomain}`) : "",
+  ]
+  return lines.filter(Boolean).join("\n")
+}
+
 async function callPlannerModel(args: {
   prompt: string
   region: Region
@@ -1180,6 +1511,7 @@ async function callPlannerModel(args: {
     return fallbackPlannerSpec(prompt, region, deploymentTarget, databaseTarget, context, inferredProductType)
   }
   const contextBlock = serializeGenerateContextForPrompt(context)
+  const planPolicySummary = buildPlanPolicySummary(planTier, region, context?.sharedSession?.assignedDomain)
   const config = resolveAiConfig({ mode: "planner" })
   const system = [
     "You are the planning layer for a Next.js application generator.",
@@ -1190,12 +1522,14 @@ async function callPlannerModel(args: {
     "For code-platform products, the editor layout must include activity_bar, file_tree, tab_editor, terminal_panel, and ai_assistant_panel.",
     "For code-platform products, AI tools must include explain, fix, generate, and refactor.",
     "If workspace context is provided, keep the product family and active surface aligned with that context instead of reinterpreting the request from scratch.",
+    "The selected plan policy is a hard constraint. Do not exceed route/module depth or unlock export/database capabilities that the plan does not include.",
   ].join("\n")
 
   const user = [
     `Prompt: ${prompt}`,
     `Region: ${region}`,
     `Plan tier: ${planTier}`,
+    `Plan policy summary:\n${planPolicySummary}`,
     `Deployment target: ${deploymentTarget}`,
     `Database target: ${databaseTarget}`,
     contextBlock ? `Workspace generation context:\n${contextBlock}` : "",
@@ -1209,7 +1543,7 @@ async function callPlannerModel(args: {
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      timeoutMs: 90_000,
+      timeoutMs: 28_000,
       mode: "planner",
     })
     if (!content) {
@@ -1240,12 +1574,14 @@ function createPlannedAppSpec(args: {
   context?: GenerateRequestContext
 }): AppSpec {
   const { prompt, region, planTier, planner, deploymentTarget, databaseTarget, context } = args
+  const planPolicy = getPlanPolicy(planTier)
   const kind = plannerProductTypeToAppKind(planner.productType)
   const templateId =
     kind === "code_platform"
       ? ""
       : getDefaultTemplateIdForPlannerProductType(planner.productType, prompt, context)
-  const modules = [
+  const modules = Array.from(
+    new Set([
     ...planner.pages.map((page) => `${page} page`),
     ...planner.aiTools.map((tool) => `ai:${tool}`),
     ...planner.templates,
@@ -1268,7 +1604,8 @@ function createPlannedAppSpec(args: {
             : region === "cn"
               ? ["审批流", "任务队列", "访问控制", "分析视图"]
               : ["Approval flow", "Task queue", "Access control", "Analytics view"]),
-  ]
+    ])
+  ).slice(0, planPolicy.maxGeneratedModules)
   const features = new Set<SpecFeature>(["description_field", "assignee_filter"])
   if (kind === "code_platform" || planner.productType === "content_site" || planner.productType === "community_hub") {
     features.add("about_page")
@@ -1317,14 +1654,54 @@ async function callGeneratorModel(
   planTier: PlanTier,
   context?: GenerateRequestContext,
   deploymentTarget?: DeploymentTarget,
-  databaseTarget?: DatabaseTarget
+  databaseTarget?: DatabaseTarget,
+  options?: {
+    compact?: boolean
+    priorityOnly?: boolean
+  }
 ): Promise<GeneratorModelOutput> {
   const config = resolveAiConfig({ mode: "builder" })
   const brief = buildGenerationBrief(prompt, region, planTier, context)
   const contextBlock = serializeGenerateContextForPrompt(context)
   const contextSummary = buildGenerateContextSummary(context, region)
+  const planPolicySummary = buildPlanPolicySummary(planTier, region, context?.sharedSession?.assignedDomain)
   const deployment = getDeploymentOption(deploymentTarget ?? getDefaultDeploymentTarget(region))
   const database = getDatabaseOption(databaseTarget ?? getDefaultDatabaseTarget(region))
+  const compact = Boolean(options?.compact)
+  const priorityOnly = Boolean(options?.priorityOnly)
+  const maxTokens = getGeneratorMaxTokens(planTier, options)
+  const compactPlannerPageLimit = getCompactPlannerPageLimit(planTier)
+  const compactBriefLimit = getCompactBriefLimit(planTier)
+  const priorityOnlyPlannerPageLimit = getPriorityOnlyPlannerPageLimit(planTier)
+  const priorityOnlyBriefLimit = getPriorityOnlyBriefLimit(planTier)
+  const compactGuardrails = compact
+    ? buildCompactGenerationGuardrails({
+        planner,
+        planTier,
+        context,
+        region,
+      })
+    : ""
+  const plannerPayload = compact
+    ? {
+        productName: planner.productName,
+        productType: planner.productType,
+        targetLocale: planner.targetLocale,
+        pages: planner.pages.slice(0, priorityOnly ? priorityOnlyPlannerPageLimit : compactPlannerPageLimit),
+        aiTools: planner.aiTools.slice(0, priorityOnly ? 2 : 4),
+        templates: planner.templates.slice(0, priorityOnly ? 2 : 3),
+        preferredScaffold: planner.preferredScaffold,
+        summary: planner.summary,
+      }
+    : planner
+  const briefPayload = compact
+    ? {
+        ...brief,
+        mandatorySurfaces: brief.mandatorySurfaces.slice(0, priorityOnly ? priorityOnlyBriefLimit : compactBriefLimit),
+        interactionRules: brief.interactionRules.slice(0, priorityOnly ? priorityOnlyBriefLimit : compactBriefLimit),
+        requiredOperationalFlows: brief.requiredOperationalFlows.slice(0, priorityOnly ? priorityOnlyBriefLimit : compactBriefLimit),
+      }
+    : brief
 
   const system = [
     "You are a fullstack Next.js app generator.",
@@ -1363,20 +1740,35 @@ async function callGeneratorModel(
     "- Prefer modifying these files: app/page.tsx, app/layout.tsx, app/api/items/route.ts, prisma/schema.prisma, README.md.",
     "- If workspace context is provided, treat that page/module/surface as the primary anchor for naming, information hierarchy, and follow-on capability.",
     "- Keep the generated result inside the same product family suggested by the workspace context and plan constraints.",
+    "- Treat plan policy as a hard product boundary: do not invent export, database, or collaboration capabilities above the allowed tier.",
     "- Never return markdown, only JSON.",
+    ...(compact
+      ? [
+          "- Compact retry mode: prioritize updating the highest-value product files fast instead of attempting a full rewrite of every surface.",
+          "- In compact retry mode, prefer app/page.tsx, app/dashboard/page.tsx, route-level files, and the most visible supporting components.",
+          "- In compact retry mode, do not try to regenerate every route. Upgrade the core shell and the most visible business surfaces first.",
+          ...(priorityOnly
+            ? [
+                "- Priority-only rescue mode: touch only the most important route files and a minimal set of shared support files.",
+                "- Priority-only rescue mode: if you cannot confidently improve a file, skip it instead of broadening the rewrite.",
+              ]
+            : []),
+        ]
+      : []),
   ].join("\n")
 
   const user = [
     `Project ID: ${projectId}`,
     `Region: ${region}`,
     `Plan tier: ${planTier}`,
+    `Plan policy summary:\n${planPolicySummary}`,
     `Deployment target: ${deployment.id} (${deployment.runtime}, dockerRequired=${deployment.dockerRequired})`,
     `Database target: ${database.id} (${database.engine})`,
     `Raw user prompt: ${prompt}`,
-    `Planner spec: ${JSON.stringify(planner)}`,
-    `Generation brief: ${JSON.stringify(brief)}`,
+    `Planner spec: ${JSON.stringify(plannerPayload)}`,
+    `Generation brief: ${JSON.stringify(briefPayload)}`,
     contextSummary ? `Workspace anchor: ${contextSummary}` : "",
-    contextBlock ? `Workspace generation context:\n${contextBlock}` : "",
+    !compact && contextBlock ? `Workspace generation context:\n${contextBlock}` : "",
     getPlanGenerationDirective(planTier, region),
     region === "cn"
       ? "如果需求是中国团队使用的产品，请优先使用中文工作流、项目交付语义、客户转化或团队协作语境。"
@@ -1385,6 +1777,7 @@ async function callGeneratorModel(
     "Make different prompt categories produce visibly different products rather than one reused layout.",
     "Generate a production-like MVP app with meaningful structure and interactions.",
     "Respect the selected deployment and database targets when deciding auth, data flow, runtime assumptions, and infrastructure copy.",
+    compactGuardrails,
     region === "cn"
       ? "默认按“完整应用”理解，不要只生成几个页面。要优先补齐数据流、操作按钮、状态切换、分享/交付/设置等真实能力。"
       : "Default to a complete application, not a few isolated pages. Prioritize data flow, actions, state transitions, sharing, delivery, and settings.",
@@ -1397,6 +1790,16 @@ async function callGeneratorModel(
     region === "cn"
       ? "产出目标参考成熟 AI SaaS / Base44 风格：不是静态海报页，而是具备导航、主工作区、可操作面板、设置或发布链路的可演示产品。"
       : "Aim closer to a mature AI SaaS / Base44-style MVP: not a poster page, but a demoable product with navigation, a main workspace, actionable panels, and settings or publish flows.",
+    compact
+      ? region === "cn"
+        ? "当前为紧凑重试：优先把最重要的页面和主工作区做对、做稳，不必一次重写所有文件。"
+        : "This is a compact retry: prioritize getting the main pages and core workspace right and stable instead of rewriting every file."
+      : "",
+    compact && priorityOnly
+      ? region === "cn"
+        ? "当前还是 priority-only rescue：只改最关键的核心页面、layout 和必要支持文件；如果不确定，不要扩大修改面。"
+        : "This is also a priority-only rescue: change only the most critical route pages, layout, and essential support files; do not broaden scope if uncertain."
+      : "",
   ].join("\n\n")
 
   const messages = [
@@ -1408,6 +1811,7 @@ async function callGeneratorModel(
     messages,
     temperature: 0.3,
     timeoutMs: 90_000,
+    maxTokens,
     mode: "builder",
   })
   if (!raw) {
@@ -1677,6 +2081,7 @@ async function writeGeneratedProjectFiles(
   region: Region,
   prompt: string,
   options?: {
+    projectSlug?: string
     titleOverride?: string
     templateId?: string
     templateStyle?: TemplatePreviewStyle
@@ -1692,6 +2097,14 @@ async function writeGeneratedProjectFiles(
   const databaseTarget = options?.databaseTarget ?? getDefaultDatabaseTarget(region)
   const deployment = getDeploymentOption(deploymentTarget)
   const database = getDatabaseOption(databaseTarget)
+  const planTier = options?.planTier ?? "free"
+  const planPolicy = getPlanPolicy(planTier)
+  const assignedDomain = buildAssignedAppUrl({
+    projectSlug: options?.projectSlug || projectId,
+    projectId,
+    region,
+    planTier,
+  })
 
   await writeTextFile(
     path.join(outDir, "README.md"),
@@ -1810,12 +2223,12 @@ export default nextConfig;
 
   await writeTextFile(
     path.join(outDir, ".env"),
-    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${options?.planTier ?? "free"}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n`
+    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${planTier}"\nAPP_GENERATION_PROFILE="${planPolicy.generationProfile}"\nAPP_CODE_EXPORT_LEVEL="${planPolicy.codeExportLevel}"\nAPP_DATABASE_ACCESS_MODE="${planPolicy.databaseAccessMode}"\nAPP_PROJECT_LIMIT="${planPolicy.projectLimit}"\nAPP_COLLABORATOR_LIMIT="${planPolicy.collaboratorLimit}"\nAPP_SUBDOMAIN_SLOTS="${planPolicy.subdomainSlots}"\nAPP_ASSIGNED_DOMAIN="${assignedDomain}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n`
   )
 
   await writeTextFile(
     path.join(outDir, ".env.example"),
-    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${options?.planTier ?? "free"}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTarget)].map((key) => `${key}=`).join("\n")}\n`
+    `DATABASE_URL="file:./${dbFile}"\nAPP_REGION="${region}"\nAPP_PLAN_TIER="${planTier}"\nAPP_GENERATION_PROFILE="${planPolicy.generationProfile}"\nAPP_CODE_EXPORT_LEVEL="${planPolicy.codeExportLevel}"\nAPP_DATABASE_ACCESS_MODE="${planPolicy.databaseAccessMode}"\nAPP_PROJECT_LIMIT="${planPolicy.projectLimit}"\nAPP_COLLABORATOR_LIMIT="${planPolicy.collaboratorLimit}"\nAPP_SUBDOMAIN_SLOTS="${planPolicy.subdomainSlots}"\nAPP_ASSIGNED_DOMAIN="${assignedDomain}"\nAPP_LOCALE="${defaults.language}"\nAPP_TIMEZONE="${defaults.timezone}"\nAPP_CURRENCY="${defaults.currency}"\nAPP_DEPLOY_TARGET="${deploymentTarget}"\nAPP_DEPLOY_RUNTIME="${deployment.runtime}"\nAPP_DEPLOY_DOCKER_REQUIRED="${deployment.dockerRequired ? "true" : "false"}"\nAPP_DATABASE_TARGET="${databaseTarget}"\nAPP_DATABASE_ENGINE="${database.engine}"\n${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTarget)].map((key) => `${key}=`).join("\n")}\n`
   )
 
   await writeTextFile(
@@ -2207,9 +2620,7 @@ function extractProductNameFromPrompt(prompt: string) {
 
 function inferAppKind(prompt: string) {
   const text = prompt.toLowerCase()
-  if (
-    /cursor|code editor|ide|developer platform|coding workspace|ai coding|\u4ee3\u7801\u7f16\u8f91\u5668|\u7f16\u7a0b\u5e73\u53f0|\u5f00\u53d1\u8005\u5e73\u53f0|\u4ee3\u7801\u5e73\u53f0|\u4ee3\u7801\u5de5\u4f5c\u53f0/.test(text)
-  ) {
+  if (looksLikeCodePlatformPrompt(text)) {
     return "code_platform"
   }
   if (
@@ -2232,9 +2643,7 @@ function inferAppKind(prompt: string) {
 
 function inferTemplateIdFromPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  if (
-    /cursor|code editor|ide|developer platform|coding workspace|ai coding|\u4ee3\u7801\u7f16\u8f91\u5668|\u7f16\u7a0b\u5e73\u53f0|\u5f00\u53d1\u8005\u5e73\u53f0|\u4ee3\u7801\u5e73\u53f0|\u4ee3\u7801\u5de5\u4f5c\u53f0/.test(text)
-  ) {
+  if (looksLikeCodePlatformPrompt(text)) {
     return "siteforge"
   }
   if (/crm|customer|sales|pipeline|lead|\u5ba2\u6237|\u9500\u552e|\u8ddf\u8fdb/.test(text)) {
@@ -2259,6 +2668,7 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
   const kind = resolveContextAppKind(prompt, context)
   const templateId = resolveTemplateId(prompt, context)
   const isCn = region === "cn"
+  const planPolicy = getPlanPolicy(planTier)
 
   const productArchetype =
     kind === "code_platform"
@@ -2336,6 +2746,14 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
         ? isCn
           ? "专业档：产品感明显高于免费版，不能只是更换配色或增加几张卡片。"
           : "Pro tier: clearly more product-grade than free, not just recolored cards."
+        : planTier === "builder"
+          ? isCn
+            ? "建造者档：应有更完整工作流、双视图、统计模块和更成熟的信息架构。"
+            : "Builder tier: include fuller workflows, dual views, metric modules, and a more mature information architecture."
+          : planTier === "starter"
+            ? isCn
+              ? "启动档：仍走稳定首版，但要比免费层更完整，且保持轻量可控。"
+              : "Starter tier: stay on the stable first-version path, but make it more complete than free while remaining controlled."
         : isCn
           ? "免费档：允许范围更小，但仍然要像可用产品骨架。"
           : "Free tier: narrower scope is acceptable, but it must still feel like a usable product skeleton."
@@ -2360,11 +2778,18 @@ function buildGenerationBrief(prompt: string, region: Region, planTier: PlanTier
   return {
     kind,
     templateId,
+    planPolicySummary: buildPlanPolicySummary(planTier, region, context?.sharedSession?.assignedDomain),
     productArchetype,
     mandatorySurfaces,
     interactionRules,
     tierDepth,
     requiredOperationalFlows,
+    budgetHints: {
+      routes: planPolicy.maxGeneratedRoutes,
+      modules: planPolicy.maxGeneratedModules,
+      exportLevel: planPolicy.codeExportLevel,
+      databaseMode: planPolicy.databaseAccessMode,
+    },
   }
 }
 
@@ -2439,7 +2864,7 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
       },
       {
         relative: "app/pricing/page.tsx",
-        pattern: /Free|Pro|Elite|免费版|专业版|精英版/i,
+        pattern: /Free|Starter|Builder|Pro|Elite|免费版|启动版|建造者版|专业版|精英版/i,
       },
     ]
 
@@ -2473,12 +2898,22 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
   return false
 }
 
+function isRetriableBuilderError(error: unknown) {
+  const message = String((error as any)?.message || error || "").toLowerCase()
+  return Boolean(
+    message &&
+      (/timed out|timeout|empty model response|no files|returned no files|no applicable files|model request failed/.test(message))
+  )
+}
+
 async function applyPromptDrivenFallback(
   outDir: string,
   prompt: string,
   region: Region,
   options?: {
     plannedSpec?: AppSpec
+    projectId?: string
+    projectSlug?: string
   }
 ) {
   const previousSpec = await readProjectSpec(outDir)
@@ -2499,7 +2934,19 @@ async function applyPromptDrivenFallback(
         })
       : createAppSpec(prompt, region, previousSpec ?? undefined)
   await writeProjectSpec(outDir, spec)
-  const files = await buildSpecDrivenWorkspaceFiles(outDir, spec)
+  const files = await buildSpecDrivenWorkspaceFiles(outDir, spec, undefined, {
+    projectId: options?.projectId,
+    projectSlug: options?.projectSlug,
+    assignedDomain:
+      options?.projectId || options?.projectSlug
+        ? buildAssignedAppUrl({
+            projectSlug: options?.projectSlug || options?.projectId || spec.title,
+            projectId: options?.projectId,
+            region: spec.region,
+            planTier: spec.planTier,
+          })
+        : undefined,
+  })
   const changed = new Set<string>()
 
   for (const file of files) {
@@ -2526,6 +2973,8 @@ async function stabilizeGeneratedWorkspace(
   region: Region,
   options?: {
     plannedSpec?: AppSpec
+    projectId?: string
+    projectSlug?: string
   }
 ) {
   const stabilized = await applyPromptDrivenFallback(outDir, prompt, region, options)
@@ -2573,6 +3022,8 @@ async function forceFinishStalledBuilderTask(task: GenerateTaskRecord) {
       })
   const stabilized = await stabilizeGeneratedWorkspace(outDir, task.prompt, region, {
     plannedSpec,
+    projectId: task.projectId,
+    projectSlug: planner.productName,
   })
   const fallbackReason =
     region === "cn"
@@ -2626,6 +3077,7 @@ async function forceFinishStalledBuilderTask(task: GenerateTaskRecord) {
         archetype: resolveGenerateArchetype(rawPrompt, planner.productType, task.requestContext),
         deploymentTarget: plannedSpec.deploymentTarget,
         databaseTarget: plannedSpec.databaseTarget,
+        context: task.requestContext,
       }),
     acceptance,
     logs: [...(current.logs ?? []), `[WARN] ${fallbackReason}`],
@@ -2659,6 +3111,7 @@ async function runGenerateTaskWorker(jobId: string) {
   let plannerSnapshot: GeneratePlanSnapshot | undefined
   let acceptance: GenerateAcceptanceReport | undefined
   let builderWatchdog: NodeJS.Timeout | undefined
+  let plannedProjectSlug = current.projectId
   let buildResult: WorkspaceBuildResult = {
     status: "skipped",
     logs: ["Build validation was not attempted yet."],
@@ -2681,18 +3134,31 @@ async function runGenerateTaskWorker(jobId: string) {
   try {
     await ensureDir(outDir)
     await appendGenerateTaskLog(jobId, "[2/6] 正在规划产品蓝图")
-    const planner = await withTimeout(
-      callPlannerModel({
-        prompt: rawPrompt,
-        region: current.region,
-        planTier: current.planTier ?? "free",
-        deploymentTarget,
-        databaseTarget,
-        context: requestContext,
-      }),
-      45_000,
-      "Planner"
-    )
+    let planner: PlannerSpec
+    try {
+      planner = constrainPlannerByPlanTier(
+        await withTimeout(
+          callPlannerModel({
+            prompt: rawPrompt,
+            region: current.region,
+            planTier: current.planTier ?? "free",
+            deploymentTarget,
+            databaseTarget,
+            context: requestContext,
+          }),
+          PLANNER_TIMEOUT_MS,
+          "Planner"
+        ),
+        current.planTier ?? "free"
+      )
+    } catch (plannerError: any) {
+      const reason = plannerError?.message || String(plannerError)
+      planner = constrainPlannerByPlanTier(
+        fallbackPlannerSpec(rawPrompt, current.region, deploymentTarget, databaseTarget, requestContext),
+        current.planTier ?? "free"
+      )
+      await appendGenerateTaskLog(jobId, `[2.2/6] Planner 超时或失败，已回退到本地蓝图：${reason}`)
+    }
     await appendGenerateTaskLog(
       jobId,
       `[2.5/6] 规划完成：${planner.productName} · ${planner.productType} · scaffold=${planner.preferredScaffold}`
@@ -2714,6 +3180,7 @@ async function runGenerateTaskWorker(jobId: string) {
       archetype: resolveGenerateArchetype(rawPrompt, planner.productType, requestContext),
       deploymentTarget,
       databaseTarget,
+      context: requestContext,
     })
     await updateGenerateTask(jobId, (t) => ({
       ...t,
@@ -2779,9 +3246,13 @@ async function runGenerateTaskWorker(jobId: string) {
       }, BUILDER_WATCHDOG_MS)
     }
     await writeProjectSpec(outDir, plannedSpec)
+    plannedProjectSlug = await reserveProjectSlug(slugifyProjectName(planner.productName), {
+      fallbackSlug: slugifyProjectName(deriveProjectHeadline(rawPrompt)),
+      excludeProjectId: current.projectId,
+    })
     await updateProject(current.projectId, (record) => ({
       ...record,
-      projectSlug: slugifyProjectName(planner.productName) || record.projectSlug || record.projectId,
+      projectSlug: plannedProjectSlug || record.projectSlug || record.projectId,
       updatedAt: new Date().toISOString(),
     }))
 
@@ -2843,6 +3314,7 @@ async function runGenerateTaskWorker(jobId: string) {
     }
 
     await writeGeneratedProjectFiles(outDir, current.projectId, current.region, rawPrompt, {
+      projectSlug: plannedProjectSlug,
       titleOverride: planner.productName,
       templateId: current.templateId,
       templateStyle: currentTemplate?.previewStyle,
@@ -2853,7 +3325,16 @@ async function runGenerateTaskWorker(jobId: string) {
     })
     logs.push("[OK] Base scaffold generated")
     await appendGenerateTaskLog(jobId, "[3/6] 基础脚手架已生成")
-    const scaffoldFiles = await buildSpecDrivenWorkspaceFiles(outDir, plannedSpec)
+    const scaffoldFiles = await buildSpecDrivenWorkspaceFiles(outDir, plannedSpec, undefined, {
+      projectId: current.projectId,
+      projectSlug: plannedProjectSlug,
+      assignedDomain: buildAssignedAppUrl({
+        projectSlug: plannedProjectSlug || current.projectId,
+        projectId: current.projectId,
+        region: current.region,
+        planTier: current.planTier ?? plannedSpec.planTier,
+      }),
+    })
     const scaffoldChanged = await applyGeneratedFiles(
       outDir,
       scaffoldFiles.map((file) => ({ path: file.path, content: file.content }))
@@ -2870,6 +3351,7 @@ async function runGenerateTaskWorker(jobId: string) {
     const shouldSkipAiBuilder = shouldUseDeterministicGeneratePath({
       plannerProductType: planner.productType,
       workflowMode,
+      planTier: current.planTier ?? "free",
       context: requestContext,
     })
 
@@ -2902,33 +3384,85 @@ async function runGenerateTaskWorker(jobId: string) {
       await appendGenerateTaskLog(jobId, "[4/6] 走稳定生成路径：直接交付完整 scaffold，并跳过长耗时自由生成")
       const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
         plannedSpec,
+        projectId: current.projectId,
+        projectSlug: plannedProjectSlug,
       })
       changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
       await appendGenerateTaskLog(jobId, `[4.5/6] 已按规划稳定化 ${stabilized.length} 个工作区文件`)
     } else {
       try {
+        const effectivePlanTier = current.planTier ?? "free"
+        const prefersCompactFirstPass = shouldPreferCompactBuilderPass(effectivePlanTier)
         scheduleBuilderWatchdog()
-        await appendGenerateTaskLog(jobId, "[4/6] 正在调用 AI Builder 生成业务页面和代码")
-        const modelOutput = await withTimeout(
+        await appendGenerateTaskLog(
+          jobId,
+          prefersCompactFirstPass
+            ? "[4/6] 正在调用 AI Builder 生成业务页面和代码（先走紧凑模式）"
+            : "[4/6] 正在调用 AI Builder 生成业务页面和代码"
+        )
+        let modelOutput = await withTimeout(
           callGeneratorModel(
             rawPrompt,
             planner,
             current.region,
-          current.projectId,
-          current.planTier ?? "free",
-          requestContext,
-          deploymentTarget,
-          databaseTarget
-        ),
+            current.projectId,
+            effectivePlanTier,
+            requestContext,
+            deploymentTarget,
+            databaseTarget,
+            { compact: prefersCompactFirstPass }
+          ),
           BUILDER_TIMEOUT_MS,
           "AI Builder"
         )
+        if (!modelOutput?.files?.length) {
+          throw new Error("AI Builder returned no files")
+        }
         const aiChanged = await applyGeneratedFiles(outDir, modelOutput.files)
         changedFiles = Array.from(new Set([...changedFiles, ...aiChanged]))
         clearBuilderWatchdog()
 
+        if (
+          shouldAttemptPaidPolishPass({
+            planTier: effectivePlanTier,
+            plannerProductType: planner.productType,
+            aiChangedCount: aiChanged.length,
+          })
+        ) {
+          try {
+            await appendGenerateTaskLog(jobId, "[4.3/6] 已命中高阶套餐，正在补一轮轻量 polish")
+            const polishOutput = await withTimeout(
+              callGeneratorModel(
+                rawPrompt,
+                planner,
+                current.region,
+                current.projectId,
+                effectivePlanTier,
+                requestContext,
+                deploymentTarget,
+                databaseTarget,
+                { compact: true }
+              ),
+              BUILDER_POLISH_TIMEOUT_MS,
+              "AI Builder polish pass"
+            )
+            const polishChanged = await applyGeneratedFiles(outDir, polishOutput.files)
+            if (polishChanged.length) {
+              changedFiles = Array.from(new Set([...changedFiles, ...polishChanged]))
+              await appendGenerateTaskLog(jobId, `[4.35/6] 轻量 polish 已追加 ${polishChanged.length} 个核心文件`)
+              logs.push(`[OK] Paid polish pass applied: ${polishChanged.length} files`)
+            }
+          } catch (polishError: any) {
+            const message = polishError?.message || String(polishError)
+            logs.push(`[WARN] Paid polish pass skipped: ${message}`)
+            await appendGenerateTaskLog(jobId, `[4.35/6] 轻量 polish 未完成，继续保留当前稳定结果：${message}`)
+          }
+        }
+
         const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
           plannedSpec,
+          projectId: current.projectId,
+          projectSlug: plannedProjectSlug,
         })
         changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
 
@@ -2950,16 +3484,104 @@ async function runGenerateTaskWorker(jobId: string) {
           await appendGenerateTaskLog(jobId, "[4/6] AI 未返回可用文件，已切换到本地业务模板")
         }
       } catch (e: any) {
-        clearBuilderWatchdog()
-        const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
-          plannedSpec,
+        const primaryErrorMessage = e?.message || String(e)
+        const retryPlanTier = current.planTier ?? "free"
+        const retryCompactFirstPass = shouldPreferCompactBuilderPass(retryPlanTier)
+        const shouldRetry = shouldRetryAfterPrimaryBuilderFailure({
+          planTier: retryPlanTier,
+          compactFirstPass: retryCompactFirstPass,
         })
-        changedFiles = Array.from(new Set([...changedFiles, ...fallbackChanged]))
-        summary = "Structured workspace generated from the built-in product scaffold"
-        fallbackReason = e?.message || String(e)
-        logs.push(`[WARN] AI generation skipped: ${e?.message || String(e)}`)
-        logs.push(`[OK] Fallback generation applied: ${fallbackChanged.length} files`)
-        await appendGenerateTaskLog(jobId, `[4/6] AI 调用失败，已使用本地业务模板。原因：${e?.message || String(e)}`)
+        try {
+          if (!shouldRetry) {
+            throw new Error(primaryErrorMessage)
+          }
+          const usePriorityOnlyRescue = retryCompactFirstPass && getPlanRank(retryPlanTier) >= getPlanRank("pro")
+          await appendGenerateTaskLog(
+            jobId,
+            usePriorityOnlyRescue
+              ? `[4.2/6] AI Builder 首次未完成，正在使用 priority-only rescue。原因：${primaryErrorMessage}`
+              : `[4.2/6] AI Builder 首次未完成，正在使用紧凑重试。原因：${primaryErrorMessage}`
+          )
+          const retryOutput = await withTimeout(
+            callGeneratorModel(
+              rawPrompt,
+              planner,
+              current.region,
+              current.projectId,
+              retryPlanTier,
+              requestContext,
+              deploymentTarget,
+              databaseTarget,
+              { compact: true, priorityOnly: usePriorityOnlyRescue }
+            ),
+            BUILDER_RETRY_TIMEOUT_MS,
+            usePriorityOnlyRescue ? "AI Builder priority-only rescue" : "AI Builder compact retry"
+          )
+          const retryChanged = await applyGeneratedFiles(outDir, retryOutput.files)
+          changedFiles = Array.from(new Set([...changedFiles, ...retryChanged]))
+          clearBuilderWatchdog()
+
+          const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
+            plannedSpec,
+            projectId: current.projectId,
+            projectSlug: plannedProjectSlug,
+          })
+          changedFiles = Array.from(new Set([...changedFiles, ...stabilized]))
+
+          if (retryChanged.length > 0) {
+            summary =
+              current.region === "cn"
+                ? usePriorityOnlyRescue
+                  ? `AI Builder 首次超时后，已通过 priority-only rescue 补全 ${retryChanged.length} 个核心文件并完成稳定化。`
+                  : `AI Builder 首次超时后，已通过紧凑重试补全 ${retryChanged.length} 个核心文件并完成稳定化。`
+                : usePriorityOnlyRescue
+                  ? `After the first AI Builder timeout, a priority-only rescue landed ${retryChanged.length} core files and completed stabilization.`
+                  : `After the first AI Builder timeout, a compact retry landed ${retryChanged.length} core files and completed stabilization.`
+            logs.push(`[WARN] AI generation retried after initial failure: ${primaryErrorMessage}`)
+            logs.push(
+              usePriorityOnlyRescue
+                ? `[OK] Priority-only AI rescue applied: ${retryChanged.length} files`
+                : `[OK] Compact AI retry applied: ${retryChanged.length} files`
+            )
+            await appendGenerateTaskLog(
+              jobId,
+              usePriorityOnlyRescue
+                ? `[4.4/6] priority-only rescue 成功：已应用 ${retryChanged.length} 个核心文件并完成稳定化`
+                : `[4.4/6] 紧凑重试成功：已应用 ${retryChanged.length} 个核心文件并完成稳定化`
+            )
+          } else {
+            throw new Error("Compact retry returned no applicable files")
+          }
+        } catch (retryError: any) {
+          clearBuilderWatchdog()
+          const fallbackChanged = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
+            plannedSpec,
+            projectId: current.projectId,
+            projectSlug: plannedProjectSlug,
+          })
+          changedFiles = Array.from(new Set([...changedFiles, ...fallbackChanged]))
+          summary = "Structured workspace generated from the built-in product scaffold"
+          fallbackReason = retryError?.message || primaryErrorMessage
+          logs.push(`[WARN] AI generation skipped: ${primaryErrorMessage}`)
+          if (shouldRetry) {
+            logs.push(
+              retryCompactFirstPass && getPlanRank(retryPlanTier) >= getPlanRank("pro")
+                ? `[WARN] Priority-only AI rescue failed: ${retryError?.message || String(retryError)}`
+                : `[WARN] Compact AI retry failed: ${retryError?.message || String(retryError)}`
+            )
+          } else {
+            logs.push("[WARN] Compact AI retry skipped because the first pass already used the compact paid path")
+          }
+          logs.push(`[OK] Fallback generation applied: ${fallbackChanged.length} files`)
+          await appendGenerateTaskLog(
+            jobId,
+            shouldRetry
+              ? retryCompactFirstPass && getPlanRank(retryPlanTier) >= getPlanRank("pro")
+                ? `[4/6] AI 调用失败，priority-only rescue 也未完成，已使用本地业务模板。原因：${retryError?.message || primaryErrorMessage}`
+                : `[4/6] AI 调用失败，紧凑重试也未完成，已使用本地业务模板。原因：${retryError?.message || primaryErrorMessage}`
+              : `[4/6] AI 调用失败，当前套餐已先走紧凑模式，现直接切换到本地业务模板。原因：${primaryErrorMessage}`
+          )
+        }
       }
     }
 
@@ -3068,10 +3690,12 @@ export async function POST(req: Request) {
     const maxPlanTier = (latestCompletedPayment?.planId as PlanTier | undefined) ?? "free"
     const requestedPlanTier = String(body?.generationPlanTier ?? "").trim() as PlanTier | ""
     const planTierForGeneration =
-      requestedPlanTier &&
-      getPlanRank(requestedPlanTier) <= getPlanRank(maxPlanTier)
-        ? requestedPlanTier
-        : maxPlanTier
+      current
+        ? requestedPlanTier &&
+          getPlanRank(requestedPlanTier) <= getPlanRank(maxPlanTier)
+            ? requestedPlanTier
+            : maxPlanTier
+        : requestedPlanTier || "free"
     const provisionalContext = resolveGenerateWorkspaceContext({
       body,
       prompt: rawPrompt,
@@ -3115,11 +3739,14 @@ export async function POST(req: Request) {
     )
     const contextSummary = buildGenerateContextSummary(requestContext, region)
     const projectId = createProjectId()
+    const reservedProjectSlug = await reserveProjectSlug(slugifyProjectName(deriveProjectHeadline(rawPrompt)), {
+      fallbackSlug: projectId,
+    })
     const createdAt = new Date().toISOString()
 
     await upsertProject({
       projectId,
-      projectSlug: projectId,
+      projectSlug: reservedProjectSlug,
       region,
       deploymentTarget,
       databaseTarget,

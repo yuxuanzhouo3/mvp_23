@@ -16,8 +16,8 @@ type Region = "cn" | "intl"
 type SessionResp = {
   authenticated?: boolean
   authRuntime?: {
-    cnMode?: "demo" | "password" | "wechat"
-    intlMode?: "demo" | "password" | "supabase"
+    cnMode?: "demo" | "password" | "wechat" | "phone"
+    intlMode?: "demo" | "password" | "supabase" | "phone"
     cnEmailPasswordEnabled?: boolean
     intlEmailPasswordEnabled?: boolean
     googleEnabled?: boolean
@@ -44,7 +44,7 @@ function CheckoutPageContent() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [providerHint, setProviderHint] = useState("")
-  const [authMode, setAuthMode] = useState<"demo" | "password" | "supabase" | "wechat">("demo")
+  const [authMode, setAuthMode] = useState<"demo" | "password" | "supabase" | "wechat" | "phone">("demo")
   const [subscriptionTier, setSubscriptionTier] = useState<PlanTier>("free")
 
   useEffect(() => {
@@ -341,7 +341,7 @@ function CheckoutPageContent() {
             {error ? <p className="text-sm text-red-500">{error}</p> : null}
             {providerHint ? <p className="text-sm text-muted-foreground">{providerHint}</p> : null}
             <p className="text-xs text-muted-foreground">
-              {copy.authMode}: {isCn ? (authMode === "wechat" ? "微信 + 邮箱密码" : authMode === "password" ? "邮箱密码" : authMode === "supabase" ? "Supabase" : "演示账号") : authMode === "supabase" ? "Supabase + Google/Facebook" : authMode}
+              {copy.authMode}: {isCn ? (authMode === "phone" ? "手机验证码 + 邮箱（沙盒）" : authMode === "wechat" ? "微信 + 邮箱密码（手机验证码准备中）" : authMode === "password" ? "邮箱密码（手机验证码准备中）" : authMode === "supabase" ? "Supabase" : "演示账号") : authMode === "supabase" ? "Google + Email / Supabase" : authMode === "password" ? "Google + Email（沙盒）" : "Google + Email（沙盒）"}
             </p>
           </CardContent>
         </Card>

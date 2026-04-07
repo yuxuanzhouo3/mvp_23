@@ -64,7 +64,15 @@ export type WorkspaceSessionContext = {
   selectedPlanName?: string
   selectedTemplate?: string
   codeExportAllowed?: boolean
+  codeExportLevel?: "none" | "manifest" | "full"
   databaseAccessMode?: string
+  generationProfile?: "starter" | "builder" | "premium" | "showcase"
+  routeBudget?: number
+  moduleBudget?: number
+  projectLimit?: number
+  collaboratorLimit?: number
+  subdomainSlots?: number
+  assignedDomain?: string
   workspaceStatus?: string
   lastIntent?: string
   lastAction?: string

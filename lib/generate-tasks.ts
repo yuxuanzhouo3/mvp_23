@@ -1,4 +1,5 @@
 import path from "path"
+import { randomUUID } from "crypto"
 import { promises as fs } from "fs"
 import { ensureDir, getWorkspacesDir, writeAtomicTextFile, type Region } from "@/lib/project-workspace"
 import type { PlanTier } from "@/lib/plan-catalog"
@@ -95,6 +96,7 @@ type TaskStore = {
 
 const TASK_FILE = path.join(getWorkspacesDir(), "_generate_tasks.json")
 const STORE_READ_RETRY_MS = 25
+let storeMutationQueue: Promise<void> = Promise.resolve()
 
 async function exists(filePath: string) {
   try {
@@ -198,6 +200,20 @@ async function writeStore(store: TaskStore) {
   await writeAtomicTextFile(TASK_FILE, serialized)
 }
 
+async function mutateStore<T>(mutator: (store: TaskStore) => Promise<T> | T): Promise<T> {
+  const run = storeMutationQueue.then(async () => {
+    const store = await readStore()
+    const result = await mutator(store)
+    await writeStore(store)
+    return result
+  })
+  storeMutationQueue = run.then(
+    () => undefined,
+    () => undefined
+  )
+  return run
+}
+
 export async function createGenerateTask(input: {
   projectId: string
   prompt: string
@@ -211,7 +227,7 @@ export async function createGenerateTask(input: {
   workflowMode?: GenerateWorkflowMode
 }): Promise<GenerateTask> {
   const now = new Date().toISOString()
-  const jobId = `gen_${Date.now()}`
+  const jobId = `gen_${Date.now()}_${randomUUID().slice(0, 8)}`
   const task: GenerateTask = {
     jobId,
     projectId: input.projectId,
@@ -231,10 +247,10 @@ export async function createGenerateTask(input: {
     changedFiles: [],
     retries: 0,
   }
-  const store = await readStore()
-  store.tasks[jobId] = task
-  await writeStore(store)
-  return task
+  return mutateStore(async (store) => {
+    store.tasks[jobId] = task
+    return task
+  })
 }
 
 export async function getGenerateTask(jobId: string): Promise<GenerateTask | null> {
@@ -246,24 +262,24 @@ export async function updateGenerateTask(
   jobId: string,
   updater: (task: GenerateTask) => GenerateTask
 ): Promise<GenerateTask | null> {
-  const store = await readStore()
-  const current = store.tasks[jobId]
-  if (!current) return null
-  const next = updater(current)
-  store.tasks[jobId] = { ...next, updatedAt: new Date().toISOString() }
-  await writeStore(store)
-  return store.tasks[jobId]
+  return mutateStore(async (store) => {
+    const current = store.tasks[jobId]
+    if (!current) return null
+    const next = updater(current)
+    store.tasks[jobId] = { ...next, updatedAt: new Date().toISOString() }
+    return store.tasks[jobId]
+  })
 }
 
 export async function upsertGenerateTask(task: GenerateTask): Promise<GenerateTask> {
-  const store = await readStore()
-  store.tasks[task.jobId] = {
-    ...task,
-    updatedAt: task.updatedAt || new Date().toISOString(),
-    createdAt: task.createdAt || new Date().toISOString(),
-  }
-  await writeStore(store)
-  return store.tasks[task.jobId]
+  return mutateStore(async (store) => {
+    store.tasks[task.jobId] = {
+      ...task,
+      updatedAt: task.updatedAt || new Date().toISOString(),
+      createdAt: task.createdAt || new Date().toISOString(),
+    }
+    return store.tasks[task.jobId]
+  })
 }
 
 export async function findLatestTaskByProject(projectId: string): Promise<GenerateTask | null> {

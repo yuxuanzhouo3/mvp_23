@@ -1,3 +1,4 @@
+import type { PlanTier } from "@/lib/plan-catalog"
 import { siteLinks } from "@/lib/site-links"
 
 export type DeliveryStatus = "ready" | "in_progress" | "planned" | "blocked"
@@ -44,10 +45,18 @@ export type DeliveryDistributionAsset = {
 }
 
 export type DeliveryPermissionRule = {
-  plan: "free" | "pro" | "elite"
+  plan: PlanTier
   title: string
   summary: string
   status: DeliveryStatus
+  generationProfile: "starter" | "builder" | "premium" | "showcase"
+  codeExportLevel: "none" | "manifest" | "full"
+  databaseAccessMode: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+  routeBudget: number
+  moduleBudget: number
+  projectLimit: number
+  collaboratorLimit: number
+  subdomainSlots: number
 }
 
 export type DeliveryMigrationLane = {
@@ -88,7 +97,7 @@ export const DELIVERY_TRACKS: DeliveryTrack[] = [
     title: "International code delivery pack",
     owner: "C",
     status: "in_progress",
-    summary: "Keep the international web build shippable with a clear runtime guide, env matrix, and branch handoff notes.",
+    summary: "Keep the international Vercel deployment shippable with a clear runtime guide, env matrix, callback URLs, and branch handoff notes.",
     outputs: [
       "International web code",
       "Runtime + deployment guide",
@@ -106,7 +115,7 @@ export const DELIVERY_TRACKS: DeliveryTrack[] = [
     title: "China code delivery pack",
     owner: "C",
     status: "in_progress",
-    summary: "Preserve the China-region web product, deployment choices, and payment/login differences in one handoff pack.",
+    summary: "Preserve the China-region Tencent Cloud deployment choices, auth/payment differences, and domestic env matrix in one handoff pack.",
     outputs: [
       "China web code",
       "Cloudbase / domestic runtime notes",
@@ -210,7 +219,7 @@ export const DELIVERY_TRACKS: DeliveryTrack[] = [
     title: "Plan and resource restrictions",
     owner: "C",
     status: "in_progress",
-    summary: "Keep free vs paid rules visible and progressively enforce export, database, and delivery differences.",
+    summary: "Keep free vs paid rules visible and progressively enforce export, online-only database, subdomain, and delivery differences.",
     outputs: [
       "Free plan export restrictions",
       "Database online-only rule for free users",
@@ -230,7 +239,7 @@ export const DELIVERY_CODEPACKS: DeliveryCodePack[] = [
     title: "International code delivery pack",
     region: "intl",
     status: "in_progress",
-    summary: "Keep the global-facing web app, runtime notes, and environment matrix ready for handoff.",
+    summary: "Keep the global-facing Vercel deployment, runtime notes, and environment matrix ready for handoff.",
     docPath: "docs/code-delivery-pack-intl.md",
     appEntry: siteLinks.websiteIntl,
     envKeys: [
@@ -238,16 +247,32 @@ export const DELIVERY_CODEPACKS: DeliveryCodePack[] = [
       "NEXT_PUBLIC_WEBSITE_URL_INTL",
       "NEXT_PUBLIC_DOCS_URL",
       "NEXT_PUBLIC_API_BASE_URL",
+      "NEXT_PUBLIC_ADMIN_URL",
+      "NEXT_PUBLIC_MARKET_URL",
+      "NEXT_PUBLIC_DOWNLOAD_CENTER_URL",
+      "NEXT_PUBLIC_LOGIN_URL",
+      "NEXT_PUBLIC_CHECKOUT_URL",
       "NEXT_PUBLIC_IOS_URL",
       "NEXT_PUBLIC_DESKTOP_URL",
+      "NEXT_PUBLIC_SUPABASE_URL",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_DB_URL",
+      "GOOGLE_OAUTH_CLIENT_ID",
+      "GOOGLE_OAUTH_CLIENT_SECRET",
+      "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+      "STRIPE_SECRET_KEY",
+      "PAYPAL_CLIENT_ID",
+      "PAYPAL_CLIENT_SECRET",
     ],
     databaseNotes: [
       "Default global database path: Supabase / Neon / hosted Postgres",
-      "Runtime expects region-aware auth and payment toggles",
+      "Target login path is Google + email, with sandbox-first payment during staging",
+      "Keep auth, preview, payment callback, and assigned-subdomain behavior on the same Vercel-origin family",
     ],
     branchNotes: [
-      "Keep the preview-ready branch aligned with the main demo workspace",
-      "Document the latest release branch name during final handoff",
+      "Keep the preview-ready branch aligned with the main demo workspace and Vercel project",
+      "Document the latest release branch name during final handoff and 4/13 acceptance prep",
     ],
   },
   {
@@ -255,24 +280,44 @@ export const DELIVERY_CODEPACKS: DeliveryCodePack[] = [
     title: "China code delivery pack",
     region: "cn",
     status: "in_progress",
-    summary: "Preserve the domestic-facing web app, deployment notes, and China-specific auth/payment paths.",
+    summary: "Preserve the domestic-facing Tencent Cloud deployment notes and China-specific auth/payment paths.",
     docPath: "docs/code-delivery-pack-cn.md",
     appEntry: siteLinks.websiteCn,
     envKeys: [
+      "NEXT_PUBLIC_SITE_URL",
       "NEXT_PUBLIC_WEBSITE_URL_CN",
+      "NEXT_PUBLIC_DOCS_URL",
+      "NEXT_PUBLIC_API_BASE_URL",
+      "NEXT_PUBLIC_ADMIN_URL",
+      "NEXT_PUBLIC_MARKET_URL",
+      "NEXT_PUBLIC_DOWNLOAD_CENTER_URL",
+      "AUTH_MODE_CN",
+      "SMS_PROVIDER_NAME",
+      "SMS_API_KEY",
+      "SMS_API_SECRET",
+      "SMS_SIGN_NAME",
+      "SMS_TEMPLATE_ID",
       "CLOUDBASE_ENV_ID",
       "CLOUDBASE_MONGODB_URL",
       "CN_DATABASE_URL",
       "ALIPAY_APP_ID",
+      "ALIPAY_PRIVATE_KEY",
+      "ALIPAY_PUBLIC_KEY",
+      "WECHAT_PAY_APP_ID",
+      "WECHAT_PAY_MCH_ID",
+      "WECHAT_PAY_API_V3_KEY",
+      "WECHAT_PAY_SERIAL_NO",
+      "WECHAT_PAY_PRIVATE_KEY",
       "WECHAT_APP_SECRET",
     ],
     databaseNotes: [
       "Default China database path: CloudBase document or domestic-hosted Mongo/Postgres",
-      "Keep domestic payment and login toggles separate from the global pack",
+      "Target login path is phone verification code + email, with WeChat Pay + Alipay as domestic payment targets",
+      "Keep Tencent Cloud / CloudBase routing, preview loading, and payment callbacks aligned with the China-region host",
     ],
     branchNotes: [
-      "Keep domestic deploy notes with CloudBase and mainland routing assumptions",
-      "Document the latest China-facing release branch during final handoff",
+      "Keep domestic deploy notes with Tencent Cloud / CloudBase and mainland routing assumptions",
+      "Document the latest China-facing release branch during final handoff and 4/13 acceptance prep",
     ],
   },
 ]
@@ -356,18 +401,70 @@ export const DELIVERY_PERMISSION_RULES: DeliveryPermissionRule[] = [
     title: "Free users stay online-first",
     summary: "Code export remains unavailable and database usage stays online-only in the hosted workspace.",
     status: "in_progress",
+    generationProfile: "starter",
+    codeExportLevel: "none",
+    databaseAccessMode: "online_only",
+    routeBudget: 4,
+    moduleBudget: 10,
+    projectLimit: 3,
+    collaboratorLimit: 1,
+    subdomainSlots: 1,
+  },
+  {
+    plan: "starter",
+    title: "Starter keeps delivery lightweight",
+    summary: "Starter improves project allowance and managed DB setup, but still keeps code export locked while the app stays hosted-first.",
+    status: "in_progress",
+    generationProfile: "starter",
+    codeExportLevel: "none",
+    databaseAccessMode: "managed_config",
+    routeBudget: 5,
+    moduleBudget: 14,
+    projectLimit: 5,
+    collaboratorLimit: 1,
+    subdomainSlots: 1,
+  },
+  {
+    plan: "builder",
+    title: "Builder unlocks AI builder and manifest export",
+    summary: "Builder opens the richer AI builder lane, deeper route/module budgets, and manifest-level code export for delivery prep.",
+    status: "in_progress",
+    generationProfile: "builder",
+    codeExportLevel: "manifest",
+    databaseAccessMode: "managed_config",
+    routeBudget: 6,
+    moduleBudget: 18,
+    projectLimit: 12,
+    collaboratorLimit: 3,
+    subdomainSlots: 3,
   },
   {
     plan: "pro",
     title: "Pro unlocks delivery depth",
     summary: "Code export, richer delivery artifacts, and production-grade database access begin at the Pro layer.",
     status: "in_progress",
+    generationProfile: "premium",
+    codeExportLevel: "full",
+    databaseAccessMode: "production_access",
+    routeBudget: 8,
+    moduleBudget: 24,
+    projectLimit: 30,
+    collaboratorLimit: 10,
+    subdomainSlots: 10,
   },
   {
     plan: "elite",
     title: "Elite unlocks handoff and team delivery",
     summary: "Elite adds collaboration, fuller reporting, and the most complete delivery closure for clients and internal teams.",
     status: "in_progress",
+    generationProfile: "showcase",
+    codeExportLevel: "full",
+    databaseAccessMode: "handoff_ready",
+    routeBudget: 10,
+    moduleBudget: 32,
+    projectLimit: 100,
+    collaboratorLimit: 25,
+    subdomainSlots: 50,
   },
 ]
 
@@ -376,11 +473,11 @@ export const DELIVERY_AUTH_PAYMENT_MIGRATION: DeliveryMigrationLane = {
   status: "in_progress",
   sourceRepo: ANDROID_DELIVERY_SPEC.authPaymentSource,
   docPath: "docs/auth-payment-acceptance.md",
-  summary: "Reuse the login and payment implementation from mvp_25, keep Alipay 0.1 as the first Android verification path, and reserve WeChat for phase 2 after credentials are approved.",
+  summary: "Keep Web auth/payment aligned with the current target: international Google + email, China phone verification + email, China WeChat Pay + Alipay, and sandbox-first intl checkout until final credentials are approved.",
   phases: [
-    "Phase 1: reuse login/payment structure, wire Alipay first, keep amount fixed at 0.1",
-    "Phase 1: finish Android shell, signing, APK output, and install path before deeper auth work",
-    "Phase 2: add WeChat login and WeChat Pay after the credentials are approved",
+    "Stage now: keep intl Google visible through sandbox flow and preserve email auth continuity",
+    "Stage now: keep China phone verification + email runnable through sandbox OTP until the real SMS provider is approved",
+    "Stage now: keep WeChat Pay and Alipay wired as the domestic checkout targets, then swap in the final merchant credentials",
   ],
 }
 

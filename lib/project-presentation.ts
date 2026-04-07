@@ -56,18 +56,41 @@ function inferNameFromPrompt(prompt?: string | null, region?: Region, spec?: Par
 
 function inferRoutesFromSpec(spec?: Partial<AppSpec> | null) {
   const routes = new Set<string>()
+  const routeMatchers: Array<[string, string[]]> = [
+    ["/dashboard", ["dashboard", "overview"]],
+    ["/tasks", ["tasks", "task board", "task queue"]],
+    ["/settings", ["settings"]],
+    ["/analytics", ["analytics"]],
+    ["/reports", ["reports", "reporting"]],
+    ["/automations", ["automations", "automation"]],
+    ["/team", ["team", "collaboration"]],
+    ["/approvals", ["approvals", "approval"]],
+    ["/handoff", ["handoff"]],
+    ["/playbooks", ["playbooks", "playbook"]],
+    ["/about", ["about"]],
+    ["/downloads", ["downloads"]],
+    ["/docs", ["docs", "documentation"]],
+    ["/admin", ["admin"]],
+    ["/editor", ["editor", "code"]],
+    ["/runs", ["runs", "runtime", "run panel"]],
+    ["/templates", ["templates", "template"]],
+    ["/pricing", ["pricing", "upgrade"]],
+  ]
   if (spec?.kind === "code_platform") {
     ;["/dashboard", "/editor", "/runs", "/templates", "/pricing"].forEach((item) => routes.add(item))
   }
 
   for (const moduleName of spec?.modules ?? []) {
     const lower = String(moduleName).toLowerCase()
-    if (lower.includes("dashboard")) routes.add("/dashboard")
-    if (lower.includes("editor")) routes.add("/editor")
-    if (lower.includes("runs")) routes.add("/runs")
-    if (lower.includes("template")) routes.add("/templates")
-    if (lower.includes("pricing") || lower.includes("upgrade")) routes.add("/pricing")
+    for (const [route, keywords] of routeMatchers) {
+      if (keywords.some((keyword) => lower.includes(keyword))) {
+        routes.add(route)
+      }
+    }
   }
+
+  if (spec?.features?.includes("analytics_page")) routes.add("/analytics")
+  if (spec?.features?.includes("about_page")) routes.add("/about")
 
   if (routes.size === 0) routes.add("/")
   return Array.from(routes)

@@ -28,7 +28,8 @@ import {
   type WorkspaceSessionContext,
   type WorkspaceSymbolRef,
 } from "@/lib/workspace-ai-context"
-import { getPlanDefinition, normalizePlanTier } from "@/lib/plan-catalog"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
+import { getPlanDefinition, getPlanPolicy, normalizePlanTier } from "@/lib/plan-catalog"
 
 export const runtime = "nodejs"
 
@@ -288,6 +289,12 @@ function normalizeTextValue(value: unknown) {
   return sanitizeUiText(String(value ?? "")).trim()
 }
 
+function normalizePositiveInteger(value: unknown) {
+  const normalized = Number(value)
+  if (!Number.isFinite(normalized) || normalized <= 0) return undefined
+  return Math.floor(normalized)
+}
+
 function normalizeContextSymbols(value: unknown): WorkspaceSymbolRef[] {
   if (!Array.isArray(value)) return []
   return value
@@ -366,7 +373,9 @@ function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessi
   const session = value as Record<string, unknown>
   const selectedPlanId = normalizeTextValue(session.selectedPlanId)
   const codeExportAllowedValue = session.codeExportAllowed
+  const codeExportLevel = normalizeTextValue(session.codeExportLevel)
   const databaseAccessMode = normalizeTextValue(session.databaseAccessMode)
+  const generationProfile = normalizeTextValue(session.generationProfile)
   return {
     projectName: normalizeTextValue(session.projectName) || undefined,
     specKind: normalizeTextValue(session.specKind) || undefined,
@@ -384,7 +393,24 @@ function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessi
     selectedPlanName: normalizeTextValue(session.selectedPlanName) || undefined,
     selectedTemplate: normalizeTextValue(session.selectedTemplate) || undefined,
     codeExportAllowed: typeof codeExportAllowedValue === "boolean" ? codeExportAllowedValue : undefined,
+    codeExportLevel:
+      codeExportLevel === "none" || codeExportLevel === "manifest" || codeExportLevel === "full"
+        ? codeExportLevel
+        : undefined,
     databaseAccessMode: databaseAccessMode || undefined,
+    generationProfile:
+      generationProfile === "starter" ||
+      generationProfile === "builder" ||
+      generationProfile === "premium" ||
+      generationProfile === "showcase"
+        ? generationProfile
+        : undefined,
+    routeBudget: normalizePositiveInteger(session.routeBudget),
+    moduleBudget: normalizePositiveInteger(session.moduleBudget),
+    projectLimit: normalizePositiveInteger(session.projectLimit),
+    collaboratorLimit: normalizePositiveInteger(session.collaboratorLimit),
+    subdomainSlots: normalizePositiveInteger(session.subdomainSlots),
+    assignedDomain: normalizeTextValue(session.assignedDomain) || undefined,
     workspaceStatus: normalizeTextValue(session.workspaceStatus) || undefined,
     lastIntent: normalizeTextValue(session.lastIntent) || undefined,
     lastAction: normalizeTextValue(session.lastAction) || undefined,
@@ -491,7 +517,15 @@ function buildResolvedSessionContext(options: {
       typeof context.sharedSession?.codeExportAllowed === "boolean"
         ? context.sharedSession.codeExportAllowed
         : session?.codeExportAllowed,
+    codeExportLevel: context.sharedSession?.codeExportLevel || session?.codeExportLevel,
     databaseAccessMode: context.sharedSession?.databaseAccessMode || session?.databaseAccessMode,
+    generationProfile: context.sharedSession?.generationProfile || session?.generationProfile,
+    routeBudget: context.sharedSession?.routeBudget || session?.routeBudget,
+    moduleBudget: context.sharedSession?.moduleBudget || session?.moduleBudget,
+    projectLimit: context.sharedSession?.projectLimit || session?.projectLimit,
+    collaboratorLimit: context.sharedSession?.collaboratorLimit || session?.collaboratorLimit,
+    subdomainSlots: context.sharedSession?.subdomainSlots || session?.subdomainSlots,
+    assignedDomain: context.sharedSession?.assignedDomain || session?.assignedDomain,
     workspaceStatus: resolvedWorkspaceStatus || undefined,
     lastIntent: sanitizeUiText(prompt).slice(0, 240) || session?.lastIntent,
     lastAction: summary || session?.lastAction || `${mode}:${sanitizeUiText(prompt).slice(0, 120)}`,
@@ -517,6 +551,120 @@ function prioritizeContextFiles(files: string[], context: EditorRequestContext) 
   ])
   const remainder = files.filter((file) => !priority.includes(file))
   return [...priority, ...remainder]
+}
+
+function titleCaseRouteSegment(input: string) {
+  return input
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim()
+}
+
+function buildGenericWorkspacePageContext(context: EditorRequestContext, region: Region): WorkspacePageContext {
+  const normalizedFile =
+    normalizeContextPath(context.currentFilePath) ||
+    normalizeContextPath(context.currentPage?.filePath) ||
+    normalizeContextPath(context.sharedSession?.filePath)
+  const normalizedRoute =
+    context.currentRoute ||
+    context.currentPage?.route ||
+    inferRouteFromFilePath(normalizedFile) ||
+    inferRouteFromFilePath(context.sharedSession?.filePath) ||
+    "/"
+  const routeKey = normalizedRoute === "/" ? "home" : normalizedRoute.replace(/^\/+/, "").split("/")[0] || "home"
+  const existingPageMatches =
+    Boolean(context.currentPage) &&
+    (
+      normalizeTextValue(context.currentPage?.id) === normalizeTextValue(routeKey) ||
+      normalizeTextValue(context.currentPage?.route) === normalizeTextValue(normalizedRoute) ||
+      normalizeContextPath(context.currentPage?.filePath) === normalizedFile
+    )
+  const label =
+    (existingPageMatches ? context.currentPage?.label : "") ||
+    context.sharedSession?.routeLabel ||
+    (routeKey === "home" ? (region === "cn" ? "首页" : "Home") : titleCaseRouteSegment(routeKey))
+  const focus =
+    (existingPageMatches ? context.currentPage?.focus : "") ||
+    (region === "cn"
+      ? `围绕 ${label} 页面继续补主工作流、状态与页面操作。`
+      : `Keep extending the core workflow, states, and actions around the ${label} page.`)
+  const symbols =
+    existingPageMatches && context.currentPage?.symbols?.length
+      ? context.currentPage.symbols
+      : (context.currentFileSymbols ?? []).map((item) => item.name).filter(Boolean).slice(0, 6)
+  const fallbackElements =
+    region === "cn"
+      ? ["主要内容", "操作入口", "状态卡片", "设置入口"]
+      : ["Primary content", "Actions", "Status cards", "Settings entry"]
+  const elements =
+    existingPageMatches && context.currentPage?.elements?.length
+      ? context.currentPage.elements
+      : [context.currentElement?.name, context.sharedSession?.elementName, ...fallbackElements].filter(Boolean).slice(0, 6) as string[]
+
+  return {
+    id: (existingPageMatches ? context.currentPage?.id : "") || context.sharedSession?.routeId || routeKey,
+    label,
+    route: normalizedRoute,
+    filePath: normalizedFile || (normalizedRoute === "/" ? "app/page.tsx" : `app${normalizedRoute}/page.tsx`),
+    focus,
+    symbols,
+    elements,
+  }
+}
+
+function resolveWorkspacePageContext(args: {
+  region: Region
+  routes: ReturnType<typeof buildCodePlatformContextRoutes>
+  context: EditorRequestContext
+  explicitPage?: WorkspacePageContext
+  specKind?: string | null
+}) {
+  if (args.explicitPage) return args.explicitPage
+  if (args.specKind === "code_platform") {
+    return inferCodePlatformPageContext({
+      routes: args.routes,
+      region: args.region,
+      currentFilePath: args.context.currentFilePath,
+      currentRoute: args.context.currentRoute,
+      activeSection:
+        args.context.sharedSession?.activeSection ||
+        args.context.sharedSession?.routeId ||
+        args.context.currentPage?.id,
+      previewTab: args.context.sharedSession?.workspaceSurface,
+    })
+  }
+  return buildGenericWorkspacePageContext(args.context, args.region)
+}
+
+function rebuildNonCodePlatformFocus(context: EditorRequestContext, region: Region) {
+  const pageContext = buildGenericWorkspacePageContext(
+    {
+      ...context,
+      currentPage: undefined,
+    },
+    region
+  )
+  const moduleContext = inferCodePlatformModuleContext({
+    currentFilePath: context.currentFilePath,
+    currentFileSymbols: context.currentFileSymbols,
+    currentPage: pageContext,
+    activeSymbolName: context.currentModule?.name || context.sharedSession?.symbolName,
+  })
+  const elementContext = inferCodePlatformElementContext({
+    currentPage: pageContext,
+    activeElementName:
+      context.currentElement?.source === "explicit" ? context.currentElement.name : context.sharedSession?.elementName,
+    previewTab: context.sharedSession?.workspaceSurface,
+  })
+
+  return {
+    currentPage: pageContext,
+    currentModule: moduleContext,
+    currentElement: {
+      ...elementContext,
+      options: elementContext.options.length ? elementContext.options : pageContext.elements,
+    },
+  }
 }
 
 type IterateTargetStrategy = {
@@ -909,13 +1057,22 @@ function rebuildEditorFocus(
   region: Region,
   routes: ReturnType<typeof buildCodePlatformContextRoutes>
 ) {
-  const currentPage = inferCodePlatformPageContext({
+  if (context.sharedSession?.specKind && context.sharedSession.specKind !== "code_platform") {
+    const rebuilt = rebuildNonCodePlatformFocus(context, region)
+    return {
+      ...context,
+      currentRoute: context.currentRoute || rebuilt.currentPage.route,
+      currentPage: rebuilt.currentPage,
+      currentModule: rebuilt.currentModule,
+      currentElement: rebuilt.currentElement,
+    } satisfies EditorRequestContext
+  }
+
+  const currentPage = resolveWorkspacePageContext({
     routes,
     region,
-    currentFilePath: context.currentFilePath,
-    currentRoute: context.currentRoute,
-    activeSection: context.sharedSession?.activeSection || context.sharedSession?.routeId || context.currentPage?.id,
-    previewTab: context.sharedSession?.workspaceSurface,
+    context,
+    specKind: context.sharedSession?.specKind,
   })
 
   const symbolCandidate = [
@@ -978,14 +1135,32 @@ function buildExplainFallback(prompt: string, context: EditorRequestContext, reg
   const sessionSection = context.sharedSession?.activeSection || ""
   const planLabel = context.sharedSession?.selectedPlanName || context.sharedSession?.selectedPlanId || ""
   const exportPolicy =
-    typeof context.sharedSession?.codeExportAllowed === "boolean"
-      ? context.sharedSession.codeExportAllowed
+    context.sharedSession?.codeExportLevel
+      ? context.sharedSession.codeExportLevel === "full"
         ? region === "cn"
-          ? "当前套餐允许代码导出。"
-          : "The current plan allows code export."
-        : region === "cn"
-          ? "当前套餐仍锁定代码导出。"
-          : "The current plan still keeps code export locked."
+          ? "当前套餐开放完整代码导出。"
+          : "The current plan unlocks full code export."
+        : context.sharedSession.codeExportLevel === "manifest"
+          ? region === "cn"
+            ? "当前套餐开放代码清单导出。"
+            : "The current plan unlocks manifest export."
+          : region === "cn"
+            ? "当前套餐仍锁定代码导出。"
+            : "The current plan still keeps code export locked."
+      : typeof context.sharedSession?.codeExportAllowed === "boolean"
+        ? context.sharedSession.codeExportAllowed
+          ? region === "cn"
+            ? "当前套餐允许代码导出。"
+            : "The current plan allows code export."
+          : region === "cn"
+            ? "当前套餐仍锁定代码导出。"
+            : "The current plan still keeps code export locked."
+        : ""
+  const generationProfile =
+    context.sharedSession?.generationProfile
+      ? region === "cn"
+        ? `生成档位：${context.sharedSession.generationProfile}`
+        : `Generation profile: ${context.sharedSession.generationProfile}`
       : ""
   const databaseMode = context.sharedSession?.databaseAccessMode || ""
   const summary = filePath
@@ -1040,6 +1215,7 @@ function buildExplainFallback(prompt: string, context: EditorRequestContext, reg
         : `Current plan: ${planLabel}`
       : "",
     exportPolicy,
+    generationProfile,
     databaseMode
       ? region === "cn"
         ? `数据库模式：${databaseMode}`
@@ -1089,6 +1265,8 @@ function shouldPreferLocalFallback(prompt: string, mode: IterateMode, context: E
 
 async function resolveEditorContext(
   projectDir: string,
+  projectId: string,
+  projectSlug: string | undefined,
   body: any,
   region: Region
 ): Promise<EditorRequestContext> {
@@ -1124,17 +1302,27 @@ async function resolveEditorContext(
     region: specRegion,
     features: Array.isArray(projectSpec?.features) ? projectSpec.features.filter((item) => typeof item === "string") : [],
   })
+  const resolvedSpecKind =
+    normalizeTextValue(projectSpec?.kind) ||
+    incomingSession?.specKind ||
+    normalizeTextValue(body?.sharedSession?.specKind) ||
+    undefined
+  const explicitPage = normalizePageContext(body?.currentPage)
 
-  const currentPage =
-    normalizePageContext(body?.currentPage) ??
-    inferCodePlatformPageContext({
-      routes,
-      region: specRegion,
-      currentFilePath: context.currentFilePath,
-      currentRoute: context.currentRoute,
-      activeSection: incomingSession?.activeSection,
-      previewTab: incomingSession?.workspaceSurface,
-    })
+  const currentPage = resolveWorkspacePageContext({
+    routes,
+    region: specRegion,
+    context: {
+      ...context,
+      sharedSession: {
+        ...incomingSession,
+        specKind: resolvedSpecKind || incomingSession?.specKind,
+      },
+      currentPage: explicitPage,
+    },
+    explicitPage,
+    specKind: resolvedSpecKind,
+  })
 
   const currentModule =
     normalizeModuleContext(body?.currentModule) ??
@@ -1153,41 +1341,80 @@ async function resolveEditorContext(
       previewTab: incomingSession?.workspaceSurface,
     })
 
+  const initialFocus =
+    resolvedSpecKind && resolvedSpecKind !== "code_platform"
+      ? rebuildNonCodePlatformFocus(
+          {
+            ...context,
+            currentPage,
+            currentModule,
+            currentElement,
+            sharedSession: {
+              ...incomingSession,
+              specKind: resolvedSpecKind,
+            },
+          },
+          specRegion
+        )
+      : {
+          currentPage,
+          currentModule,
+          currentElement: {
+            ...currentElement,
+            options: currentElement.options.length ? currentElement.options : currentPage.elements,
+          },
+        }
+
   const sharedSession =
-    incomingSession ?? {
-      projectName: normalizeTextValue(projectSpec?.title) || undefined,
-      specKind: normalizeTextValue(projectSpec?.kind) || undefined,
-      workspaceSurface: normalizeTextValue(body?.sharedSession?.workspaceSurface) || undefined,
-      activeSection: normalizeTextValue(body?.sharedSession?.activeSection) || currentPage.id,
-      routeId: currentPage.id,
-      routeLabel: currentPage.label,
-      filePath: context.currentFilePath || currentPage.filePath,
-      symbolName: currentModule.name,
-      elementName: currentElement.name,
-      deploymentTarget: normalizeTextValue(projectSpec?.deploymentTarget) || undefined,
-      databaseTarget: normalizeTextValue(projectSpec?.databaseTarget) || undefined,
-      region: specRegion,
-      selectedPlanId: projectSpec?.planTier || undefined,
-      selectedPlanName: getPlanDefinition(projectSpec?.planTier || "free")[specRegion === "cn" ? "nameCn" : "nameEn"],
-      selectedTemplate: normalizeTextValue(body?.sharedSession?.selectedTemplate) || undefined,
-      codeExportAllowed: projectSpec?.planTier ? projectSpec.planTier !== "free" : false,
-      databaseAccessMode: projectSpec?.planTier === "free" ? "online_only" : "managed_config",
-      workspaceStatus: normalizeTextValue(body?.sharedSession?.workspaceStatus) || undefined,
-      lastIntent: normalizeTextValue(body?.prompt) || undefined,
-      lastChangedFile: context.currentFilePath || currentPage.filePath,
-      readiness: "context_ready",
-    }
+    incomingSession ??
+    (() => {
+      const planTier = normalizePlanTier(projectSpec?.planTier)
+      const planPolicy = getPlanPolicy(planTier)
+      return {
+        projectName: normalizeTextValue(projectSpec?.title) || undefined,
+        specKind: resolvedSpecKind,
+        workspaceSurface: normalizeTextValue(body?.sharedSession?.workspaceSurface) || undefined,
+        activeSection: normalizeTextValue(body?.sharedSession?.activeSection) || initialFocus.currentPage.id,
+        routeId: initialFocus.currentPage.id,
+        routeLabel: initialFocus.currentPage.label,
+        filePath: context.currentFilePath || initialFocus.currentPage.filePath,
+        symbolName: initialFocus.currentModule.name,
+        elementName: initialFocus.currentElement.name,
+        deploymentTarget: normalizeTextValue(projectSpec?.deploymentTarget) || undefined,
+        databaseTarget: normalizeTextValue(projectSpec?.databaseTarget) || undefined,
+        region: specRegion,
+        selectedPlanId: planTier,
+        selectedPlanName: getPlanDefinition(planTier)[specRegion === "cn" ? "nameCn" : "nameEn"],
+        selectedTemplate: normalizeTextValue(body?.sharedSession?.selectedTemplate) || undefined,
+        codeExportAllowed: planPolicy.codeExportLevel !== "none",
+        codeExportLevel: planPolicy.codeExportLevel,
+        databaseAccessMode: planPolicy.databaseAccessMode,
+        generationProfile: planPolicy.generationProfile,
+        routeBudget: planPolicy.maxGeneratedRoutes,
+        moduleBudget: planPolicy.maxGeneratedModules,
+        projectLimit: planPolicy.projectLimit,
+        collaboratorLimit: planPolicy.collaboratorLimit,
+        subdomainSlots: planPolicy.subdomainSlots,
+        assignedDomain: buildAssignedAppUrl({
+          projectSlug: projectSlug || projectId,
+          projectId,
+          region: specRegion,
+          planTier,
+        }),
+        workspaceStatus: normalizeTextValue(body?.sharedSession?.workspaceStatus) || undefined,
+        lastIntent: normalizeTextValue(body?.prompt) || undefined,
+        lastChangedFile: context.currentFilePath || initialFocus.currentPage.filePath,
+        readiness: "context_ready",
+      } satisfies WorkspaceSessionContext
+    })()
 
   context.sharedSession = buildResolvedSessionContext({
     session: sharedSession,
     context: {
       ...context,
-      currentPage,
-      currentModule,
-      currentElement: {
-        ...currentElement,
-        options: currentElement.options.length ? currentElement.options : currentPage.elements,
-      },
+      currentPage: initialFocus.currentPage,
+      currentModule: initialFocus.currentModule,
+      currentElement: initialFocus.currentElement,
       sharedSession,
     },
     mode: normalizeIterateMode(body?.mode),
@@ -1198,17 +1425,14 @@ async function resolveEditorContext(
   const resolvedContext = rebuildEditorFocus(
     {
       ...context,
-      currentPage,
-      currentModule,
-      currentElement: {
-        ...currentElement,
-        options: currentElement.options.length ? currentElement.options : currentPage.elements,
-      },
+      currentPage: initialFocus.currentPage,
+      currentModule: initialFocus.currentModule,
+      currentElement: initialFocus.currentElement,
       sharedSession: context.sharedSession,
       openTabs: uniqueContextPaths(context.openTabs ?? []),
       relatedPaths: uniqueContextPaths([
         context.currentFilePath,
-        currentPage.filePath,
+        initialFocus.currentPage.filePath,
         ...(context.relatedPaths ?? []),
         ...(context.openTabs ?? []),
       ]),
@@ -1603,7 +1827,15 @@ async function callEditorModel(
         context.sharedSession.selectedPlanId ? `Selected plan id: ${context.sharedSession.selectedPlanId}` : "",
         context.sharedSession.selectedPlanName ? `Selected plan name: ${context.sharedSession.selectedPlanName}` : "",
         typeof context.sharedSession.codeExportAllowed === "boolean" ? `Code export allowed: ${context.sharedSession.codeExportAllowed ? "yes" : "no"}` : "",
+        context.sharedSession.codeExportLevel ? `Code export level: ${context.sharedSession.codeExportLevel}` : "",
         context.sharedSession.databaseAccessMode ? `Database access mode: ${context.sharedSession.databaseAccessMode}` : "",
+        context.sharedSession.generationProfile ? `Generation profile: ${context.sharedSession.generationProfile}` : "",
+        context.sharedSession.routeBudget ? `Route budget: ${context.sharedSession.routeBudget}` : "",
+        context.sharedSession.moduleBudget ? `Module budget: ${context.sharedSession.moduleBudget}` : "",
+        context.sharedSession.projectLimit ? `Project limit: ${context.sharedSession.projectLimit}` : "",
+        context.sharedSession.collaboratorLimit ? `Collaborator limit: ${context.sharedSession.collaboratorLimit}` : "",
+        context.sharedSession.subdomainSlots ? `Subdomain slots: ${context.sharedSession.subdomainSlots}` : "",
+        context.sharedSession.assignedDomain ? `Assigned domain: ${context.sharedSession.assignedDomain}` : "",
         context.sharedSession.deploymentTarget ? `Deployment target: ${context.sharedSession.deploymentTarget}` : "",
         context.sharedSession.databaseTarget ? `Database target: ${context.sharedSession.databaseTarget}` : "",
         context.sharedSession.workspaceStatus ? `Workspace status: ${context.sharedSession.workspaceStatus}` : "",
@@ -1856,17 +2088,40 @@ function buildWorkspaceDiscussionPlan(args: {
     context.sharedSession?.selectedPlanName
       ? `${isCn ? "当前套餐" : "Current plan"}: ${context.sharedSession.selectedPlanName}`
       : "",
-    typeof context.sharedSession?.codeExportAllowed === "boolean"
-      ? context.sharedSession.codeExportAllowed
-        ? isCn
-          ? "当前套餐允许代码导出。"
-          : "The current plan allows code export."
-        : isCn
-          ? "当前套餐仍锁定代码导出。"
-          : "The current plan still keeps code export locked."
+    context.sharedSession?.codeExportLevel
+      ? `${isCn ? "代码导出级别" : "Code export level"}: ${context.sharedSession.codeExportLevel}`
+      : typeof context.sharedSession?.codeExportAllowed === "boolean"
+        ? context.sharedSession.codeExportAllowed
+          ? isCn
+            ? "当前套餐允许代码导出。"
+            : "The current plan allows code export."
+          : isCn
+            ? "当前套餐仍锁定代码导出。"
+            : "The current plan still keeps code export locked."
+        : "",
+    context.sharedSession?.generationProfile
+      ? `${isCn ? "生成档位" : "Generation profile"}: ${context.sharedSession.generationProfile}`
+      : "",
+    context.sharedSession?.routeBudget
+      ? `${isCn ? "页面预算" : "Route budget"}: ${context.sharedSession.routeBudget}`
+      : "",
+    context.sharedSession?.moduleBudget
+      ? `${isCn ? "模块预算" : "Module budget"}: ${context.sharedSession.moduleBudget}`
       : "",
     context.sharedSession?.databaseAccessMode
       ? `${isCn ? "数据库访问" : "Database access"}: ${context.sharedSession.databaseAccessMode}`
+      : "",
+    context.sharedSession?.projectLimit
+      ? `${isCn ? "项目上限" : "Project limit"}: ${context.sharedSession.projectLimit}`
+      : "",
+    context.sharedSession?.collaboratorLimit
+      ? `${isCn ? "协作人数上限" : "Collaborator limit"}: ${context.sharedSession.collaboratorLimit}`
+      : "",
+    context.sharedSession?.subdomainSlots
+      ? `${isCn ? "子域名位" : "Subdomain slots"}: ${context.sharedSession.subdomainSlots}`
+      : "",
+    context.sharedSession?.assignedDomain
+      ? `${isCn ? "已分配域名" : "Assigned domain"}: ${context.sharedSession.assignedDomain}`
       : "",
     context.sharedSession?.deploymentTarget
       ? `${isCn ? "部署目标" : "Deployment target"}: ${context.sharedSession.deploymentTarget}`
@@ -2321,6 +2576,8 @@ async function tryFocusedStatusLabelEdit(
 async function tryGenericFallbackEdits(
   projectDir: string,
   prompt: string,
+  projectId: string,
+  projectSlug: string | undefined,
   region: Region,
   context?: EditorRequestContext,
   mode?: IterateMode
@@ -2339,7 +2596,19 @@ async function tryGenericFallbackEdits(
   if (previous?.templateStyle) {
     spec.templateStyle = previous.templateStyle
   }
-  const generated = await buildSpecDrivenWorkspaceFiles(projectDir, spec, context)
+  const generated = await buildSpecDrivenWorkspaceFiles(projectDir, spec, context, {
+    projectId,
+    projectSlug,
+    assignedDomain:
+      projectId || projectSlug
+        ? buildAssignedAppUrl({
+            projectSlug: projectSlug || projectId || spec.title,
+            projectId,
+            region: spec.region,
+            planTier: spec.planTier,
+          })
+        : undefined,
+  })
   return {
     summary: `Spec-driven fallback applied for ${buildIterateContextSummary(context ?? {}, region)}: "${sanitizeUiText(prompt).slice(0, 80)}"`,
     reasoning: `Model API unavailable, so the request was applied through the local spec-driven workspace editor${mode ? ` in ${mode} mode` : ""}.`,
@@ -2384,7 +2653,7 @@ export async function POST(req: Request) {
       mode === "explain"
         ? { status: "skipped" as const, logs: ["Skipped: explain mode does not need baseline build validation"] }
         : await runBuild(projectDir)
-    const requestContext = await resolveEditorContext(projectDir, body, effectiveRegion)
+    const requestContext = await resolveEditorContext(projectDir, projectId, project?.projectSlug, body, effectiveRegion)
     let responseContext = serializeEditorContext(requestContext)
     const discussionPlan =
       workflowMode === "discuss"
@@ -2443,7 +2712,15 @@ export async function POST(req: Request) {
                 reasoning: `${localFallback.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,
               }
             } else {
-              const specDriven = await tryGenericFallbackEdits(projectDir, prompt, effectiveRegion, requestContext, mode)
+              const specDriven = await tryGenericFallbackEdits(
+                projectDir,
+                prompt,
+                projectId,
+                project?.projectSlug,
+                effectiveRegion,
+                requestContext,
+                mode
+              )
               modelResult = {
                 ...specDriven,
                 reasoning: `${specDriven.reasoning}\nOriginal model error: ${modelErr?.message || String(modelErr)}`,

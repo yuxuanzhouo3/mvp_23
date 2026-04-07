@@ -1,7 +1,8 @@
 import path from "path"
 import { promises as fs } from "fs"
 import { type Region, writeTextFile } from "@/lib/project-workspace"
-import type { PlanTier } from "@/lib/plan-catalog"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
+import { getPlanPolicy, type PlanTier } from "@/lib/plan-catalog"
 import { getTemplateById, type TemplatePreviewStyle } from "@/lib/template-catalog"
 import {
   getDatabaseOption,
@@ -852,15 +853,40 @@ export function applyPromptToSpec(spec: AppSpec, prompt: string, context?: SpecI
   return next
 }
 
-function mergeEnv(existing: string | null, spec: AppSpec) {
+function mergeEnv(
+  existing: string | null,
+  spec: AppSpec,
+  options?: {
+    projectId?: string
+    projectSlug?: string
+    assignedDomain?: string | null
+  }
+) {
   const dbMatch = existing?.match(/^DATABASE_URL=.*$/m)
   const dbLine = dbMatch?.[0] ?? `DATABASE_URL="file:./${spec.region === "cn" ? "cn" : "intl"}.db"`
   const deployment = getDeploymentOption(spec.deploymentTarget)
   const database = getDatabaseOption(spec.databaseTarget)
+  const planPolicy = getPlanPolicy(spec.planTier)
+  const assignedDomainValue =
+    options?.assignedDomain ||
+    existing?.match(/^APP_ASSIGNED_DOMAIN="?(.*?)"?$/m)?.[1] ||
+    buildAssignedAppUrl({
+      projectSlug: options?.projectSlug || options?.projectId || spec.title,
+      projectId: options?.projectId,
+      region: spec.region,
+      planTier: spec.planTier,
+    })
   return [
     dbLine,
     `APP_REGION="${spec.region}"`,
     `APP_PLAN_TIER="${spec.planTier}"`,
+    `APP_GENERATION_PROFILE="${planPolicy.generationProfile}"`,
+    `APP_CODE_EXPORT_LEVEL="${planPolicy.codeExportLevel}"`,
+    `APP_DATABASE_ACCESS_MODE="${planPolicy.databaseAccessMode}"`,
+    `APP_PROJECT_LIMIT="${planPolicy.projectLimit}"`,
+    `APP_COLLABORATOR_LIMIT="${planPolicy.collaboratorLimit}"`,
+    `APP_SUBDOMAIN_SLOTS="${planPolicy.subdomainSlots}"`,
+    `APP_ASSIGNED_DOMAIN="${assignedDomainValue}"`,
     `APP_LOCALE="${spec.language}"`,
     `APP_TIMEZONE="${spec.timezone}"`,
     `APP_CURRENCY="${spec.currency}"`,
@@ -2015,7 +2041,7 @@ export default function Page() {
                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{isCn ? "中国版 AI 编程平台" : "China-ready AI coding platform"}</div>
               </div>
               <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>
-                ${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}
+                ${getCompactPlanTag(spec.planTier)}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -5094,13 +5120,13 @@ function buildCodePlatformDashboardMetrics(spec: AppSpec) {
         { label: "当前路由", value: String(routeCount), tone: "#8b5cf6", delta: `+${Math.max(1, routeCount - 4)}` },
         { label: "模块数量", value: String(moduleCount), tone: "#22c55e", delta: `+${Math.max(1, moduleCount - 6)}` },
         { label: "AI 能力", value: String(featureCount + 4), tone: "#38bdf8", delta: `+${featureCount}` },
-        { label: "验收状态", value: spec.planTier === "elite" ? "Showcase" : spec.planTier === "pro" ? "Demo+" : "Scaffold", tone: "#f59e0b", delta: spec.deploymentTarget },
+        { label: "验收状态", value: getPlanAcceptanceLabel(spec.planTier, spec.region), tone: "#f59e0b", delta: spec.deploymentTarget },
       ]
     : [
         { label: "Routes", value: String(routeCount), tone: "#8b5cf6", delta: `+${Math.max(1, routeCount - 4)}` },
         { label: "Modules", value: String(moduleCount), tone: "#22c55e", delta: `+${Math.max(1, moduleCount - 6)}` },
         { label: "AI surfaces", value: String(featureCount + 4), tone: "#38bdf8", delta: `+${featureCount}` },
-        { label: "Acceptance", value: spec.planTier === "elite" ? "Showcase" : spec.planTier === "pro" ? "Demo+" : "Scaffold", tone: "#f59e0b", delta: spec.deploymentTarget },
+        { label: "Acceptance", value: getPlanAcceptanceLabel(spec.planTier, spec.region), tone: "#f59e0b", delta: spec.deploymentTarget },
       ]
 }
 
@@ -5210,6 +5236,29 @@ function getCodePlatformPlanLabel(planTier: PlanTier, region: Region) {
   if (planTier === "builder") return "Builder"
   if (planTier === "starter") return "Starter"
   return "Free"
+}
+
+function getCompactPlanTag(planTier: PlanTier) {
+  if (planTier === "elite") return "Elite"
+  if (planTier === "pro") return "Pro"
+  if (planTier === "builder") return "Builder"
+  if (planTier === "starter") return "Starter"
+  return "Free"
+}
+
+function getPlanAcceptanceLabel(planTier: PlanTier, region: Region) {
+  if (region === "cn") {
+    if (planTier === "elite") return "展示级"
+    if (planTier === "pro") return "高级"
+    if (planTier === "builder") return "建造者"
+    if (planTier === "starter") return "启动版"
+    return "基础版"
+  }
+  if (planTier === "elite") return "Showcase"
+  if (planTier === "pro") return "Premium"
+  if (planTier === "builder") return "Builder"
+  if (planTier === "starter") return "Starter"
+  return "Scaffold"
 }
 
 function buildCodePlatformElementSeeds(spec: AppSpec) {
@@ -6745,7 +6794,7 @@ export default function EditorPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${getCompactPlanTag(spec.planTier)}</div>
             </div>
             <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -7386,7 +7435,7 @@ export default function RunsPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${getCompactPlanTag(spec.planTier)}</div>
             </div>
             <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -7869,7 +7918,7 @@ export default function TemplatesPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${getCompactPlanTag(spec.planTier)}</div>
             </div>
             <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -8147,16 +8196,21 @@ export default function TemplatesPage() {
 function renderCodePricingPage(spec: AppSpec) {
   const isCn = spec.region === "cn"
   const brand = spec.title
+  const currentPlanName = getCodePlatformPlanLabel(spec.planTier, spec.region)
   const plans = isCn
     ? [
-        { name: "免费版", sub: "Free", price: "¥0", desc: "个人开发者与学习者", cta: "免费开始", featured: false, points: ["核心 IDE 编辑器", "AI 代码补全 (每日 50 次)", "3 个项目空间", "代码在线查看，不可导出", "数据库仅在线试用"] },
-        { name: "专业版", sub: "Pro", price: "¥99", desc: "中小团队与专业开发者", cta: "立即升级", featured: true, points: ["核心 IDE 编辑器", "AI 代码补全 (无限次)", "20 个项目空间", "代码可导出", "数据库可连接正式环境", "构建 / 测试 / 部署面板"] },
-        { name: "精英版", sub: "Elite", price: "¥299", desc: "大型团队与企业级交付", cta: "立即升级", featured: false, points: ["全部专业版功能", "无限项目空间", "50 人团队协作", "团队级代码导出与交接", "数据库权限分层与资源配额", "汇报中心与宣传资产联动"] },
+        { name: "免费版", sub: "Free", price: "¥0", desc: "个人开发者与学习者", cta: "免费开始", featured: false, points: ["稳定首版生成", "1 个子域名位", "3 个项目空间", "代码在线查看，不可导出", "数据库仅在线试用"] },
+        { name: "启动版", sub: "Starter", price: "¥29", desc: "试运行与早期验证", cta: "升级启动版", featured: false, points: ["稳定生成 + 轻量多页", "1 个子域名位", "5 个项目空间", "代码仍不可导出", "托管数据库配置"] },
+        { name: "建造者版", sub: "Builder", price: "¥79", desc: "开始交付业务原型", cta: "升级建造者版", featured: true, points: ["更厚的业务模块", "Manifest 导出", "12 个项目空间", "更高路由与模块预算", "托管数据库配置"] },
+        { name: "专业版", sub: "Pro", price: "¥159", desc: "中小团队与专业开发者", cta: "立即升级", featured: false, points: ["完整代码导出", "10 个子域名位", "30 个项目空间", "数据库可连接正式环境", "构建 / 测试 / 部署面板"] },
+        { name: "精英版", sub: "Elite", price: "¥399", desc: "大型团队与企业级交付", cta: "立即升级", featured: false, points: ["全部专业版功能", "50 个子域名位", "100 个项目空间", "团队级代码导出与交接", "数据库权限分层与资源配额", "汇报中心与宣传资产联动"] },
       ]
     : [
-        { name: "Free", sub: "Free", price: "$0", desc: "For solo developers", cta: "Start free", featured: false, points: ["Core IDE shell", "AI completions", "3 projects", "Code stays in-browser, no export", "Database stays online-only"] },
-        { name: "Pro", sub: "Pro", price: "$19", desc: "For serious builders", cta: "Upgrade now", featured: true, points: ["Unlimited AI assists", "20 projects", "Full template library", "Code export enabled", "Production database access", "Build and deploy panel"] },
-        { name: "Elite", sub: "Elite", price: "$59", desc: "For teams and delivery", cta: "Upgrade now", featured: false, points: ["Everything in Pro", "Unlimited projects", "Team collaboration", "Team handoff and code export", "Database quotas and role controls", "Reporting center"] },
+        { name: "Free", sub: "Free", price: "$0", desc: "For solo builders", cta: "Start free", featured: false, points: ["Stable first-pass generation", "1 subdomain slot", "3 projects", "Code stays in-browser, no export", "Database stays online-only"] },
+        { name: "Starter", sub: "Starter", price: "$9", desc: "For early validation", cta: "Upgrade Starter", featured: false, points: ["Stable generation with light multi-page depth", "1 subdomain slot", "5 projects", "Code still cannot export", "Managed database config"] },
+        { name: "Builder", sub: "Builder", price: "$29", desc: "For shipping business prototypes", cta: "Upgrade Builder", featured: true, points: ["Thicker app structure", "Manifest export", "12 projects", "Higher route and module budgets", "Managed database config"] },
+        { name: "Pro", sub: "Pro", price: "$79", desc: "For serious teams", cta: "Upgrade Pro", featured: false, points: ["Full code export", "10 subdomain slots", "30 projects", "Production database access", "Build and deploy panel"] },
+        { name: "Elite", sub: "Elite", price: "$199", desc: "For delivery and handoff", cta: "Upgrade Elite", featured: false, points: ["Everything in Pro", "50 subdomain slots", "100 projects", "Team handoff and code export", "Database quotas and role controls", "Reporting center"] },
       ]
   return `// @ts-nocheck
 "use client";
@@ -8178,9 +8232,13 @@ export default function PricingPage() {
     { href: "/templates", label: isCn ? "模板库" : "Templates" },
     { href: "/settings", label: isCn ? "设置" : "Settings" },
     { href: "/pricing", label: isCn ? "升级" : "Upgrade", active: true },
-    ...(${spec.planTier === "elite" ? "true" : "false"}
+    ...(${spec.planTier === "pro" || spec.planTier === "elite" ? "true" : "false"}
       ? [
           { href: "/reports", label: isCn ? "汇报" : "Reports" },
+        ]
+      : []),
+    ...(${spec.planTier === "elite" ? "true" : "false"}
+      ? [
           { href: "/team", label: isCn ? "团队" : "Team" },
         ]
       : []),
@@ -8188,20 +8246,20 @@ export default function PricingPage() {
   const comparisons = ${JSON.stringify(
     isCn
       ? [
-          { label: "AI 生成次数", free: "50 / 天", pro: "无限", elite: "无限 + 团队队列" },
-          { label: "工作区数量", free: "3", pro: "20", elite: "无限" },
-          { label: "代码导出", free: "不可导出", pro: "可导出", elite: "团队级导出与交接" },
-          { label: "数据库使用", free: "仅在线试用", pro: "正式环境连接", elite: "配额与角色控制" },
-          { label: "验收项目", free: "1 类", pro: "4 类", elite: "5 类全量" },
-          { label: "汇报与宣传", free: "无", pro: "基础", elite: "完整联动" },
+          { label: "生成档位", free: "基础", starter: "稳定", builder: "建造者", pro: "高级", elite: "展示级" },
+          { label: "工作区数量", free: "3", starter: "5", builder: "12", pro: "30", elite: "100" },
+          { label: "代码导出", free: "不可导出", starter: "不可导出", builder: "Manifest", pro: "完整导出", elite: "团队级交接包" },
+          { label: "数据库使用", free: "仅在线试用", starter: "托管配置", builder: "托管配置", pro: "正式环境连接", elite: "配额与角色控制" },
+          { label: "子域名位", free: "1", starter: "1", builder: "3", pro: "10", elite: "50" },
+          { label: "验收深度", free: "基础首版", starter: "稳定首版", builder: "业务原型", pro: "交付版本", elite: "展示与交接" },
         ]
       : [
-          { label: "AI generations", free: "50 / day", pro: "Unlimited", elite: "Unlimited + team queues" },
-          { label: "Workspaces", free: "3", pro: "20", elite: "Unlimited" },
-          { label: "Code export", free: "Not available", pro: "Enabled", elite: "Team handoff ready" },
-          { label: "Database access", free: "Online only", pro: "Production ready", elite: "Quota + role controls" },
-          { label: "Acceptance tracks", free: "1 type", pro: "4 types", elite: "5 full types" },
-          { label: "Reporting and promo", free: "None", pro: "Basic", elite: "Full linkage" },
+          { label: "Generation profile", free: "Starter", starter: "Starter+", builder: "Builder", pro: "Premium", elite: "Showcase" },
+          { label: "Workspaces", free: "3", starter: "5", builder: "12", pro: "30", elite: "100" },
+          { label: "Code export", free: "Not available", starter: "Not available", builder: "Manifest", pro: "Full export", elite: "Handoff bundle" },
+          { label: "Database access", free: "Online only", starter: "Managed config", builder: "Managed config", pro: "Production ready", elite: "Quota + role controls" },
+          { label: "Subdomain slots", free: "1", starter: "1", builder: "3", pro: "10", elite: "50" },
+          { label: "Delivery depth", free: "Baseline", starter: "Stable starter", builder: "Business prototype", pro: "Delivery ready", elite: "Showcase + handoff" },
         ],
     null,
     2
@@ -8215,12 +8273,12 @@ export default function PricingPage() {
   const copilotNotes = isCn
     ? [
         "套餐不是单纯价格文案，而是直接决定生成器能交付多深的工作区、数据库能力和导出权限。",
-        "免费版保留在线体验，专业版开始开放代码导出与正式数据库，精英版再补协作与交付闭环。",
+        "免费版和启动版保留稳定在线体验，建造者版开放 manifest 导出，专业版开放完整导出与正式数据库，精英版再补协作和交付闭环。",
         "这一页要像控制平面里的权限模型，而不是单独的营销页。"
       ]
     : [
         "Tiers are not just pricing copy. They define how much workspace depth, database access, and export capability the generator can deliver.",
-        "Free stays focused on the online experience, Pro opens code export and production DB access, and Elite adds collaboration and delivery closure.",
+        "Free and Starter stay focused on stable online delivery, Builder unlocks manifest export, Pro opens full export and production DB access, and Elite adds collaboration and handoff depth.",
         "This page should read like a permissions model inside the control plane, not a standalone marketing screen."
       ];
   const nextSteps = isCn
@@ -8239,10 +8297,10 @@ export default function PricingPage() {
     databaseTarget: isCn ? "cloudbase-doc" : "supabase-postgres",
     loginPolicy: "hybrid",
   });
-  const [selectedPlanName, setSelectedPlanName] = useState(plans[1]?.name ?? plans[0]?.name ?? "");
+  const [selectedPlanName, setSelectedPlanName] = useState(${JSON.stringify(currentPlanName)});
   const [workspaceSession, setWorkspaceSession] = useState({
     selectedTemplateName: isCn ? "官网与下载站" : "Website + downloads",
-    selectedPlanName: plans[1]?.name ?? plans[0]?.name ?? "",
+    selectedPlanName: ${JSON.stringify(currentPlanName)},
     routeLabel: isCn ? "套餐与升级" : "Plans and upgrades",
     filePath: "app/pricing/page.tsx",
     lastAction: isCn ? "等待套餐选择" : "Waiting for plan selection",
@@ -8340,7 +8398,7 @@ export default function PricingPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${getCompactPlanTag(spec.planTier)}</div>
             </div>
             <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -8414,12 +8472,12 @@ export default function PricingPage() {
               <div style={{ padding: 16, display: "grid", alignContent: "start", gap: 16, maxHeight: "calc(100vh - 150px)", overflowY: "auto", background: "#14151b" }}>
                 <section style={{ borderRadius: 22, border: "1px solid rgba(124,58,237,0.18)", background: "radial-gradient(circle at top left, rgba(124,58,237,0.16), transparent 32%), #1b1827", padding: 20 }}>
                   <div style={{ fontSize: 12, color: "#d8b4fe", fontWeight: 800 }}>{isCn ? "套餐差异" : "Tier differentiation"}</div>
-                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "免费保留在线体验，Pro 开始交付，Elite 进入团队化交接" : "Free keeps the online experience, Pro starts delivery depth, and Elite moves into team handoff"}</div>
+                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{isCn ? "五档套餐直接影响生成厚度、导出权限、数据库模式与子域名资源" : "Five plan tiers directly change generation depth, export rights, database mode, and subdomain capacity"}</div>
                   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                     {[
-                      isCn ? "Free: 核心编辑器 + 在线代码 + 在线数据库试用" : "Free: core editor + online code + online DB trial",
-                      isCn ? "Pro: 运行面板 + 代码导出 + 正式数据库连接" : "Pro: runs + code export + production DB access",
-                      isCn ? "Elite: 汇报层 + 团队协作 + 权限与配额" : "Elite: reporting + collaboration + quotas and roles",
+                      isCn ? "Free / Starter: 保持在线体验和稳定生成，代码仍不可导出" : "Free / Starter: keep the online flow and stable generation, with code staying non-exportable",
+                      isCn ? "Builder / Pro: 开始拉开结构厚度，并开放 manifest 或完整导出" : "Builder / Pro: add route depth and unlock manifest or full export",
+                      isCn ? "Elite: 进入展示级交付、团队交接与更高资源配额" : "Elite: move into showcase delivery, team handoff, and the highest resource envelope",
                     ].map((item, index) => (
                       <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 1 ? "rgba(124,58,237,0.18)" : "#1b1c24", border: "1px solid rgba(255,255,255,0.07)", color: index === 1 ? "#e9d5ff" : "rgba(255,255,255,0.7)", fontSize: 13, lineHeight: 1.7 }}>
                         {item}
@@ -8430,7 +8488,7 @@ export default function PricingPage() {
 
                 <section style={{ borderRadius: 22, border: "1px solid rgba(255,255,255,0.07)", background: "#1b1c24", padding: 18 }}>
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "当前工作区配置" : "Current workspace profile"}</div>
-                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 10 }}>
+                  <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
                     {[
                       { label: isCn ? "部署" : "Deploy", value: workspaceConfig.deploymentTarget },
                       { label: isCn ? "数据库" : "Database", value: workspaceConfig.databaseTarget },
@@ -8445,7 +8503,7 @@ export default function PricingPage() {
                 </section>
 
                 <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 18 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 18 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 18 }}>
                     {plans.map((plan, index) => (
                       <button key={plan.name} type="button" onClick={() => setSelectedPlanName(plan.name)} style={{ borderRadius: 24, border: selectedPlan?.name === plan.name || plan.featured ? "1px solid rgba(124,58,237,0.55)" : "1px solid rgba(255,255,255,0.08)", background: "#1a1b22", padding: 24, boxShadow: selectedPlan?.name === plan.name || plan.featured ? "0 0 0 1px rgba(124,58,237,0.28) inset" : "none", cursor: "pointer", textAlign: "left" }}>
                         {plan.featured ? <div style={{ color: "#a78bfa", fontWeight: 800, marginBottom: 18 }}>{isCn ? "✦ 最受欢迎" : "✦ Most popular"}</div> : <div style={{ height: 24 }} />}
@@ -8456,7 +8514,7 @@ export default function PricingPage() {
                           <span style={{ color: "rgba(255,255,255,0.42)" }}>{isCn ? "/月" : "/mo"}</span>
                         </div>
                         <div style={{ marginTop: 10, color: "rgba(255,255,255,0.54)" }}>{plan.desc}</div>
-                        <Link href={index === 0 ? "/login?redirect=/editor" : index === 1 ? "/login?redirect=/runs" : "/login?redirect=/reports"} style={{ marginTop: 24, borderRadius: 14, background: plan.featured ? "linear-gradient(135deg,#8b5cf6,#a855f7)" : "#242633", color: "#fff", padding: "14px 16px", textAlign: "center", fontWeight: 800, textDecoration: "none", display: "block" }}>{plan.cta}</Link>
+                        <Link href={plan.sub === "Free" ? "/login?redirect=/editor" : plan.sub === "Starter" ? "/login?redirect=/pricing" : plan.sub === "Builder" ? "/login?redirect=/runs" : plan.sub === "Pro" ? "/login?redirect=/reports" : "/login?redirect=/team"} style={{ marginTop: 24, borderRadius: 14, background: plan.featured ? "linear-gradient(135deg,#8b5cf6,#a855f7)" : "#242633", color: "#fff", padding: "14px 16px", textAlign: "center", fontWeight: 800, textDecoration: "none", display: "block" }}>{plan.cta}</Link>
                         <div style={{ marginTop: 22, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 18, display: "grid", gap: 12 }}>
                           {plan.points.map((item) => (
                             <div key={item} style={{ display: "flex", gap: 10, alignItems: "flex-start", color: "rgba(255,255,255,0.74)", lineHeight: 1.8 }}>
@@ -8500,8 +8558,8 @@ export default function PricingPage() {
                         ))}
                         <div style={{ borderRadius: 14, background: "#232533", padding: "12px 14px", color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.8 }}>
                           {isCn
-                            ? "这里开始明确 free / paid 在代码导出和数据库使用上的真实差异。"
-                            : "This starts making the free / paid differences around code export and database access explicit."}
+                            ? "这里开始明确 free / starter / builder / pro / elite 在代码导出、数据库和资源上的真实差异。"
+                            : "This makes the free / starter / builder / pro / elite differences around export, database access, and resources explicit."}
                         </div>
                       </div>
                     </div>
@@ -8512,9 +8570,11 @@ export default function PricingPage() {
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{isCn ? "能力对比" : "Capability comparison"}</div>
                   <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
                     {comparisons.map((row) => (
-                      <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(3,minmax(0,1fr))", gap: 10, alignItems: "center", borderRadius: 14, background: "#232533", padding: "12px 14px", fontSize: 13 }}>
+                      <div key={row.label} style={{ display: "grid", gridTemplateColumns: "1.2fr repeat(5,minmax(0,1fr))", gap: 10, alignItems: "center", borderRadius: 14, background: "#232533", padding: "12px 14px", fontSize: 13 }}>
                         <div style={{ fontWeight: 800 }}>{row.label}</div>
                         <div style={{ color: "rgba(255,255,255,0.7)" }}>{row.free}</div>
+                        <div style={{ color: "#cbd5e1" }}>{row.starter}</div>
+                        <div style={{ color: "#d8b4fe" }}>{row.builder}</div>
                         <div style={{ color: "#e9d5ff" }}>{row.pro}</div>
                         <div style={{ color: "#c4f5d1" }}>{row.elite}</div>
                       </div>
@@ -8586,7 +8646,7 @@ export default function PricingPage() {
                 </div>
 
                 <div style={{ display: "grid", gap: 10 }}>
-                  <Link href={selectedPlan?.name === plans[0]?.name ? "/login?redirect=/editor" : selectedPlan?.name === plans[1]?.name ? "/login?redirect=/runs" : "/login?redirect=/reports"} style={{ textDecoration: "none", borderRadius: 12, background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, textAlign: "center" }}>
+                  <Link href={selectedPlan?.sub === "Free" ? "/login?redirect=/editor" : selectedPlan?.sub === "Starter" ? "/login?redirect=/pricing" : selectedPlan?.sub === "Builder" ? "/login?redirect=/runs" : selectedPlan?.sub === "Pro" ? "/login?redirect=/reports" : "/login?redirect=/team"} style={{ textDecoration: "none", borderRadius: 12, background: "#8b5cf6", color: "#fff", padding: "10px 14px", fontWeight: 800, textAlign: "center" }}>
                     {isCn ? "按当前方案继续" : "Continue with this plan"}
                   </Link>
                   <Link href="/settings" style={{ textDecoration: "none", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", color: "#f8fafc", padding: "10px 14px", fontWeight: 700, textAlign: "center" }}>
@@ -8801,7 +8861,7 @@ export default function SettingsPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
               <div style={{ fontSize: 15, fontWeight: 900 }}>{${JSON.stringify(brand)}}</div>
-              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${spec.planTier === "elite" ? "Elite" : spec.planTier === "pro" ? "Pro" : "Free"}</div>
+              <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>${getCompactPlanTag(spec.planTier)}</div>
             </div>
             <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 6, borderRadius: 18, background: "#11131a", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -9761,6 +9821,158 @@ export default function TeamPage() {
 `
 }
 
+function renderHandoffPage(spec: AppSpec) {
+  const skin = getTemplateSkin(spec)
+  const isCn = spec.region === "cn"
+  return `import Link from "next/link";
+
+export default function HandoffPage() {
+  const skin = ${JSON.stringify(skin, null, 2)} as const;
+  const isCn = ${isCn ? "true" : "false"};
+  const checklist = ${JSON.stringify(
+    isCn
+      ? [
+          { title: "交付说明", note: "环境变量、部署入口和回滚步骤已经整理", status: "Ready" },
+          { title: "数据库交接", note: "线上使用说明、额度和角色边界已写明", status: "Synced" },
+          { title: "代码导出包", note: "Elite 支持团队级交付与本地接手", status: "Included" },
+          { title: "演示域名", note: "子域名与 canonical preview 已保持一致", status: "Live" },
+        ]
+      : [
+          { title: "Delivery notes", note: "Env vars, deploy entry, and rollback steps are documented", status: "Ready" },
+          { title: "Database handoff", note: "Online usage, quotas, and role boundaries are written down", status: "Synced" },
+          { title: "Code export bundle", note: "Elite includes team-grade handoff for local continuation", status: "Included" },
+          { title: "Demo domains", note: "Assigned subdomain and canonical preview stay aligned", status: "Live" },
+        ],
+    null,
+    2
+  )} as const;
+  const nextSteps = ${JSON.stringify(
+    isCn
+      ? ["上传仓库并锁定分支", "补真实登录支付密钥", "跑线上 smoke 与验收清单"]
+      : ["Push the repo and lock the branch", "Connect production auth and billing keys", "Run hosted smoke checks and acceptance"],
+    null,
+    2
+  )} as const;
+
+  return (
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: skin.pageBackground, color: skin.textPrimary }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 28, border: skin.cardBorder, background: skin.panelBackground, padding: 28 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            {[
+              { href: "/", label: isCn ? "总览" : "Overview" },
+              { href: "/reports", label: isCn ? "汇报中心" : "Reports" },
+              { href: "/team", label: isCn ? "团队" : "Team" },
+              { href: "/handoff", label: isCn ? "交付" : "Handoff", active: true },
+            ].map((item) => (
+              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? skin.accentStrong : skin.inputBackground, color: item.active ? "#ffffff" : skin.textPrimary, fontSize: 13, fontWeight: 700, border: item.active ? "none" : skin.cardBorder }}>
+                {item.label}
+              </Link>
+            ))}
+          </div>
+          <h1 style={{ margin: 0, fontSize: 32 }}>{isCn ? "交付与交接中心" : "Delivery and handoff hub"}</h1>
+          <p style={{ marginTop: 10, color: skin.textSecondary, lineHeight: 1.7 }}>
+            {isCn ? "精英版不仅要有更深的页面层级，还要把代码、环境、数据库和演示入口整理成可交接状态。" : "Elite should not only look deeper, it should organize code, environment, database, and demo entry points into a handoff-ready state."}
+          </p>
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 14 }}>
+          {checklist.map((item) => (
+            <div key={item.title} style={{ borderRadius: 20, border: skin.cardBorder, background: skin.cardBackground, padding: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div style={{ fontWeight: 800 }}>{item.title}</div>
+                <div style={{ borderRadius: 999, padding: "4px 10px", background: skin.accentSoft, color: skin.accentStrong, fontSize: 11, fontWeight: 800 }}>{item.status}</div>
+              </div>
+              <div style={{ marginTop: 8, color: skin.textSecondary, lineHeight: 1.7, fontSize: 13 }}>{item.note}</div>
+            </div>
+          ))}
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 14 }}>
+          <div style={{ borderRadius: 22, border: skin.cardBorder, background: skin.panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "交接说明" : "Handoff note"}</div>
+            <p style={{ marginTop: 12, color: skin.textSecondary, lineHeight: 1.8 }}>
+              {isCn ? "这页承接的是从工作区到交付的最后一公里，应该让团队看清当前套餐能力、导出边界、数据库模式和演示地址。" : "This page covers the last mile from workspace to delivery so the team can clearly see plan capabilities, export limits, database mode, and demo domains."}
+            </p>
+          </div>
+          <div style={{ borderRadius: 22, border: skin.cardBorder, background: skin.panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下一步动作" : "Next actions"}</div>
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              {nextSteps.map((item) => (
+                <div key={item} style={{ borderRadius: 12, background: skin.inputBackground, padding: "10px 12px", color: skin.textPrimary, fontSize: 13 }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+}
+
+function renderPlaybooksPage(spec: AppSpec) {
+  const skin = getTemplateSkin(spec)
+  const isCn = spec.region === "cn"
+  return `import Link from "next/link";
+
+export default function PlaybooksPage() {
+  const skin = ${JSON.stringify(skin, null, 2)} as const;
+  const isCn = ${isCn ? "true" : "false"};
+  const playbooks = ${JSON.stringify(
+    isCn
+      ? [
+          { name: "生成上线检查", owner: "产品", stage: "Preview → Runtime → Domain" },
+          { name: "客户演示流程", owner: "销售", stage: "Landing → Workspace → Upgrade" },
+          { name: "交付移交流程", owner: "交付", stage: "Export → Handoff → Docs" },
+        ]
+      : [
+          { name: "Generation release check", owner: "Product", stage: "Preview → Runtime → Domain" },
+          { name: "Client demo flow", owner: "Sales", stage: "Landing → Workspace → Upgrade" },
+          { name: "Delivery handoff flow", owner: "Delivery", stage: "Export → Handoff → Docs" },
+        ],
+    null,
+    2
+  )} as const;
+
+  return (
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: skin.pageBackground, color: skin.textPrimary }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", display: "grid", gap: 16 }}>
+        <section style={{ borderRadius: 28, border: skin.cardBorder, background: skin.panelBackground, padding: 28 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            {[
+              { href: "/", label: isCn ? "总览" : "Overview" },
+              { href: "/handoff", label: isCn ? "交付" : "Handoff" },
+              { href: "/playbooks", label: isCn ? "剧本" : "Playbooks", active: true },
+            ].map((item) => (
+              <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? skin.accentStrong : skin.inputBackground, color: item.active ? "#ffffff" : skin.textPrimary, fontSize: 13, fontWeight: 700, border: item.active ? "none" : skin.cardBorder }}>
+                {item.label}
+              </Link>
+            ))}
+          </div>
+          <h1 style={{ margin: 0, fontSize: 32 }}>{isCn ? "交付剧本与流程" : "Playbooks and rollout flows"}</h1>
+          <p style={{ marginTop: 10, color: skin.textSecondary, lineHeight: 1.7 }}>
+            {isCn ? "精英版会把生成、演示、交付三个阶段都整理成可执行剧本，而不是只留一个漂亮页面。" : "Elite turns generation, demo, and delivery into reusable playbooks instead of stopping at a polished single page."}
+          </p>
+        </section>
+        <section style={{ display: "grid", gap: 12 }}>
+          {playbooks.map((item) => (
+            <div key={item.name} style={{ borderRadius: 20, border: skin.cardBorder, background: skin.cardBackground, padding: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 800 }}>{item.name}</div>
+                <div style={{ color: skin.textSecondary, fontSize: 12 }}>{item.owner}</div>
+              </div>
+              <div style={{ marginTop: 8, color: skin.textSecondary, lineHeight: 1.7, fontSize: 13 }}>{item.stage}</div>
+            </div>
+          ))}
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+}
+
 function extractPlannedRouteNames(spec: AppSpec) {
   const routes = new Set<string>()
   for (const moduleName of spec.modules) {
@@ -9777,7 +9989,20 @@ function extractPlannedRouteNames(spec: AppSpec) {
   }
   if (hasFeature(spec, "about_page")) routes.add("about")
   if (hasFeature(spec, "analytics_page")) routes.add("analytics")
-  if (spec.planTier === "elite") {
+  if (spec.kind === "task") {
+    if (spec.planTier === "builder" || spec.planTier === "pro" || spec.planTier === "elite") {
+      routes.add("reports")
+      routes.add("automations")
+    }
+    if (spec.planTier === "pro" || spec.planTier === "elite") {
+      routes.add("team")
+      routes.add("approvals")
+    }
+    if (spec.planTier === "elite") {
+      routes.add("handoff")
+      routes.add("playbooks")
+    }
+  } else if (spec.planTier === "elite") {
     routes.add("reports")
     routes.add("team")
   }
@@ -9793,6 +10018,9 @@ function getGeneratedRouteLabel(route: string, isCn: boolean) {
     pricing: ["Pricing", "Pricing"],
     reports: ["Reports", "Reports"],
     team: ["Team", "Team"],
+    approvals: ["Approvals", "Approvals"],
+    handoff: ["Handoff", "Handoff"],
+    playbooks: ["Playbooks", "Playbooks"],
     members: ["Members", "Members"],
     feedback: ["Feedback", "Feedback"],
     website: ["Website", "Website"],
@@ -9837,6 +10065,15 @@ function renderGenericPlannerPage(spec: AppSpec, route: string, plannedRoutes: s
   const actions = isCn
     ? ["继续补真实数据读写", "围绕当前页面做上下文改写", "把权限和交付链路接到真实接口"]
     : ["Connect real data reads and writes", "Iterate directly on this page context", "Wire permissions and delivery flows to real APIs"]
+  const specialized =
+    route === "handoff"
+      ? renderHandoffPage(spec)
+      : route === "playbooks"
+        ? renderPlaybooksPage(spec)
+        : route === "approvals"
+          ? renderArchetypeConsolePage(spec, route)
+          : null
+  if (specialized) return specialized
 
   return `// @ts-nocheck
 import Link from "next/link";
@@ -9939,7 +10176,12 @@ export default function GeneratedPlannerPage() {
 export async function buildSpecDrivenWorkspaceFiles(
   projectDir: string,
   spec: AppSpec,
-  iterationContext?: SpecIterationContext
+  iterationContext?: SpecIterationContext,
+  options?: {
+    projectId?: string
+    projectSlug?: string
+    assignedDomain?: string | null
+  }
 ): Promise<WorkspaceFile[]> {
   const envPath = path.join(projectDir, ".env")
   const currentEnv = await fs.readFile(envPath, "utf8").catch(() => null)
@@ -9948,7 +10190,7 @@ export async function buildSpecDrivenWorkspaceFiles(
   const files: WorkspaceFile[] = [
     {
       path: ".env",
-      content: mergeEnv(currentEnv, spec),
+      content: mergeEnv(currentEnv, spec, options),
       reason: "Sync region-aware environment variables",
     },
     {

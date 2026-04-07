@@ -35,6 +35,19 @@ export async function GET() {
       fallbackLabel: "local email/password sign-in",
     },
     {
+      key: "phone-otp",
+      label: "Phone OTP",
+      region: "cn",
+      category: "auth",
+      enabled: true,
+      configured: auth.phoneOtpConfigured,
+      realFlowImplemented: true,
+      status: auth.cnMode === "phone" ? "live" : auth.phoneOtpConfigured ? "credential_ready" : "demo",
+      startPath: "/login",
+      callbackUrl: "",
+      fallbackLabel: "sandbox phone verification",
+    },
+    {
       key: "password",
       label: "Email Password",
       region: "cn",
@@ -58,7 +71,7 @@ export async function GET() {
       status: !auth.googleEnabled ? "disabled" : auth.supabaseConfigured && auth.googleConfigured ? "credential_ready" : "demo",
       startPath: "/api/auth/google/start",
       callbackUrl: site.authCallbacks.google,
-      fallbackLabel: "phase-2 social login",
+      fallbackLabel: "needs real OAuth exchange",
     },
     {
       key: "facebook",
@@ -130,9 +143,9 @@ export async function GET() {
       enabled: true,
       configured: payment.wechatConfigured,
       realFlowImplemented: true,
-      status: payment.wechatConfigured ? "credential_ready" : "demo",
+      status: payment.wechatConfigured ? "live" : "demo",
       webhookUrl: site.paymentWebhooks.wechatpay,
-      fallbackLabel: "phase-2 cn payment option",
+      fallbackLabel: "CN production QR checkout",
     },
   ]
 
@@ -165,41 +178,41 @@ export async function GET() {
       },
     },
     envGuide: {
-      phase1IntlAuth: [
+      intlAuth: [
         "NEXT_PUBLIC_SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
-      ],
-      phase2IntlAuth: [
         "GOOGLE_OAUTH_CLIENT_ID",
         "GOOGLE_OAUTH_CLIENT_SECRET",
-        "FACEBOOK_APP_ID",
-        "FACEBOOK_APP_SECRET",
       ],
-      phase1IntlPayment: [
+      intlPayment: [
         "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
         "STRIPE_SECRET_KEY",
-      ],
-      phase2IntlPayment: [
         "PAYPAL_CLIENT_ID",
         "PAYPAL_CLIENT_SECRET",
       ],
-      phase1CnAuth: [],
-      phase2CnAuth: [
-        "NEXT_PUBLIC_WECHAT_APP_ID",
-        "WECHAT_APP_SECRET",
+      cnAuth: [
+        "SMS_PROVIDER_NAME",
+        "SMS_API_KEY",
+        "SMS_API_SECRET",
+        "SMS_SIGN_NAME",
+        "SMS_TEMPLATE_ID",
       ],
-      phase1CnPayment: [
+      cnPayment: [
         "ALIPAY_APP_ID",
         "ALIPAY_PRIVATE_KEY",
         "ALIPAY_PUBLIC_KEY",
-      ],
-      phase2CnPayment: [
         "WECHAT_PAY_MCH_ID",
         "WECHAT_PAY_API_V3_KEY",
         "WECHAT_PAY_SERIAL_NO",
         "WECHAT_PAY_PRIVATE_KEY",
         "WECHAT_PAY_APP_ID",
+        "WECHAT_PAY_PLATFORM_PUBLIC_KEY",
+        "WECHAT_PAY_PLATFORM_SERIAL_NO",
+      ],
+      cnAuthOptional: [
+        "NEXT_PUBLIC_WECHAT_APP_ID",
+        "WECHAT_APP_SECRET",
       ],
       cnInfra: [
         "CLOUDBASE_ENV_ID",
@@ -210,17 +223,16 @@ export async function GET() {
       databaseTargets: DATABASE_OPTIONS.map((item) => item.id),
     },
     rolloutPlan: {
-      phase1: {
-        intlAuth: "Supabase password",
-        cnAuth: "password",
-        intlPayment: "Stripe",
-        cnPayment: "Alipay",
+      currentTarget: {
+        intlAuth: ["Google OAuth", "Email"],
+        cnAuth: ["Phone OTP", "Email"],
+        intlPayment: ["Stripe sandbox", "PayPal sandbox"],
+        cnPayment: ["WeChat Pay", "Alipay"],
       },
-      phase2: {
-        intlAuth: ["Google OAuth", "Facebook OAuth"],
+      optionalFollowUps: {
+        intlAuth: ["Facebook OAuth"],
         cnAuth: ["WeChat Login"],
-        intlPayment: ["PayPal"],
-        cnPayment: ["WeChat Pay"],
+        payment: ["provider webhook signature hardening with platform certificate rotation"],
       },
     },
     mcp: {

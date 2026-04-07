@@ -1,12 +1,24 @@
 import { NextResponse } from "next/server"
 import net from "net"
 import { buildCanonicalPreviewUrl, buildRuntimePreviewUrl, buildSandboxPreviewUrl } from "@/lib/preview-url"
+import { buildAssignedAppUrl } from "@/lib/app-subdomain"
+import { findLatestTaskByProject } from "@/lib/generate-tasks"
+import { getPlanPolicy } from "@/lib/plan-catalog"
 import { readProjectSpec } from "@/lib/project-spec"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { getProject, isPidAlive, listProjects, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
 import { getDefaultPreviewMode, getSandboxReadiness, supportsSandboxRuntime } from "@/lib/sandbox-preview"
 
 export const runtime = "nodejs"
+
+type GenerateHistoryRecord = {
+  type: "generate" | "iterate"
+  status: "done" | "error"
+  summary?: string
+  buildStatus?: "ok" | "failed" | "skipped"
+  buildLogs?: string[]
+  createdAt: string
+}
 
 function buildPreviewUrl(projectKey: string) {
   return buildCanonicalPreviewUrl(projectKey)
@@ -42,6 +54,9 @@ function resolvePreviewStatus(args: {
   activeMode: "static_ssr" | "dynamic_runtime" | "sandbox_runtime"
   runtimeStatus?: "stopped" | "starting" | "running" | "error"
   sandboxStatus?: "stopped" | "starting" | "running" | "error"
+  latestGenerate?: GenerateHistoryRecord | null
+  spec?: { modules?: unknown[] } | null
+  presentation?: ReturnType<typeof buildProjectPresentation> | null
 }) {
   if (args.activeMode === "sandbox_runtime") {
     if (args.sandboxStatus === "running") return "ready" as const
@@ -55,7 +70,16 @@ function resolvePreviewStatus(args: {
     if (args.runtimeStatus === "error") return "failed" as const
     return "idle" as const
   }
-  return "ready" as const
+  if (args.latestGenerate?.status === "error" || args.latestGenerate?.buildStatus === "failed") {
+    return "failed" as const
+  }
+  if (args.latestGenerate?.status !== "done") {
+    return "idle" as const
+  }
+
+  const routes = Array.isArray(args.presentation?.routes) ? args.presentation.routes.filter(Boolean) : []
+  const modules = Array.isArray(args.spec?.modules) ? args.spec.modules.filter(Boolean) : []
+  return routes.length > 0 || modules.length > 0 ? ("ready" as const) : ("building" as const)
 }
 
 function normalizeRuntimeUrl(projectId: string, url?: string) {
@@ -65,19 +89,15 @@ function normalizeRuntimeUrl(projectId: string, url?: string) {
     return buildRuntimePreviewUrl(projectId)
   }
   if (normalized.startsWith("/api/projects/")) {
-    return normalized.endsWith("/preview") ? `${normalized}/` : normalized
+    if (/\/preview\/?$/.test(normalized)) {
+      return buildRuntimePreviewUrl(projectId)
+    }
+    return normalized
   }
   return normalized
 }
 
-function getLatestGenerateRecord(history: Array<{
-  type: "generate" | "iterate"
-  status: "done" | "error"
-  summary?: string
-  buildStatus?: "ok" | "failed" | "skipped"
-  buildLogs?: string[]
-  createdAt: string
-}> = []) {
+function getLatestGenerateRecord(history: GenerateHistoryRecord[] = []) {
   return history
     .slice()
     .reverse()
@@ -175,12 +195,14 @@ export async function GET(req: Request) {
     const spec = projectDir ? await readProjectSpec(projectDir) : null
     const latestHistory = project.history?.length ? project.history[project.history.length - 1] : null
     const latestGenerate = getLatestGenerateRecord(project.history)
+    const latestTask = await findLatestTaskByProject(projectId)
     const presentation = buildProjectPresentation({
       projectId,
       region: project.region,
       spec,
       latestHistory,
     })
+    const planPolicy = getPlanPolicy(spec?.planTier)
     const activeMode = resolveActivePreviewMode({
       previewMode: project.previewMode ?? getDefaultPreviewMode(),
       sandboxStatus: project.sandboxRuntime?.status,
@@ -196,6 +218,7 @@ export async function GET(req: Request) {
         spec,
         presentation,
         generation: {
+          jobId: latestTask?.jobId ?? null,
           status: latestGenerate?.status ?? "idle",
           summary: latestGenerate?.summary ?? "",
           buildStatus: latestGenerate?.buildStatus ?? null,
@@ -209,6 +232,9 @@ export async function GET(req: Request) {
             activeMode,
             runtimeStatus: runtime?.status,
             sandboxStatus: project.sandboxRuntime?.status,
+            latestGenerate,
+            spec,
+            presentation,
           }),
           canonicalUrl,
           runtimeUrl,
@@ -234,6 +260,23 @@ export async function GET(req: Request) {
           supportsSandboxRuntime: supportsSandboxRuntime(),
           sandboxReadiness: getSandboxReadiness(),
         },
+        delivery: {
+          planId: planPolicy.planId,
+          generationProfile: planPolicy.generationProfile,
+          codeExportLevel: planPolicy.codeExportLevel,
+          databaseAccessMode: planPolicy.databaseAccessMode,
+          projectLimit: planPolicy.projectLimit,
+          collaboratorLimit: planPolicy.collaboratorLimit,
+          routeBudget: planPolicy.maxGeneratedRoutes,
+          moduleBudget: planPolicy.maxGeneratedModules,
+          assignedDomain: buildAssignedAppUrl({
+            projectSlug: project.projectSlug || projectId,
+            projectId,
+            region: project.region,
+            planTier: spec?.planTier,
+          }),
+          subdomainSlots: planPolicy.subdomainSlots,
+        },
         runtime: runtime
           ? {
               ...runtime,
@@ -256,6 +299,7 @@ export async function GET(req: Request) {
     historyCount: number
     presentation: ReturnType<typeof buildProjectPresentation>
     generation: {
+      jobId: string | null
       status: "done" | "error" | "idle"
       summary: string
       buildStatus: "ok" | "failed" | "skipped" | null
@@ -284,6 +328,18 @@ export async function GET(req: Request) {
       supportsSandboxRuntime: boolean
       sandboxReadiness: ReturnType<typeof getSandboxReadiness>
     }
+    delivery: {
+      planId: "free" | "starter" | "builder" | "pro" | "elite"
+      assignedDomain: string
+      subdomainSlots: number
+      generationProfile: "starter" | "builder" | "premium" | "showcase"
+      codeExportLevel: "none" | "manifest" | "full"
+      databaseAccessMode: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+      projectLimit: number
+      collaboratorLimit: number
+      routeBudget: number
+      moduleBudget: number
+    }
   }> = []
 
   for (const p of projects) {
@@ -292,6 +348,13 @@ export async function GET(req: Request) {
     const spec = projectDir ? await readProjectSpec(projectDir) : null
     const latestHistory = p.history?.length ? p.history[p.history.length - 1] : null
     const latestGenerate = getLatestGenerateRecord(p.history)
+    const latestTask = await findLatestTaskByProject(p.projectId)
+    const presentation = buildProjectPresentation({
+      projectId: p.projectId,
+      region: p.region,
+      spec,
+      latestHistory,
+    })
     const activeMode = resolveActivePreviewMode({
       previewMode: p.previewMode ?? getDefaultPreviewMode(),
       sandboxStatus: p.sandboxRuntime?.status,
@@ -301,6 +364,7 @@ export async function GET(req: Request) {
     const canonicalUrl = buildPreviewUrl(publicProjectKey)
     const runtimeUrl = normalizeRuntimeUrl(p.projectId, (runtime as { url?: string } | undefined)?.url)
     const sandboxUrl = buildSandboxPreviewUrl(p.projectId)
+    const planPolicy = getPlanPolicy(spec?.planTier)
     normalized.push({
       projectId: p.projectId,
       region: p.region,
@@ -310,13 +374,9 @@ export async function GET(req: Request) {
       updatedAt: p.updatedAt,
       workspacePath: p.workspacePath,
       historyCount: p.history.length,
-      presentation: buildProjectPresentation({
-        projectId: p.projectId,
-        region: p.region,
-        spec,
-        latestHistory,
-      }),
+      presentation,
       generation: {
+        jobId: latestTask?.jobId ?? null,
         status: latestGenerate?.status ?? "idle",
         summary: latestGenerate?.summary ?? "",
         buildStatus: latestGenerate?.buildStatus ?? null,
@@ -329,6 +389,9 @@ export async function GET(req: Request) {
           activeMode,
           runtimeStatus: runtime?.status,
           sandboxStatus: p.sandboxRuntime?.status,
+          latestGenerate,
+          spec,
+          presentation,
         }),
         canonicalUrl,
         runtimeUrl,
@@ -353,6 +416,23 @@ export async function GET(req: Request) {
         supportsDynamicRuntime: !Boolean(process.env.VERCEL),
         supportsSandboxRuntime: supportsSandboxRuntime(),
         sandboxReadiness: getSandboxReadiness(),
+      },
+      delivery: {
+        planId: planPolicy.planId,
+        generationProfile: planPolicy.generationProfile,
+        codeExportLevel: planPolicy.codeExportLevel,
+        databaseAccessMode: planPolicy.databaseAccessMode,
+        projectLimit: planPolicy.projectLimit,
+        collaboratorLimit: planPolicy.collaboratorLimit,
+        routeBudget: planPolicy.maxGeneratedRoutes,
+        moduleBudget: planPolicy.maxGeneratedModules,
+        assignedDomain: buildAssignedAppUrl({
+          projectSlug: p.projectSlug || p.projectId,
+          projectId: p.projectId,
+          region: p.region,
+          planTier: spec?.planTier,
+        }),
+        subdomainSlots: planPolicy.subdomainSlots,
       },
       runtime: runtime
         ? {

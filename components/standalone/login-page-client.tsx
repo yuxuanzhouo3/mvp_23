@@ -12,12 +12,13 @@ import { getRegionFromHostname } from "@/lib/region-routing"
 type SessionResp = {
   authenticated: boolean
   authRuntime?: {
-    intlMode: "demo" | "password" | "supabase" | "wechat"
-    cnMode: "demo" | "password" | "supabase" | "wechat"
+    intlMode: "demo" | "password" | "supabase" | "wechat" | "phone"
+    cnMode: "demo" | "password" | "supabase" | "wechat" | "phone"
     intlEmailPasswordEnabled?: boolean
     cnEmailPasswordEnabled?: boolean
     googleEnabled?: boolean
     facebookEnabled?: boolean
+    phoneOtpConfigured?: boolean
   }
   user?: {
     id: string
@@ -56,9 +57,13 @@ function LoginPageContent() {
   const [authStep, setAuthStep] = useState<"entry" | "password" | "register" | "authenticated">(
     registerRequested ? "register" : "entry"
   )
-  const [runtimeMode, setRuntimeMode] = useState<"demo" | "password" | "supabase" | "wechat">("demo")
+  const [runtimeMode, setRuntimeMode] = useState<"demo" | "password" | "supabase" | "wechat" | "phone">("demo")
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [googleEnabled, setGoogleEnabled] = useState(true)
+  const [phone, setPhone] = useState("")
+  const [phoneCode, setPhoneCode] = useState("")
+  const [sandboxCode, setSandboxCode] = useState("")
+  const [phoneHint, setPhoneHint] = useState("")
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -139,6 +144,58 @@ function LoginPageContent() {
     }
   }
 
+  async function handleSendPhoneCode() {
+    setSubmitting(true)
+    setError("")
+    setPhoneHint("")
+    setSandboxCode("")
+    try {
+      const res = await fetch("/api/auth/phone/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, email, region }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(String(json?.error ?? "Send verification code failed"))
+      }
+      const code = String(json?.sandboxCode ?? "").trim()
+      setSandboxCode(code)
+      setPhoneHint(
+        code
+          ? `沙盒验证码已生成：${code}。后续接入真实短信后，这里将改成真实发送。`
+          : "验证码已发送。"
+      )
+    } catch (err: any) {
+      setError(err?.message || "Send verification code failed")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleVerifyPhoneCode() {
+    setSubmitting(true)
+    setError("")
+    setPhoneHint("")
+    try {
+      const res = await fetch("/api/auth/phone/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, email, code: phoneCode, name, region }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(String(json?.error ?? "Verify code failed"))
+      }
+      setSessionUser(json?.user ?? null)
+      setAuthStep("authenticated")
+    } catch (err: any) {
+      setError(err?.message || "Verify code failed")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   function handleContinue() {
     setError("")
     if (!email.trim()) {
@@ -161,13 +218,19 @@ function LoginPageContent() {
             google: "使用 Google 登录",
             lastUsed: "最近使用",
             email: "邮箱",
+            phone: "手机号",
+            code: "验证码",
             password: "密码",
             name: "昵称（可选）",
             emailPlaceholder: "输入你的邮箱地址",
+            phonePlaceholder: "输入中国大陆手机号",
+            codePlaceholder: "输入6位验证码",
             passwordPlaceholder: "输入你的密码",
             namePlaceholder: "输入昵称",
             or: "或",
             continue: "继续",
+            sendCode: "发送验证码",
+            verifyCode: "验证并继续",
             signIn: "登录并继续",
             create: "注册并继续",
             switchAccount: "切换账号",
@@ -184,10 +247,12 @@ function LoginPageContent() {
             idea: "把你的想法变成应用",
             previewHint: "一句需求，直接进入产品生成与交付流。",
             runtime:
-              runtimeMode === "wechat"
-                ? "当前模式：微信优先 + 邮箱密码"
+              runtimeMode === "phone"
+                ? "当前模式：手机验证码 + 邮箱（沙盒）"
+                : runtimeMode === "wechat"
+                ? "当前模式：微信优先 + 邮箱密码，手机验证码准备中"
                 : runtimeMode === "password"
-                  ? "当前模式：邮箱密码"
+                  ? "当前模式：邮箱密码，手机验证码准备中"
                   : runtimeMode === "supabase"
                     ? "当前模式：Supabase"
                     : "当前模式：演示账号 + 邮箱密码",
@@ -199,13 +264,19 @@ function LoginPageContent() {
             google: "Log in with Google",
             lastUsed: "Last used",
             email: "Email",
+            phone: "Phone",
+            code: "Code",
             password: "Password",
             name: "Name (optional)",
             emailPlaceholder: "Enter your email address",
+            phonePlaceholder: "Enter phone number",
+            codePlaceholder: "Enter verification code",
             passwordPlaceholder: "Enter your password",
             namePlaceholder: "Enter your name",
             or: "OR",
             continue: "Continue",
+            sendCode: "Send code",
+            verifyCode: "Verify and continue",
             signIn: "Sign in and continue",
             create: "Create account",
             switchAccount: "Switch account",
@@ -224,6 +295,8 @@ function LoginPageContent() {
             runtime:
               runtimeMode === "supabase"
                 ? "Current mode: Supabase email auth"
+                : runtimeMode === "phone"
+                  ? "Current mode: phone verification + email (sandbox)"
                 : runtimeMode === "password"
                   ? "Current mode: direct email/password"
                   : runtimeMode === "wechat"
@@ -238,14 +311,17 @@ function LoginPageContent() {
     if (oauthState === "provider_error" && oauthError) {
       return isCn ? `第三方登录错误：${oauthError}` : `Provider error: ${oauthError}`
     }
+    if (phoneHint) return phoneHint
     if (oauthState) return copy.oauthReady
     if (error) return error
     return copy.runtime
-  }, [copy.oauthReady, copy.runtime, error, isCn, oauthError, oauthState])
+  }, [copy.oauthReady, copy.runtime, error, isCn, oauthError, oauthState, phoneHint])
 
   const showAuthForm = authStep !== "authenticated"
   const isRegisterMode = authStep === "register"
   const isPasswordMode = authStep === "password"
+  const cnPhoneFlow = isCn && runtimeMode === "phone"
+  const showGoogleEntry = !isCn && googleEnabled
   const googleRedirect = `/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`
 
   return (
@@ -292,29 +368,33 @@ function LoginPageContent() {
                 </div>
               ) : (
                 <>
-                  <div className="relative">
-                    <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[#ff9b42] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(255,155,66,0.32)]">
-                      {copy.lastUsed}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-14 w-full rounded-2xl border-[#ffb272] bg-white text-lg font-medium text-slate-900 hover:bg-[#fff8f1]"
-                      disabled={!authResolved || submitting || !googleEnabled}
-                      onClick={() => {
-                        router.push(googleRedirect)
-                      }}
-                    >
-                      <Chrome className="mr-3 h-5 w-5" />
-                      {copy.google}
-                    </Button>
-                  </div>
+                  {showGoogleEntry ? (
+                    <>
+                      <div className="relative">
+                        <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[#ff9b42] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(255,155,66,0.32)]">
+                          {copy.lastUsed}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-14 w-full rounded-2xl border-[#ffb272] bg-white text-lg font-medium text-slate-900 hover:bg-[#fff8f1]"
+                          disabled={!authResolved || submitting}
+                          onClick={() => {
+                            router.push(googleRedirect)
+                          }}
+                        >
+                          <Chrome className="mr-3 h-5 w-5" />
+                          {copy.google}
+                        </Button>
+                      </div>
 
-                  <div className="flex items-center gap-4 text-sm text-slate-400">
-                    <div className="h-px flex-1 bg-slate-200" />
-                    <span>{copy.or}</span>
-                    <div className="h-px flex-1 bg-slate-200" />
-                  </div>
+                      <div className="flex items-center gap-4 text-sm text-slate-400">
+                        <div className="h-px flex-1 bg-slate-200" />
+                        <span>{copy.or}</span>
+                        <div className="h-px flex-1 bg-slate-200" />
+                      </div>
+                    </>
+                  ) : null}
 
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -327,68 +407,137 @@ function LoginPageContent() {
                       />
                     </div>
 
-                    {isPasswordMode || isRegisterMode ? (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-900">{copy.password}</label>
-                        <Input
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                          type="password"
-                          placeholder={copy.passwordPlaceholder}
-                          className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
-                        />
-                      </div>
-                    ) : null}
+                    {cnPhoneFlow ? (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-slate-900">{copy.phone}</label>
+                          <Input
+                            value={phone}
+                            onChange={(event) => setPhone(event.target.value)}
+                            placeholder={copy.phonePlaceholder}
+                            className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-slate-900">{copy.code}</label>
+                          <Input
+                            value={phoneCode}
+                            onChange={(event) => setPhoneCode(event.target.value)}
+                            placeholder={copy.codePlaceholder}
+                            className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-slate-900">{copy.name}</label>
+                          <Input
+                            value={name}
+                            onChange={(event) => setName(event.target.value)}
+                            placeholder={copy.namePlaceholder}
+                            className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                          />
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-14 rounded-2xl border-slate-200 bg-white text-base text-slate-900 hover:bg-slate-50"
+                            disabled={submitting || !authResolved}
+                            onClick={() => void handleSendPhoneCode()}
+                          >
+                            {submitting ? (
+                              <>
+                                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                {copy.sendCode}
+                              </>
+                            ) : (
+                              copy.sendCode
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            className="h-14 rounded-2xl bg-slate-500 text-base font-medium text-white hover:bg-slate-600 disabled:opacity-80"
+                            disabled={submitting || !authResolved}
+                            onClick={() => void handleVerifyPhoneCode()}
+                          >
+                            {submitting ? (
+                              <>
+                                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                {copy.verifyCode}
+                              </>
+                            ) : (
+                              copy.verifyCode
+                            )}
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {isPasswordMode || isRegisterMode ? (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-900">{copy.password}</label>
+                            <Input
+                              value={password}
+                              onChange={(event) => setPassword(event.target.value)}
+                              type="password"
+                              placeholder={copy.passwordPlaceholder}
+                              className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                            />
+                          </div>
+                        ) : null}
 
-                    {isRegisterMode ? (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-900">{copy.name}</label>
-                        <Input
-                          value={name}
-                          onChange={(event) => setName(event.target.value)}
-                          placeholder={copy.namePlaceholder}
-                          className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
-                        />
-                      </div>
-                    ) : null}
+                        {isRegisterMode ? (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-900">{copy.name}</label>
+                            <Input
+                              value={name}
+                              onChange={(event) => setName(event.target.value)}
+                              placeholder={copy.namePlaceholder}
+                              className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                            />
+                          </div>
+                        ) : null}
 
-                    {showAuthForm ? (
-                      <Button
-                        type="button"
-                        className="h-14 w-full rounded-2xl bg-slate-500 text-lg font-medium text-white hover:bg-slate-600 disabled:opacity-80"
-                        disabled={submitting || !authResolved}
-                        onClick={() => {
-                          if (authStep === "entry") {
-                            handleContinue()
-                            return
-                          }
-                          if (authStep === "register") {
-                            void handleRegister()
-                            return
-                          }
-                          void handlePasswordLogin()
-                        }}
-                      >
-                        {submitting ? (
-                          <>
-                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                            {isRegisterMode ? copy.create : copy.signIn}
-                          </>
-                        ) : authStep === "entry" ? (
-                          copy.continue
-                        ) : authStep === "register" ? (
-                          copy.create
-                        ) : (
-                          copy.signIn
-                        )}
-                      </Button>
-                    ) : null}
+                        {showAuthForm ? (
+                          <Button
+                            type="button"
+                            className="h-14 w-full rounded-2xl bg-slate-500 text-lg font-medium text-white hover:bg-slate-600 disabled:opacity-80"
+                            disabled={submitting || !authResolved}
+                            onClick={() => {
+                              if (authStep === "entry") {
+                                handleContinue()
+                                return
+                              }
+                              if (authStep === "register") {
+                                void handleRegister()
+                                return
+                              }
+                              void handlePasswordLogin()
+                            }}
+                          >
+                            {submitting ? (
+                              <>
+                                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                {isRegisterMode ? copy.create : copy.signIn}
+                              </>
+                            ) : authStep === "entry" ? (
+                              copy.continue
+                            ) : authStep === "register" ? (
+                              copy.create
+                            ) : (
+                              copy.signIn
+                            )}
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
 
                   <div className="min-h-[24px] text-sm text-slate-500">{helperMessage}</div>
 
                   <div className="space-y-3 text-center text-sm text-slate-600">
-                    {authStep === "entry" ? (
+                    {cnPhoneFlow ? (
+                      <p>{isCn ? "验证码通过后会自动登录或创建账号。" : "Verification will sign you in automatically."}</p>
+                    ) : authStep === "entry" ? (
                       <p>
                         {copy.noAccount}{" "}
                         <button type="button" className="font-semibold text-slate-950 underline underline-offset-4" onClick={() => setAuthStep("register")}>

@@ -75,6 +75,17 @@ export type WorkspaceProjectDetailSnapshot = {
     buildLogs?: string[]
     createdAt?: string | null
   }
+  delivery?: {
+    assignedDomain: string
+    subdomainSlots: number
+    generationProfile?: "starter" | "builder" | "premium" | "showcase"
+    codeExportLevel?: "none" | "manifest" | "full"
+    databaseAccessMode?: "online_only" | "managed_config" | "production_access" | "handoff_ready"
+    projectLimit?: number
+    collaboratorLimit?: number
+    routeBudget?: number
+    moduleBudget?: number
+  }
   preview?: WorkspacePreviewState
   runtime?: WorkspaceRuntimeState
   history: WorkspaceHistoryItem[]
