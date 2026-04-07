@@ -30,8 +30,8 @@ type SessionResp = {
 
 function BrandMark() {
   return (
-    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[linear-gradient(180deg,#ff8a28_0%,#ff6b1b_100%)] shadow-[0_12px_28px_rgba(255,124,32,0.28)]">
-      <div className="h-5 w-5 rounded-full bg-[repeating-linear-gradient(180deg,rgba(255,255,255,0.98)_0px,rgba(255,255,255,0.98)_2px,transparent_2px,transparent_4px)]" />
+    <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[linear-gradient(135deg,#5e8cff_0%,#5b4dff_52%,#6e48ff_100%)] text-[1.75rem] font-semibold tracking-[-0.06em] text-white shadow-[0_16px_32px_rgba(93,92,255,0.26)]">
+      M
     </div>
   )
 }
@@ -345,6 +345,9 @@ function LoginPageContent() {
                 {copy.heading}
               </h1>
               <p className="max-w-[32rem] text-base leading-7 text-slate-500">{copy.subheading}</p>
+              <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
+                {isCn ? "当前站点：国内版" : "Current site: International"}
+              </div>
             </div>
 
             <div className="mt-8 space-y-5">
