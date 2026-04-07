@@ -56,7 +56,7 @@ export const PLAN_CATALOG: Record<PlanTier, PlanDefinition> = {
     rank: 1,
     nameCn: "启动版",
     nameEn: "Starter",
-    monthlyPriceCn: "¥99",
+    monthlyPriceCn: "¥0.01",
     monthlyPriceEn: "$19",
     yearlyPriceCn: "¥948",
     yearlyPriceEn: "$190",
