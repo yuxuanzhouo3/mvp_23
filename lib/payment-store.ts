@@ -25,6 +25,10 @@ type PaymentStore = {
 const PAYMENT_FILE = path.join(getWorkspacesDir(), "_payments.json")
 const STORE_READ_RETRY_MS = 25
 
+function createPaymentId() {
+  return `pay${Date.now()}${crypto.randomBytes(4).toString("hex")}`
+}
+
 async function exists(filePath: string) {
   try {
     await fs.access(filePath)
@@ -76,7 +80,7 @@ export async function createPayment(input: Omit<PaymentRecord, "id" | "status" |
   const store = await readStore()
   const now = new Date().toISOString()
   const payment: PaymentRecord = {
-    id: crypto.randomUUID(),
+    id: createPaymentId(),
     status: "pending",
     createdAt: now,
     updatedAt: now,
