@@ -1,12 +1,38 @@
 import crypto from "crypto"
 
+function tryDecodeBase64Pem(value: string) {
+  try {
+    const decoded = Buffer.from(value, "base64").toString("utf8").trim()
+    if (/-----BEGIN [A-Z ]+-----/.test(decoded)) {
+      return decoded
+    }
+  } catch {}
+  return ""
+}
+
 export function normalizePemKey(raw: string) {
-  const value = String(raw ?? "").trim()
-  if (!value) return ""
-  if (value.includes("BEGIN")) return value
-  const normalized = value.replace(/\\n/g, "\n")
-  if (normalized.includes("BEGIN")) return normalized
-  return `-----BEGIN PRIVATE KEY-----\n${normalized}\n-----END PRIVATE KEY-----`
+  const originalValue = String(raw ?? "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim()
+  if (!originalValue) return ""
+
+  const value = /-----BEGIN [A-Z ]+-----/.test(originalValue) ? originalValue : tryDecodeBase64Pem(originalValue) || originalValue
+  const headerMatch = value.match(/-----BEGIN ([A-Z ]+)-----/)
+  const keyType = headerMatch?.[1]?.trim() || "PRIVATE KEY"
+
+  const normalizedBody = value
+    .replace(/-----BEGIN [A-Z ]+-----/g, "")
+    .replace(/-----END [A-Z ]+-----/g, "")
+    .replace(/\s+/g, "")
+    .trim()
+
+  if (!normalizedBody) return value
+
+  const wrappedBody = normalizedBody.match(/.{1,64}/g)?.join("\n") || normalizedBody
+  return `-----BEGIN ${keyType}-----\n${wrappedBody}\n-----END ${keyType}-----`
 }
 
 export function formatAlipayTimestamp(date = new Date()) {
