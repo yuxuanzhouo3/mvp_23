@@ -49,7 +49,7 @@ export function resolveWechatPayConfig(): WechatPayConfig {
   const mchid = String(process.env.WECHAT_PAY_MCH_ID ?? "").trim()
   const serialNo = String(process.env.WECHAT_PAY_SERIAL_NO ?? "").trim()
   const apiV3Key = String(process.env.WECHAT_PAY_API_V3_KEY ?? "").trim()
-  const appId = String(process.env.WECHAT_PAY_APP_ID ?? "").trim()
+  const appId = String(process.env.WECHAT_PAY_APP_ID ?? process.env.WECHAT_APP_ID ?? "").trim()
   const rawPrivateKey = String(process.env.WECHAT_PAY_PRIVATE_KEY ?? "").trim()
   const rawPlatformPublicKey = String(process.env.WECHAT_PAY_PLATFORM_PUBLIC_KEY ?? process.env.WECHAT_PAY_PLATFORM_CERT ?? "").trim()
   const platformSerialNo = String(process.env.WECHAT_PAY_PLATFORM_SERIAL_NO ?? "").trim()

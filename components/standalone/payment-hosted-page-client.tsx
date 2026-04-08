@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft, CreditCard, LockKeyhole, ReceiptText, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Check, Copy, CreditCard, LockKeyhole, QrCode, ReceiptText, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +24,7 @@ function HostedPaymentPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const paymentId = searchParams.get("paymentId") || ""
+  const provider = searchParams.get("provider") || ""
   const debug = searchParams.get("debug") === "1"
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
@@ -32,6 +33,9 @@ function HostedPaymentPageContent() {
   const [cardholder, setCardholder] = useState("")
   const [country, setCountry] = useState("")
   const [verifyMessage, setVerifyMessage] = useState("")
+  const [wechatCodeUrl, setWechatCodeUrl] = useState("")
+  const [wechatQrError, setWechatQrError] = useState("")
+  const [copied, setCopied] = useState(false)
 
   async function loadStatus() {
     if (!paymentId) {
@@ -52,6 +56,55 @@ function HostedPaymentPageContent() {
     if (!payment) return
     setCountry(payment.region === "cn" ? "中国" : "United States")
   }, [payment])
+
+  const isWechatHosted = (payment?.method || provider) === "wechatpay"
+
+  useEffect(() => {
+    if (!paymentId || !isWechatHosted) return
+    let cancelled = false
+
+    async function bootstrapWechatSession() {
+      try {
+        setWechatQrError("")
+        const res = await fetch(`/api/payment/wechat-session?paymentId=${encodeURIComponent(paymentId)}`)
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          if (!cancelled) {
+            setWechatQrError(String(json?.error ?? "微信支付二维码初始化失败"))
+          }
+          return
+        }
+        if (!cancelled) {
+          setWechatCodeUrl(String(json?.codeUrl ?? "").trim())
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWechatQrError(error instanceof Error ? error.message : "微信支付二维码初始化失败")
+        }
+      }
+    }
+
+    void bootstrapWechatSession()
+    return () => {
+      cancelled = true
+    }
+  }, [isWechatHosted, paymentId])
+
+  useEffect(() => {
+    if (!paymentId || !isWechatHosted || payment?.status !== "pending") return
+    const timer = window.setInterval(async () => {
+      const res = await fetch(`/api/payment/status?paymentId=${encodeURIComponent(paymentId)}&refresh=1`)
+      const json = (await res.json().catch(() => ({}))) as PaymentResp
+      const nextPayment = json.payment ?? null
+      if (nextPayment) {
+        setPayment(nextPayment)
+        if (nextPayment.status === "completed") {
+          router.push(`/payment/success?paymentId=${encodeURIComponent(paymentId)}`)
+        }
+      }
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [isWechatHosted, payment?.status, paymentId, router])
 
   const showDebugActions =
     debug ||
@@ -210,6 +263,18 @@ function HostedPaymentPageContent() {
   }
 
   const badgeText = payment.status === "completed" ? copy.paid : payment.status === "cancelled" ? copy.cancelled : copy.pending
+  const wechatQrPreviewUrl = wechatCodeUrl ? `/api/payment/wechat-qr?data=${encodeURIComponent(wechatCodeUrl)}` : ""
+
+  async function copyWechatCodeUrl() {
+    if (!wechatCodeUrl) return
+    try {
+      await navigator.clipboard.writeText(wechatCodeUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setVerifyMessage(isCn ? "复制二维码链接失败，请手动复制。" : "Failed to copy the QR code link.")
+    }
+  }
 
   return (
     <div className="min-h-[calc(100vh-8rem)] rounded-[2rem] bg-[radial-gradient(circle_at_top,#f5f6ff,transparent_38%),linear-gradient(180deg,#fafaf7_0%,#ffffff_48%,#f8fafc_100%)] p-4 md:p-8">
@@ -267,38 +332,87 @@ function HostedPaymentPageContent() {
             </div>
 
             <div className="mt-8 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[1.25rem] border border-border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
-                  <ReceiptText className="h-4 w-4" />
-                  {copy.contact}
-                </div>
-                <div className="space-y-3">
-                  <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder={isCn ? "邮箱" : "Email"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
-                  <input value={cardholder} onChange={(event) => setCardholder(event.target.value)} placeholder={isCn ? "姓名" : "Name"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
-                  <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder={isCn ? "国家或地区" : "Country or region"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
-                </div>
-              </div>
-
-              <div className="rounded-[1.25rem] border border-border p-4">
-                <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
-                  <CreditCard className="h-4 w-4" />
-                  {copy.payMethod}
-                </div>
-                <div className="space-y-3">
-                  <div className="rounded-xl border border-border bg-secondary/40 p-3 text-sm">
-                    <div className="font-medium text-foreground">{payment.method}</div>
-                    <div className="mt-1 text-muted-foreground">{copy.hostedInfo}</div>
-                  </div>
-                  <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
-                    {copy.secure}
-                  </div>
-                  {showDebugActions ? (
-                    <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
-                      {isCn ? "测试模式已开启，可使用调试动作辅助验证支付流程。" : "Test mode is enabled. Debug actions are available for payment-flow verification."}
+              {isWechatHosted ? (
+                <>
+                  <div className="rounded-[1.25rem] border border-border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
+                      <QrCode className="h-4 w-4" />
+                      {isCn ? "微信扫码支付" : "WeChat QR payment"}
                     </div>
-                  ) : null}
-                </div>
-              </div>
+                    <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-border bg-secondary/20 p-4">
+                      {wechatQrPreviewUrl && !wechatQrError ? (
+                        <img
+                          src={wechatQrPreviewUrl}
+                          alt="WeChat Pay QR"
+                          className="aspect-square w-full max-w-[320px] rounded-2xl border border-border bg-white object-contain"
+                          onError={() => setWechatQrError(isCn ? "二维码渲染失败，请复制链接后手动扫码。" : "QR rendering failed. Copy the link and scan manually.")}
+                        />
+                      ) : (
+                        <div className="px-6 text-center text-sm text-muted-foreground">
+                          {wechatQrError || (isCn ? "正在生成微信支付二维码..." : "Generating the WeChat Pay QR code...")}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
+                      <CreditCard className="h-4 w-4" />
+                      {copy.payMethod}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border bg-secondary/40 p-3 text-sm">
+                        <div className="font-medium text-foreground">{payment.method}</div>
+                        <div className="mt-1 text-muted-foreground">
+                          {isCn ? "请直接使用微信扫码支付，系统会自动刷新支付状态并在到账后跳转。" : "Scan with WeChat Pay and the page will auto-refresh the status before redirecting."}
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground break-all">
+                        {wechatCodeUrl || (isCn ? "正在等待二维码链接..." : "Waiting for the QR code link...")}
+                      </div>
+                      <Button variant="outline" onClick={copyWechatCodeUrl} disabled={!wechatCodeUrl}>
+                        {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                        {copied ? (isCn ? "已复制二维码链接" : "QR link copied") : (isCn ? "复制二维码链接" : "Copy QR link")}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-[1.25rem] border border-border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
+                      <ReceiptText className="h-4 w-4" />
+                      {copy.contact}
+                    </div>
+                    <div className="space-y-3">
+                      <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder={isCn ? "邮箱" : "Email"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
+                      <input value={cardholder} onChange={(event) => setCardholder(event.target.value)} placeholder={isCn ? "姓名" : "Name"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
+                      <input value={country} onChange={(event) => setCountry(event.target.value)} placeholder={isCn ? "国家或地区" : "Country or region"} className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none transition focus:border-primary" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-border p-4">
+                    <div className="mb-3 flex items-center gap-2 font-medium text-foreground">
+                      <CreditCard className="h-4 w-4" />
+                      {copy.payMethod}
+                    </div>
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-border bg-secondary/40 p-3 text-sm">
+                        <div className="font-medium text-foreground">{payment.method}</div>
+                        <div className="mt-1 text-muted-foreground">{copy.hostedInfo}</div>
+                      </div>
+                      <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
+                        {copy.secure}
+                      </div>
+                      {showDebugActions ? (
+                        <div className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
+                          {isCn ? "测试模式已开启，可使用调试动作辅助验证支付流程。" : "Test mode is enabled. Debug actions are available for payment-flow verification."}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="mt-6 rounded-[1.25rem] border border-border bg-secondary/20 p-4 text-sm text-muted-foreground">

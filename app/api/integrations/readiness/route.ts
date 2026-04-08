@@ -207,6 +207,7 @@ export async function GET() {
         "WECHAT_PAY_SERIAL_NO",
         "WECHAT_PAY_PRIVATE_KEY",
         "WECHAT_PAY_APP_ID",
+        "WECHAT_APP_ID",
         "WECHAT_PAY_PLATFORM_PUBLIC_KEY",
         "WECHAT_PAY_PLATFORM_SERIAL_NO",
       ],
