@@ -36,11 +36,18 @@ import { buildWorkspaceBootstrap } from "@/lib/workspace-bootstrap"
 import {
   buildSpecDrivenWorkspaceFiles,
   createAppSpec,
+  finalizeAppSpec,
+  getScaffoldArchetype,
+  isAdminOpsTaskSpec,
+  refreshCodePlatformBlueprintNarrative,
   readProjectSpec,
   writeProjectSpec,
   type AppKind,
+  type AppIntent,
   type AppSpec,
+  type RouteBlueprint,
   type SpecFeature,
+  type VisualSeed,
 } from "@/lib/project-spec"
 import { getCurrentSession } from "@/lib/auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
@@ -93,6 +100,142 @@ function slugifyProjectName(input?: string | null) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
+}
+
+function humanizePlannerPage(page: string, region: Region) {
+  const isCn = region === "cn"
+  const labels: Record<string, string> = isCn
+    ? {
+        dashboard: "控制台",
+        editor: "编辑器",
+        runs: "运行",
+        templates: "模板库",
+        pricing: "定价",
+        settings: "设置",
+        leads: "线索",
+        pipeline: "商机阶段",
+        customers: "客户",
+        automations: "自动化",
+        reports: "报表",
+        endpoints: "接口",
+        logs: "日志",
+        auth: "鉴权",
+        environments: "环境",
+        webhooks: "Webhook",
+        feedback: "反馈",
+        roadmap: "路线图",
+        posts: "帖子",
+        members: "成员",
+        events: "活动",
+        website: "官网",
+        downloads: "下载",
+        docs: "文档",
+        changelog: "更新日志",
+        admin: "分发后台",
+        tasks: "任务",
+        approvals: "审批",
+        analytics: "分析",
+      }
+    : {
+        dashboard: "dashboard",
+        editor: "editor",
+        runs: "runs",
+        templates: "templates",
+        pricing: "pricing",
+        settings: "settings",
+        leads: "leads",
+        pipeline: "pipeline",
+        customers: "customers",
+        automations: "automations",
+        reports: "reports",
+        endpoints: "endpoints",
+        logs: "logs",
+        auth: "auth",
+        environments: "environments",
+        webhooks: "webhooks",
+        feedback: "feedback",
+        roadmap: "roadmap",
+        posts: "posts",
+        members: "members",
+        events: "events",
+        website: "website",
+        downloads: "downloads",
+        docs: "docs",
+        changelog: "changelog",
+        admin: "admin",
+        tasks: "tasks",
+        approvals: "approvals",
+        analytics: "analytics",
+      }
+  return labels[page] || page
+}
+
+function describePlannerPages(pages: string[], region: Region, limit = 5) {
+  const picked = pages.slice(0, limit).map((page) => humanizePlannerPage(page, region))
+  return picked.join(region === "cn" ? "、" : ", ")
+}
+
+function inferPlannerProductName(productType: PlannerProductType, prompt: string, region: Region) {
+  const explicit = deriveProjectHeadline(prompt)
+  if (explicit && !/^build a |^create a |^做一个|^搭一个|^做一套/i.test(explicit)) {
+    return explicit
+  }
+
+  if (productType === "ai_code_platform") {
+    return /morncursor/i.test(prompt) ? "MornCursor" : "MornCursor"
+  }
+  if (productType === "crm_workspace") {
+    return region === "cn" ? "销售增长台" : "Revenue Pilot"
+  }
+  if (productType === "api_platform") {
+    return region === "cn" ? "接口运行台" : "API Console"
+  }
+  if (productType === "community_hub") {
+    return region === "cn" ? "社区反馈站" : "Community Loop"
+  }
+  if (productType === "content_site") {
+    return region === "cn" ? "增长官网站" : "LaunchPad"
+  }
+  return region === "cn" ? "运营协作台" : "Ops Desk"
+}
+
+function buildPlannerSummary(productType: PlannerProductType, pages: string[], deploymentTarget: DeploymentTarget, databaseTarget: DatabaseTarget, region: Region) {
+  const routeSummary = describePlannerPages(pages, region)
+  if (region === "cn") {
+    if (productType === "ai_code_platform") {
+      return `已规划为 AI 代码平台，当前主入口包括 ${routeSummary}，默认接入 ${deploymentTarget} + ${databaseTarget}。`
+    }
+    if (productType === "crm_workspace") {
+      return `已规划为 CRM 工作台，当前主入口包括 ${routeSummary}，重点承接销售推进、客户视图与报表能力。`
+    }
+    if (productType === "api_platform") {
+      return `已规划为 API 平台，当前主入口包括 ${routeSummary}，重点承接接口目录、日志、鉴权与环境管理。`
+    }
+    if (productType === "community_hub") {
+      return `已规划为社区产品，当前主入口包括 ${routeSummary}，重点承接帖子、反馈、成员与路线图运营。`
+    }
+    if (productType === "content_site") {
+      return `已规划为官网与下载产品，当前主入口包括 ${routeSummary}，重点承接官网叙事、下载转化与分发后台。`
+    }
+    return `已规划为内部工作台，当前主入口包括 ${routeSummary}。`
+  }
+
+  if (productType === "ai_code_platform") {
+    return `Planned as an AI coding platform with ${routeSummary} on ${deploymentTarget} + ${databaseTarget}.`
+  }
+  if (productType === "crm_workspace") {
+    return `Planned as a CRM workspace with ${routeSummary}, focusing on pipeline control, account views, and reporting.`
+  }
+  if (productType === "api_platform") {
+    return `Planned as an API platform with ${routeSummary}, focusing on endpoints, logs, access, and environment operations.`
+  }
+  if (productType === "community_hub") {
+    return `Planned as a community product with ${routeSummary}, covering posts, feedback, members, and roadmap operations.`
+  }
+  if (productType === "content_site") {
+    return `Planned as a website and download product with ${routeSummary}, connecting conversion, docs, and distribution.`
+  }
+  return `Planned as an internal workspace with ${routeSummary}.`
 }
 
 type GeneratedFile = {
@@ -467,22 +610,154 @@ function resolveTemplateId(prompt: string, context?: GenerateRequestContext) {
 
 function looksLikeCodePlatformPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(text)
+  const explicitApiSignals =
+    /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+      text
+    )
+  const explicitCodeSignals =
+    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
+      text
+    )
+  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制/.test(text)
+  if (explicitApiSignals && !ideSignals && !explicitCodeSignals) return false
+  return explicitCodeSignals || ideSignals
+}
+
+function looksLikeApiPlatformPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+    text
+  )
+}
+
+function looksLikeAdminOpsPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|运营后台|内部工具|审批|工单|控制台|权限|角色|审计|告警|故障|合规|安全/.test(
+    text
+  )
+}
+
+function looksLikeMarketingDistributionPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|落地页|下载|文档|设备|分发|安装包|桌面端/.test(
+    text
+  )
+}
+
+function looksLikeCommunityPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|社区|社团|社交|公告|活动|反馈|路线图|审核|治理|成员|投票/.test(
+    text
+  )
+}
+
+function looksLikeEventDrivenCommunityPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /event|events|webinar|webinars|meetup|meetups|session|sessions|registration|registrations|agenda|speaker|ambassador|advocate|invite|invites|member segment|membership tier|活动|直播|会议|报名|议程|讲者|大使|邀请|分层|会员/.test(
+    text
+  )
+}
+
+function looksLikeSpecializedWorkspacePrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(
+    text
+  )
+}
+
+function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
+  const text = String(prompt ?? "").toLowerCase()
+  const isCn = region === "cn"
+  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理/.test(text)) {
+    return {
+      category: isCn ? "医疗运营工作台" : "Healthcare operations workspace",
+      tone: isCn ? "医疗护理运营工作台" : "Clinical care operations workspace",
+      modules: isCn ? ["患者队列", "预约排程", "护理计划", "风险预警"] : ["Patient queue", "Appointment scheduling", "Care plans", "Risk alerts"],
+      jobs: isCn ? ["管理患者队列", "安排预约", "跟进护理计划"] : ["Manage patient queues", "schedule appointments", "track care plans"],
+      workflow: isCn ? "患者 -> 预约 -> 护理计划 -> 风险跟进" : "Patient -> appointment -> care plan -> risk follow-up",
+    }
+  }
+  if (/recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用/.test(text)) {
+    return {
+      category: isCn ? "招聘人才工作台" : "Recruiting and talent workspace",
+      tone: isCn ? "招聘人才运营工作台" : "Talent pipeline workspace",
+      modules: isCn ? ["候选人池", "岗位需求", "面试排程", "Offer 审批"] : ["Candidate pool", "Role planning", "Interview scheduling", "Offer approvals"],
+      jobs: isCn ? ["管理候选人", "安排面试", "推进 offer 审批"] : ["Manage candidates", "schedule interviews", "advance offer approvals"],
+      workflow: isCn ? "候选人 -> 岗位 -> 面试 -> offer 审批" : "Candidate -> role -> interview -> offer approval",
+    }
+  }
+  if (/support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+    return {
+      category: isCn ? "客服工单工作台" : "Support and ticketing workspace",
+      tone: isCn ? "客服 SLA 工单工作台" : "Support SLA command center",
+      modules: isCn ? ["工单队列", "客户案例", "SLA 升级", "知识库"] : ["Ticket queue", "Customer cases", "SLA escalation", "Knowledge base"],
+      jobs: isCn ? ["处理工单", "同步客户案例", "维护知识库"] : ["Resolve tickets", "sync customer cases", "maintain knowledge base"],
+      workflow: isCn ? "工单 -> 客户案例 -> 升级 -> 知识库沉淀" : "Ticket -> customer case -> escalation -> knowledge base",
+    }
+  }
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(text)) {
+    return {
+      category: isCn ? "电商运营工作台" : "Commerce operations workspace",
+      tone: isCn ? "库存履约运营工作台" : "Inventory and fulfillment workspace",
+      modules: isCn ? ["SKU 管理", "库存水位", "履约订单", "补货预警"] : ["SKU management", "Inventory levels", "Fulfillment orders", "Reorder alerts"],
+      jobs: isCn ? ["管理 SKU", "跟踪库存", "推进履约订单"] : ["Manage SKUs", "track inventory", "advance fulfillment orders"],
+      workflow: isCn ? "SKU -> 库存 -> 履约订单 -> 供应商交接" : "SKU -> inventory -> fulfillment order -> supplier handoff",
+    }
+  }
+  if (/finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票/.test(text)) {
+    return {
+      category: isCn ? "金融财务控制台" : "Finance operations console",
+      tone: isCn ? "金融对账控制台" : "Finance reconciliation console",
+      modules: isCn ? ["账本视图", "交易流水", "对账队列", "异常处理"] : ["Ledger view", "Transaction feed", "Reconciliation queue", "Exception handling"],
+      jobs: isCn ? ["维护账本", "核对交易", "处理异常"] : ["Maintain ledgers", "reconcile transactions", "resolve exceptions"],
+      workflow: isCn ? "账本 -> 交易 -> 对账 -> 异常处理" : "Ledger -> transaction -> reconciliation -> exception handling",
+    }
+  }
+  if (/education|course|student|assignment|school|learning|课程|学生|作业|学校|学习/.test(text)) {
+    return {
+      category: isCn ? "教育学习工作台" : "Education and learning workspace",
+      tone: isCn ? "教育课程运营工作台" : "Learning operations workspace",
+      modules: isCn ? ["课程目录", "学生进度", "作业流", "学习反馈"] : ["Course catalog", "Student progress", "Assignment flow", "Learning feedback"],
+      jobs: isCn ? ["管理课程", "跟踪学生", "安排作业"] : ["Manage courses", "track students", "coordinate assignments"],
+      workflow: isCn ? "课程 -> 学生 -> 作业 -> 学习反馈" : "Course -> student -> assignment -> learning feedback",
+    }
+  }
+  return null
+}
+
+function shouldPreferAdminOpsOverCrm(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  if (!looksLikeAdminOpsPrompt(text)) return false
+  if (looksLikeMarketingDistributionPrompt(text)) return false
+  if (looksLikeCommunityPrompt(text)) return false
+  if (looksLikeSpecializedWorkspacePrompt(text)) return false
+  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|商机|报价|续约/.test(
+    text
+  )
 }
 
 function inferPromptOnlyPlannerProductType(prompt: string): PlannerProductType {
   const text = String(prompt ?? "").toLowerCase()
+  if (looksLikeApiPlatformPrompt(text)) {
+    return "api_platform"
+  }
   if (looksLikeCodePlatformPrompt(text)) {
     return "ai_code_platform"
   }
-  if (/api|sdk|developer portal|endpoint|endpoints|auth|environment|environments|webhook|logs|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
-    return "api_platform"
+  if (looksLikeMarketingDistributionPrompt(text)) {
+    return "content_site"
+  }
+  if (looksLikeCommunityPrompt(text)) {
+    return "community_hub"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(text)) {
+    return "task_workspace"
+  }
+  if (shouldPreferAdminOpsOverCrm(text)) {
+    return "task_workspace"
   }
   if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
     return "crm_workspace"
-  }
-  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
-    return "community_hub"
   }
   if (/website|landing|homepage|download|downloads|documentation|docs|marketing|brand|官网|下载站|落地页|下载页|文档|品牌|增长/.test(text)) {
     return "content_site"
@@ -495,9 +770,14 @@ function inferPromptOnlyPlannerProductType(prompt: string): PlannerProductType {
 
 function resolvePlannerProductType(prompt: string, context?: GenerateRequestContext): PlannerProductType {
   const kind = resolveContextAppKind(prompt, context)
+  if (looksLikeApiPlatformPrompt(prompt) && kind !== "code_platform") return "api_platform"
   if (kind === "code_platform") return "ai_code_platform"
+  if (looksLikeMarketingDistributionPrompt(prompt)) return "content_site"
+  if (looksLikeCommunityPrompt(prompt) || kind === "community") return "community_hub"
+  if (looksLikeSpecializedWorkspacePrompt(prompt)) return "task_workspace"
+  if (shouldPreferAdminOpsOverCrm(prompt)) return "task_workspace"
   if (kind === "crm") return "crm_workspace"
-  if (kind === "community") return "community_hub"
+  if (looksLikeApiPlatformPrompt(prompt)) return "api_platform"
   if (looksLikeCodePlatformPrompt(prompt)) return "ai_code_platform"
   if (kind === "blog" || /website|landing|homepage|download|官网|下载站|落地页|文档/i.test(prompt)) return "content_site"
   const promptOnly = inferPromptOnlyPlannerProductType(prompt)
@@ -944,10 +1224,10 @@ function plannerSnapshotToPlannerSpec(snapshot?: GeneratePlanSnapshot, region: R
 
 function getDefaultPlannerPages(productType: PlannerProductType) {
   if (productType === "ai_code_platform") return ["dashboard", "editor", "runs", "templates", "pricing", "settings"]
-  if (productType === "crm_workspace") return ["dashboard", "leads", "pipeline", "customers", "automations"]
-  if (productType === "api_platform") return ["dashboard", "endpoints", "logs", "auth", "environments"]
-  if (productType === "community_hub") return ["dashboard", "events", "feedback", "members", "settings"]
-  if (productType === "content_site") return ["dashboard", "website", "downloads", "docs", "admin"]
+  if (productType === "crm_workspace") return ["dashboard", "leads", "pipeline", "customers", "automations", "reports"]
+  if (productType === "api_platform") return ["dashboard", "endpoints", "logs", "auth", "environments", "webhooks"]
+  if (productType === "community_hub") return ["dashboard", "events", "members", "feedback", "roadmap", "settings"]
+  if (productType === "content_site") return ["dashboard", "website", "pricing", "downloads", "docs", "changelog", "admin"]
   return ["dashboard", "tasks", "settings", "analytics"]
 }
 
@@ -961,20 +1241,25 @@ function getRequiredPlannerPages(productType: PlannerProductType, planTier?: Pla
     return ["dashboard", "editor", "runs", "templates", "pricing", "settings"]
   }
   if (productType === "crm_workspace") {
-    if (planId === "free") return ["dashboard", "leads", "pipeline", "customers"]
-    return ["dashboard", "leads", "pipeline", "customers", "automations"]
+    if (planId === "free") return ["dashboard", "leads", "pipeline"]
+    if (planId === "starter") return ["dashboard", "leads", "pipeline", "customers"]
+    return ["dashboard", "leads", "pipeline", "customers", "automations", "reports"]
   }
   if (productType === "api_platform") {
-    if (planId === "free") return ["dashboard", "endpoints", "logs", "auth"]
-    return ["dashboard", "endpoints", "logs", "auth", "environments"]
+    if (planId === "free") return ["dashboard", "endpoints", "logs"]
+    if (planId === "starter") return ["dashboard", "endpoints", "logs", "auth"]
+    return ["dashboard", "endpoints", "logs", "auth", "environments", "webhooks"]
   }
   if (productType === "community_hub") {
-    if (planId === "free") return ["dashboard", "events", "feedback", "settings"]
-    return ["dashboard", "events", "feedback", "members", "settings"]
+    if (planId === "free") return ["dashboard", "events", "members"]
+    if (planId === "starter") return ["dashboard", "events", "members", "feedback"]
+    return ["dashboard", "events", "members", "feedback", "roadmap", "settings"]
   }
   if (productType === "content_site") {
-    if (planId === "free") return ["dashboard", "website", "downloads", "docs"]
-    return ["dashboard", "website", "downloads", "docs", "admin"]
+    if (planId === "free") return ["dashboard", "website", "downloads"]
+    if (planId === "starter") return ["dashboard", "website", "pricing", "downloads"]
+    if (planId === "builder") return ["dashboard", "website", "pricing", "downloads", "docs", "admin"]
+    return ["dashboard", "website", "pricing", "downloads", "docs", "changelog", "admin"]
   }
   if (planId === "elite") {
     return ["dashboard", "tasks", "settings", "analytics", "reports", "automations", "team", "approvals", "handoff", "playbooks"]
@@ -991,6 +1276,166 @@ function getRequiredPlannerPages(productType: PlannerProductType, planTier?: Pla
   return ["dashboard", "tasks", "settings", "analytics"]
 }
 
+function getPinnedPlannerPages(productType: PlannerProductType, planTier?: PlanTier) {
+  const planId = planTier ? normalizePlanTier(planTier) : null
+
+  if (productType === "ai_code_platform") {
+    return planId === "free" || planId === "starter" ? ["dashboard", "editor"] : ["dashboard", "editor", "runs"]
+  }
+
+  if (productType === "crm_workspace") {
+    return planId === "free" ? ["dashboard", "leads", "pipeline"] : ["dashboard", "leads", "pipeline", "customers"]
+  }
+
+  if (productType === "api_platform") {
+    return planId === "free" ? ["dashboard", "endpoints"] : ["dashboard", "endpoints", "logs"]
+  }
+
+  if (productType === "community_hub") {
+    return planId === "free" ? ["dashboard", "events"] : ["dashboard", "events", "members"]
+  }
+
+  if (productType === "content_site") {
+    return ["dashboard", "website"]
+  }
+
+  if (planId === "elite") return ["dashboard", "tasks", "analytics", "reports"]
+  if (planId === "pro") return ["dashboard", "tasks", "analytics"]
+  if (planId === "builder") return ["dashboard", "tasks", "analytics"]
+  if (planId === "starter") return ["dashboard", "tasks"]
+  return ["dashboard", "tasks"]
+}
+
+function getPromptDrivenPlannerPages(productType: PlannerProductType, prompt: string) {
+  const text = prompt.toLowerCase()
+  const pages: string[] = []
+
+  if (productType === "ai_code_platform") {
+    if (/assistant|chat|conversation|copilot|agent|助手|对话|智能体/.test(text)) {
+      pages.push("assistant")
+    }
+    if (/publish|deploy|delivery|release|上线|发布|交付/.test(text)) {
+      pages.push("publish")
+    }
+    if (/file|workspace|tree|repo|repository|文件|工作区|仓库/.test(text)) {
+      pages.push("files")
+    }
+  }
+
+  if (productType === "crm_workspace") {
+    if (/order|invoice|billing|quote|报价|订单|发票|账单/.test(text)) {
+      pages.push("orders")
+    }
+    if (/report|forecast|quota|analytics|pipeline review|报表|预测|业绩|配额|分析/.test(text)) {
+      pages.push("reports")
+    }
+    if (/customer|account|renewal|success|portfolio|客户|账户|续约|客户成功/.test(text)) {
+      pages.push("customers")
+    }
+    if (/team|rep|manager|leaderboard|团队|销售代表|排行榜/.test(text)) {
+      pages.push("team")
+    }
+  }
+
+  if (productType === "api_platform") {
+    if (/webhook|callback|event delivery|subscription|回调|订阅|事件投递/.test(text)) {
+      pages.push("webhooks")
+    }
+    if (/docs|documentation|guide|reference|文档|指南|参考/.test(text)) {
+      pages.push("docs")
+    }
+    if (/usage|metering|analytics|billing|用量|计量|分析|计费/.test(text)) {
+      pages.push("usage")
+    }
+    if (/key|keys|token|oauth|auth|credential|密钥|令牌|鉴权|凭证/.test(text)) {
+      pages.push("auth")
+    }
+  }
+
+  if (productType === "community_hub") {
+    if (looksLikeEventDrivenCommunityPrompt(text)) {
+      pages.push("events")
+    }
+    if (/member|community member|invite|segment|membership|成员|邀请|分层|会员|ambassador|advocate|大使|倡导者/.test(text)) {
+      pages.push("members")
+    }
+    if (/feedback|feedback intake|request|requests|post-event feedback|反馈|诉求/.test(text)) {
+      pages.push("feedback")
+    }
+    if (/moderation|review|report abuse|safety|审核|举报|治理|安全/.test(text)) {
+      pages.push("moderation")
+    }
+    if (/roadmap|vote|wishlist|feature request|路线图|投票|愿望单/.test(text)) {
+      pages.push("roadmap")
+    }
+    if (/post|forum|discussion|announcement|feed|帖子|论坛|讨论|公告|动态/.test(text)) {
+      pages.push("posts")
+    }
+  }
+
+  if (productType === "content_site") {
+    if (/download|downloads|distribution|distribute|channel|rollout|device|ios|android|apk|mac|windows|desktop|下载|分发|渠道|设备|桌面端|安卓|苹果/.test(text)) {
+      pages.push("downloads")
+    }
+    if (/docs|documentation|guide|faq|reference|文档|指南|faq|参考/.test(text)) {
+      pages.push("docs")
+    }
+    if (/admin|distribution|channel|rollout|后台|分发后台|渠道管理/.test(text)) {
+      pages.push("admin")
+    }
+    if (/pricing|plan|subscription|套餐|定价|价格/.test(text)) {
+      pages.push("pricing")
+    }
+    if (/changelog|release note|release notes|release history|更新日志|版本说明|发布记录/.test(text)) {
+      pages.push("changelog")
+    }
+  }
+
+  if (productType === "task_workspace") {
+    if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|医疗|健康|诊所|患者|医生|医院|预约|病历|护理/.test(text)) {
+      pages.push("patients", "appointments", "care")
+    }
+    if (/school|education|course|student|teacher|class|lesson|assignment|campus|教育|学校|课程|学生|老师|班级|作业|校园/.test(text)) {
+      pages.push("courses", "students", "assignments")
+    }
+    if (/finance|financial|bank|ledger|transaction|reconciliation|expense|portfolio|金融|财务|银行|账本|交易|对账|费用|投资组合/.test(text)) {
+      pages.push("accounts", "transactions", "reconciliation")
+    }
+    if (/recruit|hiring|candidate|interview|job|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用/.test(text)) {
+      pages.push("candidates", "jobs", "interviews")
+    }
+    if (/support|ticket|helpdesk|sla|knowledge base|case|客服|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+      pages.push("tickets", "cases", "knowledge")
+    }
+    if (/commerce|ecommerce|store|sku|inventory|fulfillment|merchant|retail|电商|商城|库存|商品|履约|零售|商家/.test(text)) {
+      pages.push("products", "inventory", "orders")
+    }
+    if (/approval|review|signoff|审批|审核|签批/.test(text)) {
+      pages.push("approvals")
+    }
+    if (/security|access|permission|role|policy|安全|权限|角色|策略/.test(text)) {
+      pages.push("security")
+    }
+    if (/audit|history|trace|compliance|审计|留痕|合规|记录/.test(text)) {
+      pages.push("audit")
+    }
+    if (/incident|alert|outage|incident response|告警|故障|异常|应急/.test(text)) {
+      pages.push("incidents")
+    }
+    if (/team|owner|member|seat|workspace admin|团队|负责人|成员|席位/.test(text)) {
+      pages.push("team")
+    }
+    if (/report|analytics|dashboard review|汇报|分析|报表/.test(text)) {
+      pages.push("reports")
+    }
+    if (/automation|rule|workflow|自动化|规则|流程/.test(text)) {
+      pages.push("automations")
+    }
+  }
+
+  return Array.from(new Set(pages))
+}
+
 function getDefaultTemplateIdForPlannerProductType(
   productType: PlannerProductType,
   prompt: string,
@@ -1002,12 +1447,19 @@ function getDefaultTemplateIdForPlannerProductType(
   if (productType === "content_site") return "launchpad"
   const inferred = resolveTemplateId(prompt, context)
   if (inferred) return inferred
+  if (looksLikeMarketingDistributionPrompt(prompt)) return "launchpad"
   if (/website|landing|homepage|download|docs|官网|落地页|下载页|文档/i.test(prompt)) return "launchpad"
   if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/i.test(prompt)) {
     return "orbital"
   }
   if (/api|sdk|developer portal|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/i.test(prompt)) {
     return "taskflow"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(prompt)) {
+    return undefined
+  }
+  if (shouldPreferAdminOpsOverCrm(prompt)) {
+    return undefined
   }
   if (/crm|customer|sales|pipeline|lead|admin|ops|internal tool|backoffice|back office|control plane|客户|销售|跟进|管理后台|运营后台|内部工具|审批|工单|控制台/i.test(prompt)) {
     return "opsdesk"
@@ -1039,16 +1491,27 @@ function buildGenerationAcceptance(args: {
   } = args
   const archetype = resolveGenerateArchetype(prompt, planner.productType, context)
   const requiredPages = getRequiredPlannerPages(planner.productType, plannedSpec.planTier)
+  const pinnedPages = getPinnedPlannerPages(planner.productType, plannedSpec.planTier)
   const availablePages = new Set(planner.pages.map((page) => sanitizeUiText(page).toLowerCase()))
-  const criticalMissingPieces = requiredPages
+  const criticalMissingPieces = pinnedPages
     .filter((page) => !availablePages.has(page))
     .map((page) => `Missing ${page} route`)
 
   if (workflowMode === "edit_context" && !changedFiles.length) {
     criticalMissingPieces.push("Context-anchored request produced no applicable file changes")
   }
-  if (planner.productType === "ai_code_platform" && !plannedSpec.modules.some((item) => item.startsWith("ai:"))) {
-    criticalMissingPieces.push("AI tool rail was not registered in the generated modules")
+  if (
+    planner.productType === "ai_code_platform" &&
+    !(
+      plannedSpec.routeBlueprint?.some((item) => item.id === "editor" || item.id === "runs") ||
+      plannedSpec.modules.some((item) =>
+        /ai command center|file workspace|multi-tab editor|split code preview|ai 对话编程|文件工作区|多标签编辑器|分屏代码预览/i.test(
+          item
+        )
+      )
+    )
+  ) {
+    criticalMissingPieces.push("Code workspace AI surfaces were not registered in the generated modules")
   }
   if (buildResult.status === "failed") {
     criticalMissingPieces.push("Build validation failed")
@@ -1073,7 +1536,7 @@ function buildGenerationAcceptance(args: {
     workflowMode !== "discuss" &&
     buildResult.status === "ok" &&
     criticalMissingPieces.length === 0 &&
-    planner.pages.length >= requiredPages.length &&
+    planner.pages.length >= pinnedPages.length &&
     plannedSpec.modules.length >= 4
       ? "app_grade"
       : "demo_grade"
@@ -1125,8 +1588,11 @@ function uniqueLowerStrings(input: string[], fallback: string[]) {
   return values.length ? values : fallback
 }
 
-function mergePlannerPages(productType: PlannerProductType, parsedPages: string[] | undefined, fallbackPages: string[]) {
+function mergePlannerPages(productType: PlannerProductType, parsedPages: string[] | undefined, fallbackPages: string[], prompt: string) {
   const merged = uniqueLowerStrings(parsedPages ?? [], fallbackPages)
+  for (const page of getPromptDrivenPlannerPages(productType, prompt)) {
+    if (!merged.includes(page)) merged.push(page)
+  }
   const required = getRequiredPlannerPages(productType)
   for (const page of required) {
     if (!merged.includes(page)) merged.push(page)
@@ -1134,10 +1600,15 @@ function mergePlannerPages(productType: PlannerProductType, parsedPages: string[
   return merged
 }
 
-function constrainPlannerByPlanTier(planner: PlannerSpec, planTier: PlanTier) {
+function constrainPlannerByPlanTier(planner: PlannerSpec, planTier: PlanTier, prompt?: string) {
   const policy = getPlanPolicy(planTier)
   const required = getRequiredPlannerPages(planner.productType, planTier)
+  const defaults = getDefaultPlannerPages(planner.productType)
   const requiredSet = new Set(required)
+  const pinned = getPinnedPlannerPages(planner.productType, planTier)
+  const pinnedSet = new Set(pinned)
+  const promptPriorityPages = prompt ? getPromptDrivenPlannerPages(planner.productType, prompt) : []
+  const promptPrioritySet = new Set(promptPriorityPages)
   const routeBudget = policy.maxGeneratedRoutes
   const trimmedPages: string[] = []
 
@@ -1146,15 +1617,37 @@ function constrainPlannerByPlanTier(planner: PlannerSpec, planTier: PlanTier) {
     trimmedPages.push(page)
   }
 
+  for (const page of promptPriorityPages) {
+    if (!trimmedPages.includes(page)) {
+      trimmedPages.push(page)
+    }
+  }
+
   for (const page of required) {
     if (!trimmedPages.includes(page)) {
       trimmedPages.push(page)
     }
   }
 
+  const orderedPromptPriority = promptPriorityPages.filter((page) => trimmedPages.includes(page) && !pinnedSet.has(page))
+  const orderedRequired = required.filter((page) => trimmedPages.includes(page) && !pinnedSet.has(page) && !promptPrioritySet.has(page))
+  const orderedDefaults = defaults.filter(
+    (page) => trimmedPages.includes(page) && !pinnedSet.has(page) && !requiredSet.has(page) && !promptPrioritySet.has(page)
+  )
+  const orderedExtras = trimmedPages.filter(
+    (page) =>
+      !pinnedSet.has(page) &&
+      !requiredSet.has(page) &&
+      !promptPrioritySet.has(page) &&
+      !defaults.includes(page)
+  )
+
   const prioritized = [
-    ...trimmedPages.filter((page) => requiredSet.has(page)),
-    ...trimmedPages.filter((page) => !requiredSet.has(page)),
+    ...pinned.filter((page) => trimmedPages.includes(page)),
+    ...orderedPromptPriority,
+    ...orderedRequired,
+    ...orderedDefaults,
+    ...orderedExtras,
   ].slice(0, routeBudget)
 
   return {
@@ -1166,6 +1659,19 @@ function constrainPlannerByPlanTier(planner: PlannerSpec, planTier: PlanTier) {
 
 function inferPlannerProductType(prompt: string, context?: GenerateRequestContext): PlannerProductType {
   return resolvePlannerProductType(prompt, context)
+}
+
+function buildOrderedFallbackPlannerPages(productType: PlannerProductType, prompt: string) {
+  const safePinnedPages = getPinnedPlannerPages(productType, "free")
+  const safeRequiredPages = getRequiredPlannerPages(productType, "free")
+  return Array.from(
+    new Set([
+      ...safePinnedPages,
+      ...getPromptDrivenPlannerPages(productType, prompt),
+      ...safeRequiredPages,
+      ...getDefaultPlannerPages(productType),
+    ])
+  )
 }
 
 function fallbackPlannerSpec(
@@ -1180,12 +1686,13 @@ function fallbackPlannerSpec(
   const targetLocale = region === "cn" ? "zh-CN" : "en-US"
   const productName =
     context?.sharedSession?.projectName ||
-    deriveProjectHeadline(prompt) ||
+    inferPlannerProductName(productType, prompt, region) ||
     (region === "cn" ? "Mornstack 应用" : "Mornstack App")
   const cnDefaults: [string, string] = ["cloudbase", "cloud_docs"]
   const globalDefaults: [string, string] = ["vercel", "supabase"]
 
   if (productType === "ai_code_platform") {
+    const pages = buildOrderedFallbackPlannerPages(productType, prompt)
     return {
       productName,
       productType,
@@ -1195,29 +1702,26 @@ function fallbackPlannerSpec(
         tone: "production-ready",
         market: region === "cn" ? "china" : "global",
       },
-      pages: ["dashboard", "editor", "runs", "templates", "pricing", "settings"],
+      pages,
       layout: {
         editor: ["activity_bar", "file_tree", "tab_editor", "terminal_panel", "ai_assistant_panel"],
       },
       aiTools: ["explain", "fix", "generate", "refactor"],
       templates:
         region === "cn"
-          ? ["官网与下载站", "销售后台", "API 数据平台", "社区反馈中心"]
-          : ["Website and downloads", "Sales admin", "API platform", "Community hub"],
+          ? ["AI 命令中心", "运行与日志", "模板工坊", "发布与交付"]
+          : ["AI command center", "Runs and logs", "Template workshop", "Publishing and delivery"],
       plans: region === "cn" ? ["免费版", "启动版", "建造者版", "专业版", "精英版"] : ["Free", "Starter", "Builder", "Pro", "Elite"],
       deploymentDefaults: {
         cn: cnDefaults,
         global: globalDefaults,
       },
       preferredScaffold: "ai_code_platform_scaffold",
-      summary:
-        region === "cn"
-          ? `规划为 AI 代码编辑平台，输出 dashboard、editor、runs、templates、pricing、settings 六页骨架，并默认接入 ${deploymentTarget} + ${databaseTarget}。`
-          : `Planned as an AI coding platform with dashboard, editor, runs, templates, pricing, and settings routes on ${deploymentTarget} + ${databaseTarget}.`,
+      summary: buildPlannerSummary(productType, pages, deploymentTarget, databaseTarget, region),
     }
   }
 
-  const fallbackPages = getDefaultPlannerPages(productType)
+  const fallbackPages = buildOrderedFallbackPlannerPages(productType, prompt)
   const aiTools =
     productType === "crm_workspace" || productType === "api_platform" || productType === "task_workspace"
       ? ["generate", "fix", "refactor"]
@@ -1241,22 +1745,7 @@ function fallbackPlannerSpec(
     plans: region === "cn" ? ["免费版", "启动版", "建造者版", "专业版", "精英版"] : ["Free", "Starter", "Builder", "Pro", "Elite"],
     deploymentDefaults: { cn: cnDefaults, global: globalDefaults },
     preferredScaffold: `${productType}_scaffold`,
-    summary:
-      region === "cn"
-        ? productType === "content_site"
-          ? `已规划为官网/下载/文档联动产品，优先输出 dashboard、website、downloads、docs、admin 五个核心入口。`
-          : productType === "community_hub"
-            ? `已规划为社区产品骨架，优先输出 dashboard、events、feedback、members、settings 五个核心入口。`
-            : productType === "task_workspace"
-              ? `已规划为后台/内部工具骨架，优先输出 dashboard、tasks、settings、analytics 四个核心入口。`
-              : `已规划为 ${productType}，优先输出可运行的多页面产品骨架。`
-        : productType === "content_site"
-          ? "Planned as a website + downloads + docs product with dashboard, website, downloads, docs, and admin routes."
-          : productType === "community_hub"
-            ? "Planned as a community product with dashboard, events, feedback, members, and settings routes."
-            : productType === "task_workspace"
-              ? "Planned as an admin/internal tool with dashboard, tasks, settings, and analytics routes."
-              : `Planned as ${productType} with a runnable multi-page scaffold.`,
+    summary: buildPlannerSummary(productType, fallbackPages, deploymentTarget, databaseTarget, region),
   }
 }
 
@@ -1292,7 +1781,7 @@ function normalizePlannerSpec(
       tone: sanitizeUiText(parsed?.style?.tone || "") || fallback.style.tone,
       market: parsed?.style?.market === "global" ? "global" : fallback.style.market,
     },
-    pages: mergePlannerPages(productType, parsed?.pages, fallback.pages),
+    pages: mergePlannerPages(productType, parsed?.pages, fallback.pages, prompt),
     layout: {
       editor: uniqueLowerStrings(parsed?.layout?.editor ?? [], fallback.layout.editor ?? []),
     },
@@ -1564,6 +2053,719 @@ function plannerProductTypeToAppKind(productType: PlannerProductType): AppKind {
   return "task"
 }
 
+function plannerProductTypeToArchetype(productType: PlannerProductType) {
+  if (productType === "ai_code_platform") return "code_platform" as const
+  if (productType === "crm_workspace") return "crm" as const
+  if (productType === "api_platform") return "api_platform" as const
+  if (productType === "community_hub") return "community" as const
+  if (productType === "content_site") return "marketing_admin" as const
+  return "task" as const
+}
+
+function getPlannerRouteActions(route: string, productType: PlannerProductType, region: Region) {
+  const isCn = region === "cn"
+  const routeKey = String(route).toLowerCase()
+  if (routeKey === "dashboard") {
+    if (isCn) {
+      if (productType === "ai_code_platform") return ["查看状态", "检查运行", "切换模块"]
+      if (productType === "crm_workspace") return ["查看预测", "识别风险", "推进交付"]
+      if (productType === "api_platform") return ["查看平台状态", "排查告警", "检查用量"]
+      if (productType === "community_hub") return ["查看社区节奏", "跟进反馈", "同步活动"]
+      if (productType === "content_site") return ["查看转化", "检查分发", "同步版本说明"]
+      return ["查看治理状态", "推进审批", "同步规则"]
+    }
+    if (productType === "ai_code_platform") return ["review status", "inspect runtime", "switch modules"]
+    if (productType === "crm_workspace") return ["review forecast", "flag risk", "advance handoff"]
+    if (productType === "api_platform") return ["review platform health", "triage alerts", "inspect usage"]
+    if (productType === "community_hub") return ["review community rhythm", "triage feedback", "sync events"]
+    if (productType === "content_site") return ["review conversion", "inspect distribution", "sync releases"]
+    return ["review approvals", "check access", "track incidents"]
+  }
+  const cn: Record<string, string[]> = {
+    editor: ["打开文件", "编辑代码", "切换标签", "预览运行"],
+    runs: ["查看日志", "刷新运行", "检查构建"],
+    templates: ["筛选模板", "预览模板", "应用模板"],
+    pricing: ["比较套餐", "查看权限", "升级"],
+    settings: ["修改环境", "管理权限", "检查部署"],
+    leads: ["录入线索", "分配负责人", "推进跟进"],
+    pipeline: ["推进阶段", "更新风险", "成交转交付"],
+    customers: ["查看客户", "准备续约", "同步交付"],
+    automations: ["查看规则", "启停规则", "新建自动化"],
+    reports: ["查看预测", "分析阶段", "导出摘要"],
+    orders: ["查看订单", "确认报价", "同步回款"],
+    team: ["查看团队", "调整目标", "同步配额"],
+    endpoints: ["浏览接口", "发布版本", "复制路径"],
+    logs: ["筛选日志", "查看 trace", "确认恢复"],
+    auth: ["查看密钥", "创建 scope", "轮换"],
+    environments: ["切换环境", "发布", "回滚"],
+    webhooks: ["查看回调", "重试投递", "确认订阅"],
+    usage: ["查看用量", "核对计费", "调整限额"],
+    website: ["浏览官网", "编辑板块", "检查转化"],
+    downloads: ["查看下载项", "分发包", "复制链接"],
+    docs: ["浏览文档", "发布更新", "同步说明"],
+    changelog: ["查看版本说明", "发布更新", "同步下载"],
+    devices: ["查看构建", "上传安装包", "检查签名"],
+    admin: ["查看后台", "分发资源", "管理状态"],
+    feedback: ["查看反馈", "调整优先级", "进入路线图"],
+    roadmap: ["查看路线图", "移动条目", "发布说明"],
+    posts: ["查看帖子", "发布公告", "引导讨论"],
+    members: ["查看成员", "分组", "邀请"],
+    events: ["查看活动", "管理参与", "发送提醒"],
+    moderation: ["查看举报", "审核内容", "同步策略"],
+    approvals: ["查看审批", "签批", "驳回"],
+    security: ["查看权限", "调整策略", "同步访问"],
+    audit: ["查看记录", "筛选事件", "导出留痕"],
+    incidents: ["查看告警", "确认影响", "推进恢复"],
+    team: ["查看成员", "分配负责人", "同步容量"],
+  }
+  const en: Record<string, string[]> = {
+    editor: ["open file", "edit code", "switch tabs", "run preview"],
+    runs: ["inspect logs", "refresh runtime", "check build"],
+    templates: ["filter templates", "preview template", "apply template"],
+    pricing: ["compare plans", "review permissions", "upgrade"],
+    settings: ["update environment", "manage access", "inspect deploy"],
+    leads: ["capture lead", "assign owner", "advance follow-up"],
+    pipeline: ["advance stage", "update risk", "handoff close"],
+    customers: ["review customer", "prepare renewal", "sync handoff"],
+    automations: ["review rules", "toggle rules", "create automation"],
+    reports: ["review forecast", "analyze stages", "export summary"],
+    orders: ["review order", "confirm quote", "sync payment"],
+    team: ["review team", "adjust targets", "sync quota"],
+    endpoints: ["browse endpoint", "publish version", "copy path"],
+    logs: ["filter logs", "inspect trace", "confirm recovery"],
+    auth: ["review keys", "create scope", "rotate"],
+    environments: ["switch environment", "promote release", "rollback"],
+    webhooks: ["review callbacks", "retry delivery", "confirm subscription"],
+    usage: ["review usage", "verify billing", "adjust rate limits"],
+    website: ["browse site", "edit section", "check conversion"],
+    downloads: ["review download", "ship package", "copy link"],
+    docs: ["browse docs", "publish update", "sync notes"],
+    changelog: ["review release notes", "publish update", "sync downloads"],
+    devices: ["review builds", "upload installer", "check signing"],
+    admin: ["review admin", "distribute assets", "manage status"],
+    feedback: ["review feedback", "set priority", "move to roadmap"],
+    roadmap: ["review roadmap", "move items", "publish notes"],
+    posts: ["review posts", "publish announcement", "shape discussion"],
+    members: ["review members", "segment", "invite"],
+    events: ["review events", "manage attendance", "send reminders"],
+    moderation: ["review reports", "moderate content", "sync policy"],
+    approvals: ["review approval", "approve", "reject"],
+    security: ["review access", "adjust policy", "sync permissions"],
+    audit: ["review trail", "filter events", "export audit"],
+    incidents: ["review incident", "check impact", "drive recovery"],
+    team: ["review members", "assign owner", "sync capacity"],
+  }
+  return (isCn ? cn[routeKey] : en[routeKey]) ?? (isCn ? ["查看页面", "执行主操作", "继续生成"] : ["view page", "run action", "continue generation"])
+}
+
+function getPlannerRouteEntityIds(productType: PlannerProductType, routeKey: string) {
+  if (productType === "api_platform") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["endpoint", "log_event", "usage_meter"],
+      endpoints: ["endpoint"],
+      logs: ["log_event"],
+      auth: ["api_key"],
+      environments: ["environment"],
+      webhooks: ["webhook_subscription"],
+      docs: ["developer_doc", "endpoint"],
+      usage: ["usage_meter", "api_key"],
+    }
+    return mapping[routeKey] ?? []
+  }
+  return []
+}
+
+function getPlannerRouteModuleIds(productType: PlannerProductType, routeKey: string) {
+  if (productType === "api_platform") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["dashboard_surface", "endpoint_catalog", "runtime_observability"],
+      endpoints: ["endpoints_surface", "endpoint_catalog"],
+      logs: ["logs_surface", "runtime_observability", "webhook_delivery"],
+      auth: ["auth_surface", "access_policy"],
+      environments: ["environments_surface", "access_policy", "webhook_delivery"],
+      webhooks: ["webhooks_surface", "webhook_delivery"],
+      docs: ["developer_docs_center", "endpoint_catalog"],
+      usage: ["usage_metering", "access_policy"],
+    }
+    return mapping[routeKey] ?? []
+  }
+  return []
+}
+
+function buildPlannerRouteBlueprint(planner: PlannerSpec, region: Region): RouteBlueprint[] {
+  return planner.pages.map((route) => {
+    const routeKey = String(route).trim().toLowerCase()
+    const label =
+      routeKey === "dashboard"
+        ? "Dashboard"
+        : routeKey === "editor"
+          ? region === "cn" ? "编辑器" : "Editor"
+          : routeKey === "runs"
+            ? region === "cn" ? "运行" : "Runs"
+            : routeKey === "templates"
+              ? region === "cn" ? "模板库" : "Templates"
+              : routeKey === "pricing"
+                ? region === "cn" ? "套餐" : "Pricing"
+                : routeKey === "settings"
+                  ? region === "cn" ? "设置" : "Settings"
+                  : routeKey
+                      .split(/[-_]/)
+                      .filter(Boolean)
+                      .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+                      .join(" ")
+    return {
+      id: routeKey || "route",
+      path: routeKey === "home" ? "/" : `/${routeKey}`,
+      label,
+      purpose:
+        region === "cn"
+          ? `${label} 是 ${planner.productName} 的核心页面，用于承接 ${planner.summary || "主工作流"}.`
+          : `${label} is a core surface in ${planner.productName}, used to support ${planner.summary || "the primary workflow"}.`,
+      moduleIds: getPlannerRouteModuleIds(planner.productType, routeKey),
+      entityIds: getPlannerRouteEntityIds(planner.productType, routeKey),
+      primaryActions: getPlannerRouteActions(routeKey, planner.productType, region),
+      surface:
+        planner.productType === "api_platform" && (routeKey === "docs" || routeKey === "usage")
+          ? "data"
+          : routeKey === "editor"
+          ? "code"
+          : routeKey === "settings"
+            ? "settings"
+            : routeKey === "website" || routeKey === "downloads" || routeKey === "docs" || routeKey === "pricing"
+              ? "marketing"
+              : routeKey === "leads" || routeKey === "customers" || routeKey === "endpoints" || routeKey === "logs"
+                ? "data"
+                : "dashboard",
+    }
+  })
+}
+
+function getPromptDrivenPlannerModules(productType: PlannerProductType, prompt: string, region: Region, pages: string[]) {
+  const isCn = region === "cn"
+  const text = String(prompt ?? "").toLowerCase()
+  const pageSet = new Set(pages.map((page) => String(page || "").toLowerCase()))
+  const modules: string[] = []
+
+  const push = (cnLabel: string, enLabel: string, enabled = true) => {
+    if (!enabled) return
+    modules.push(isCn ? cnLabel : enLabel)
+  }
+
+  if (productType === "ai_code_platform") {
+    push("命令面板", "Command palette", /command|palette|快捷命令|命令面板/.test(text))
+    push("AI 聊天轨道", "AI chat lane", /chat|assistant|prompt|conversation|对话|助手/.test(text))
+    push("工作区历史", "Workspace history", /history|timeline|snapshot|历史|时间线|快照/.test(text))
+    push("分享与发布", "Share and publish", /share|publish|deploy|delivery|分享|发布|部署|交付/.test(text))
+    push("分屏代码预览", "Split code preview", /preview|split|双栏|分屏|预览/.test(text) || pageSet.has("editor"))
+  } else if (productType === "crm_workspace") {
+    push("报价审批", "Quote approvals", /quote|proposal|pricing|报价|方案|定价/.test(text))
+    push("客户成功节奏", "Customer success cadence", /renewal|success|onboarding|续约|成功团队|上线/.test(text))
+    push("团队目标追踪", "Quota tracking", /quota|target|forecast|配额|目标|预测/.test(text) || pageSet.has("reports"))
+    push("商机健康度", "Deal health score", /risk|health|warning|风险|健康度|预警/.test(text))
+  } else if (productType === "api_platform") {
+    push("开发者文档", "Developer docs", /docs|documentation|guide|文档|说明/.test(text))
+    push("SDK 资产", "SDK kits", /sdk|client library|代码示例|sdk/.test(text))
+    push("用量计量", "Usage metering", /usage|metering|billing|rate limit|用量|计费|限流/.test(text))
+    push("安全策略", "Security policy", /security|auth|token|oauth|scope|安全|鉴权|令牌/.test(text) || pageSet.has("auth"))
+    push("事件回调台", "Event callback desk", /webhook|callback|event|回调|事件/.test(text) || pageSet.has("webhooks"))
+  } else if (productType === "community_hub") {
+    push("审核队列", "Moderation queue", /moderation|review|审核|审查/.test(text))
+    push("投票与路线图", "Voting and roadmap", /vote|wishlist|roadmap|投票|愿望单|路线图/.test(text) || pageSet.has("roadmap"))
+    push("公告编排", "Announcement orchestration", /announcement|broadcast|公告|广播/.test(text) || pageSet.has("posts"))
+    push("成员成长轨道", "Member lifecycle", /member|invite|segment|成员|邀请|分层/.test(text) || pageSet.has("members"))
+  } else if (productType === "content_site") {
+    push("设备分发矩阵", "Device distribution matrix", /android|ios|desktop|mac|windows|设备|安装包/.test(text))
+    push("转化漏斗", "Conversion funnel", /conversion|funnel|signup|转化|注册/.test(text))
+    push("版本说明中心", "Release note center", /release|changelog|version|更新日志|版本/.test(text) || pageSet.has("changelog"))
+    push("计划对比", "Plan comparison", /pricing|plan|tier|套餐|价格|版本/.test(text) || pageSet.has("pricing"))
+  } else {
+    const specialized = getSpecializedWorkspaceFlavor(prompt, region)
+    if (specialized) {
+      modules.push(...specialized.modules)
+      return Array.from(new Set(modules))
+    }
+    push("审批队列", "Approval queue", /approval|审批/.test(text) || pageSet.has("approvals"))
+    push("团队节奏", "Team cadence", /team|owner|负责人|团队/.test(text))
+    push("访问策略", "Access policy rail", /security|access|permission|role|policy|安全|权限|角色|策略/.test(text) || pageSet.has("security"))
+    push("审计时间线", "Audit timeline", /audit|history|trace|compliance|审计|留痕|合规|记录/.test(text) || pageSet.has("audit"))
+    push("异常指挥台", "Incident command", /incident|alert|outage|incident response|告警|故障|异常|应急/.test(text) || pageSet.has("incidents"))
+    push("自动化轨道", "Ops automations", /automation|rule|workflow|自动化|规则|流程/.test(text) || pageSet.has("automations"))
+  }
+
+  return Array.from(new Set(modules))
+}
+
+function getPromptDrivenPlannerIconVariant(productType: PlannerProductType, prompt: string, title: string) {
+  const glyph = title
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("") || "M"
+  const text = String(prompt ?? "").toLowerCase()
+
+  if (productType === "ai_code_platform") {
+    if (/system|ops|control|admin|平台|系统|控制台/.test(text)) {
+      return { glyph, from: "#312e81", to: "#6366f1", ring: "rgba(99,102,241,0.26)" }
+    }
+    if (/cursor|assistant|agent|copilot|助手|智能体/.test(text)) {
+      return { glyph, from: "#5b21b6", to: "#8b5cf6", ring: "rgba(139,92,246,0.24)" }
+    }
+    return { glyph, from: "#0f172a", to: "#7c3aed", ring: "rgba(124,58,237,0.24)" }
+  }
+  if (productType === "crm_workspace") {
+    if (/renewal|success|account|续约|成功团队|账户/.test(text)) {
+      return { glyph, from: "#065f46", to: "#14b8a6", ring: "rgba(20,184,166,0.24)" }
+    }
+    return { glyph, from: "#1d4ed8", to: "#38bdf8", ring: "rgba(56,189,248,0.24)" }
+  }
+  if (productType === "api_platform") {
+    if (/security|auth|token|oauth|安全|鉴权|令牌/.test(text)) {
+      return { glyph, from: "#0f172a", to: "#10b981", ring: "rgba(16,185,129,0.24)" }
+    }
+    if (/sdk|developer|docs|文档|开发者/.test(text)) {
+      return { glyph, from: "#0f172a", to: "#3b82f6", ring: "rgba(59,130,246,0.24)" }
+    }
+    return { glyph, from: "#0f172a", to: "#06b6d4", ring: "rgba(6,182,212,0.22)" }
+  }
+  if (productType === "community_hub") {
+    if (/feedback|roadmap|vote|反馈|路线图|投票/.test(text)) {
+      return { glyph, from: "#b45309", to: "#f59e0b", ring: "rgba(245,158,11,0.22)" }
+    }
+    return { glyph, from: "#9f1239", to: "#fb7185", ring: "rgba(251,113,133,0.22)" }
+  }
+  if (/download|device|ios|android|desktop|下载|设备/.test(text)) {
+    return { glyph, from: "#1e1b4b", to: "#2563eb", ring: "rgba(37,99,235,0.22)" }
+  }
+  if (/brand|marketing|growth|官网|品牌|增长/.test(text)) {
+    return { glyph, from: "#7c2d12", to: "#f97316", ring: "rgba(249,115,22,0.22)" }
+  }
+  return { glyph, from: "#111827", to: "#6366f1", ring: "rgba(99,102,241,0.22)" }
+}
+
+function buildPlannerVisualSeed(planner: PlannerSpec, title: string, prompt: string): VisualSeed {
+  const archetype = plannerProductTypeToArchetype(planner.productType)
+  const icon = getPromptDrivenPlannerIconVariant(planner.productType, prompt, title)
+  const explicitTone = sanitizeUiText(planner.style.tone || "")
+  const text = prompt.toLowerCase()
+  const specialized = planner.productType === "task_workspace" ? getSpecializedWorkspaceFlavor(prompt, planner.targetLocale === "zh-CN" ? "cn" : "intl") : null
+  const derivedTone =
+    archetype === "code_platform"
+      ? /system|ops|control|admin|系统|控制台/.test(text)
+        ? "operator IDE workspace"
+        : "generative coding workspace"
+      : archetype === "api_platform"
+        ? /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+          ? "secure developer gateway"
+          : "observable developer platform"
+        : archetype === "crm"
+          ? /renewal|success|account|续约|成功团队|账户/.test(text)
+            ? "customer success command center"
+            : "revenue control plane"
+          : archetype === "community"
+            ? /feedback|roadmap|vote|反馈|路线图|投票/.test(text)
+              ? "feedback community workspace"
+              : "community operations product"
+            : /download|device|ios|android|desktop|下载|设备/.test(text)
+              ? "device distribution product"
+              : specialized
+                ? specialized.tone
+              : "brand and growth product"
+  return {
+    theme: specialized && /clinical|healthcare|learning|医疗|教育/.test(specialized.tone) ? "light" : planner.style.theme,
+    tone: explicitTone && explicitTone !== "production-ready" ? explicitTone : derivedTone,
+    density: planner.productType === "ai_code_platform" || planner.productType === "api_platform" ? "compact" : "comfortable",
+    navStyle:
+      planner.productType === "ai_code_platform"
+        ? "editor_shell"
+        : planner.productType === "content_site"
+          ? "marketing_shell"
+        : planner.productType === "community_hub"
+            ? "community_shell"
+            : "control_plane",
+    layoutVariant:
+      archetype === "code_platform"
+        ? /run|terminal|publish|preview|deploy|运行|发布|预览/.test(text)
+          ? "docs_console"
+          : "split_command"
+        : archetype === "crm"
+          ? /renewal|success|account|续约|成功团队|账户/.test(text)
+            ? "split_command"
+            : "sidebar_board"
+          : archetype === "api_platform"
+            ? /docs|sdk|onboarding|guide|文档|开发者|接入/.test(text)
+              ? "docs_console"
+              : "split_command"
+            : archetype === "community"
+              ? /event|events|meetup|webinar|registration|活动|直播|报名/.test(text)
+                ? "story_stack"
+                : "split_command"
+              : /download|device|ios|android|desktop|distribution|release|下载|设备|分发|发布/.test(text)
+                ? "marketing_split"
+                : "story_stack",
+    heroVariant:
+      archetype === "crm"
+        ? "pipeline"
+        : archetype === "api_platform" || archetype === "task"
+          ? "operations"
+          : archetype === "community"
+            ? "community"
+            : archetype === "marketing_admin"
+              ? "distribution"
+              : "statement",
+    surfaceVariant:
+      archetype === "marketing_admin" || archetype === "community"
+        ? "glass"
+        : archetype === "api_platform" || archetype === "task"
+          ? "soft"
+          : "solid",
+    ctaVariant:
+      archetype === "marketing_admin" || archetype === "community"
+        ? "pill"
+        : archetype === "api_platform" || archetype === "task"
+          ? "outline"
+          : "block",
+    icon,
+  }
+}
+
+function buildPlannerIntentSeed(planner: PlannerSpec, region: Region, prompt: string): AppIntent {
+  const archetype = plannerProductTypeToArchetype(planner.productType)
+  const isCn = region === "cn"
+  const pageSet = new Set(planner.pages)
+  const routeSummary = describePlannerPages(planner.pages, region)
+  const text = String(prompt ?? "").toLowerCase()
+  const eventDrivenCommunity = planner.productType === "community_hub" && looksLikeEventDrivenCommunityPrompt(text)
+  const specialized = planner.productType === "task_workspace" ? getSpecializedWorkspaceFlavor(prompt, region) : null
+  const withOptional = (base: string[], extra: Array<string | false | undefined>) =>
+    [...base, ...extra.filter((item): item is string => Boolean(item))]
+  return {
+    archetype,
+    productCategory:
+      archetype === "code_platform"
+        ? /system|ops|control|admin|系统|控制台/.test(text)
+          ? isCn ? "AI 运维与工程平台" : "AI operations and engineering platform"
+          : isCn ? "AI 代码平台" : "AI code platform"
+        : archetype === "crm"
+          ? isCn ? "CRM 与销售工作台" : "CRM and sales workspace"
+          : archetype === "api_platform"
+            ? isCn ? "API 与运行平台" : "API and runtime platform"
+            : archetype === "community"
+              ? isCn ? "社区与反馈平台" : "Community and feedback platform"
+              : archetype === "marketing_admin"
+                ? isCn ? "官网与下载平台" : "Website and download platform"
+                : specialized
+                  ? specialized.category
+                : isCn ? "内部工作台" : "Internal workspace",
+    targetAudience:
+      archetype === "crm"
+        ? (isCn ? ["销售团队", "运营负责人"] : ["Sales teams", "ops leads"])
+        : archetype === "api_platform"
+          ? (isCn ? ["开发者", "平台工程"] : ["Developers", "platform engineers"])
+          : archetype === "community"
+            ? eventDrivenCommunity
+              ? (isCn ? ["社区运营", "活动负责人", "成员增长负责人"] : ["Community operators", "program managers", "member growth leads"])
+              : (isCn ? ["社区运营", "成员管理员"] : ["Community operators", "member admins"])
+            : archetype === "marketing_admin"
+              ? (isCn ? ["品牌团队", "增长负责人"] : ["Brand teams", "growth leads"])
+              : archetype === "code_platform"
+                ? (isCn ? ["开发者", "产品团队"] : ["Developers", "product teams"])
+                : specialized
+                  ? [specialized.category]
+                : (isCn ? ["内部团队"] : ["Internal teams"]),
+    primaryJobs:
+      planner.productType === "ai_code_platform"
+        ? withOptional(
+            /system|ops|control|admin|系统|控制台/.test(text)
+              ? isCn
+                ? ["编排 AI 工程工作流", "管理发布与运行态", "审查代码与环境变更"]
+                : ["Orchestrate AI engineering workflows", "Manage releases and runtime", "Review code and environment changes"]
+              : isCn
+                ? ["生成全栈应用", "编辑代码并预览", "发布交付"]
+                : ["Generate fullstack apps", "Edit code with preview", "Publish delivery"],
+            [
+              pageSet.has("runs") && (isCn ? "查看运行与构建" : "Inspect runs and builds"),
+              pageSet.has("templates") && (isCn ? "切换模板与脚手架" : "Switch templates and scaffolds"),
+              /chat|assistant|prompt|conversation|对话|助手/.test(text) && (isCn ? "驱动 AI 对话改动" : "Drive AI chat changes"),
+              /command|palette|快捷命令|命令面板/.test(text) && (isCn ? "使用命令面板切换动作" : "Use a command palette for actions"),
+            ]
+          )
+        : planner.productType === "crm_workspace"
+          ? withOptional(
+              isCn ? ["管理线索", "推进成交", "同步交付"] : ["Manage leads", "advance deals", "sync handoff"],
+              [
+                pageSet.has("reports") && (isCn ? "查看预测与阶段报表" : "Review forecasts and stage reports"),
+                pageSet.has("customers") && (isCn ? "维护客户账户" : "Manage customer accounts"),
+              ]
+            )
+        : planner.productType === "api_platform"
+          ? withOptional(
+              /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+                ? isCn
+                  ? ["管理 OAuth 与令牌策略", "排查安全访问问题", "审查环境授权"]
+                  : ["Manage OAuth and token policies", "Inspect secure access issues", "Review environment authorization"]
+                : isCn
+                  ? ["浏览接口", "查看日志", "管理权限"]
+                  : ["Browse endpoints", "inspect logs", "manage access"],
+              [
+                pageSet.has("webhooks") && (isCn ? "维护 Webhook 投递" : "Operate webhook delivery"),
+                pageSet.has("environments") && (isCn ? "管理环境发布" : "Manage environment promotion"),
+                /sdk|docs|documentation|guide|文档|说明/.test(text) && (isCn ? "维护开发者文档与 SDK" : "Maintain developer docs and SDKs"),
+                /usage|metering|billing|用量|计量|计费/.test(text) && (isCn ? "跟踪调用量与计量" : "Track API usage and metering"),
+              ]
+            )
+            : planner.productType === "community_hub"
+              ? withOptional(
+                  eventDrivenCommunity
+                    ? isCn
+                      ? ["策划活动项目", "管理报名与邀请", "运营成员分层"]
+                      : ["Plan event programs", "manage registrations and invites", "operate member segments"]
+                    : isCn
+                      ? ["运营社区", "管理反馈", "维护成员"]
+                      : ["Run community", "manage feedback", "maintain members"],
+                  [
+                    pageSet.has("roadmap") && (isCn ? "推进路线图" : "Drive roadmap visibility"),
+                    pageSet.has("posts") && (isCn ? "发布帖子与公告" : "Publish posts and announcements"),
+                    eventDrivenCommunity && pageSet.has("events") && (isCn ? "维护活动日程与会话" : "Maintain event schedules and sessions"),
+                  ]
+                )
+              : planner.productType === "content_site"
+                ? withOptional(
+                    isCn ? ["展示产品", "下载转化", "管理内容"] : ["Present product", "drive downloads", "manage content"],
+                    [
+                      pageSet.has("pricing") && (isCn ? "承接定价对比" : "Handle pricing comparisons"),
+                      pageSet.has("changelog") && (isCn ? "发布版本说明" : "Publish changelog updates"),
+                    ]
+                  )
+                : specialized
+                  ? specialized.jobs
+                : withOptional(
+                    /security|access|permission|role|policy|安全|权限|角色|策略/.test(text)
+                      ? isCn
+                        ? ["管理访问权限", "审查策略", "同步审计与审批"]
+                        : ["Manage access controls", "review policy", "sync audit and approvals"]
+                      : /incident|alert|outage|incident response|告警|故障|异常|应急/.test(text)
+                        ? isCn
+                          ? ["排查告警", "协调恢复", "同步团队状态"]
+                          : ["Triage incidents", "coordinate recovery", "sync team status"]
+                        : isCn
+                          ? ["管理工作流", "跟踪状态", "执行审批"]
+                          : ["Manage workflows", "track status", "run approvals"],
+                    [
+                      pageSet.has("team") && (isCn ? "管理团队与席位" : "Manage team and seats"),
+                      pageSet.has("security") && (isCn ? "维护权限与访问边界" : "Maintain permissions and access boundaries"),
+                      pageSet.has("audit") && (isCn ? "审查操作留痕" : "Review audit trails"),
+                    ]
+                  ),
+    primaryWorkflow:
+      planner.productType === "ai_code_platform"
+        ? /system|ops|control|admin|系统|控制台/.test(text)
+          ? (isCn ? "规划 -> 改码 -> 预览 -> 发布 -> 观测" : "Plan -> edit -> preview -> release -> observe")
+          : (isCn ? "生成 -> 编辑 -> 预览 -> 发布" : "Generate -> edit -> preview -> publish")
+        : planner.productType === "crm_workspace"
+          ? (isCn ? "线索 -> 商机 -> 成交 -> 交付" : "Lead -> opportunity -> close -> handoff")
+          : planner.productType === "api_platform"
+            ? /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+              ? (isCn ? "令牌/鉴权 -> 日志排查 -> 环境授权 -> 发布" : "Token/auth -> log triage -> environment access -> release")
+              : (isCn ? "接口 -> 日志 -> 权限 -> 环境" : "Endpoint -> logs -> access -> environment")
+            : planner.productType === "community_hub"
+              ? eventDrivenCommunity
+                ? (isCn ? "活动策划 -> 邀请触达 -> 反馈归档 -> 社区运营" : "Event planning -> invite outreach -> feedback intake -> community ops")
+                : (isCn ? "反馈 -> 分类 -> 路线图 -> 社区运营" : "Feedback -> triage -> roadmap -> community ops")
+              : planner.productType === "content_site"
+                ? (isCn ? "官网 -> 价格 -> 下载 -> 分发" : "Website -> pricing -> download -> distribution")
+                : specialized
+                  ? specialized.workflow
+                : /security|access|permission|role|policy|安全|权限|角色|策略/.test(text)
+                  ? (isCn ? "策略变更 -> 权限审查 -> 审计留痕 -> 发布" : "Policy change -> access review -> audit trail -> release")
+                  : /incident|alert|outage|incident response|告警|故障|异常|应急/.test(text)
+                    ? (isCn ? "告警 -> 排查 -> 恢复 -> 复盘" : "Alert -> triage -> recover -> review")
+                    : (isCn ? "创建 -> 跟进 -> 审批 -> 完成" : "Create -> track -> approve -> complete"),
+    integrationTargets: planner.deploymentDefaults[region === "cn" ? "cn" : "global"],
+    automationScopes:
+      planner.productType === "crm_workspace"
+        ? withOptional(isCn ? ["提醒", "审批", "交付同步"] : ["reminders", "approvals", "handoff sync"], [
+            pageSet.has("reports") && (isCn ? "预测更新" : "forecast refresh"),
+          ])
+        : planner.productType === "api_platform"
+          ? withOptional(isCn ? ["告警", "发布验证", "令牌轮换"] : ["alerts", "release checks", "token rotation"], [
+              pageSet.has("webhooks") && (isCn ? "回调重试" : "webhook retries"),
+              /sdk|docs|documentation|guide|文档|说明/.test(text) && (isCn ? "文档同步" : "docs sync"),
+              /usage|metering|billing|用量|计量|计费/.test(text) && (isCn ? "计量结算" : "usage metering"),
+            ])
+          : planner.productType === "community_hub"
+            ? withOptional(
+                eventDrivenCommunity
+                  ? (isCn ? ["活动提醒", "报名同步", "成员分层同步"] : ["event reminders", "registration sync", "member segment sync"])
+                  : (isCn ? ["审核", "活动提醒", "路线图同步"] : ["moderation", "event reminders", "roadmap sync"]),
+                [
+                  pageSet.has("posts") && (isCn ? "公告发布" : "announcement publishing"),
+                  !eventDrivenCommunity && pageSet.has("moderation") && (isCn ? "审核处理" : "moderation handling"),
+                ]
+              )
+            : planner.productType === "content_site"
+              ? withOptional(isCn ? ["下载统计", "内容更新", "版本发布"] : ["download analytics", "content updates", "release publishing"], [
+                  pageSet.has("pricing") && (isCn ? "套餐文案更新" : "pricing copy refresh"),
+                ])
+              : specialized
+                ? specialized.modules
+              : withOptional(
+                  /security|access|permission|role|policy|安全|权限|角色|策略/.test(text)
+                    ? isCn
+                      ? ["权限变更", "审批", "审计同步"]
+                      : ["access changes", "approvals", "audit sync"]
+                    : /incident|alert|outage|incident response|告警|故障|异常|应急/.test(text)
+                      ? isCn
+                        ? ["告警分流", "恢复提醒", "复盘汇总"]
+                        : ["incident routing", "recovery reminders", "postmortem summaries"]
+                      : isCn
+                        ? ["AI 改码", "模板切换", "构建验收"]
+                        : ["AI edits", "template switching", "build acceptance"],
+                  [
+                    pageSet.has("team") && (isCn ? "团队同步" : "team sync"),
+                    pageSet.has("automations") && (isCn ? "规则执行" : "rule execution"),
+                  ]
+                ),
+    differentiationNotes: [
+      planner.summary,
+      isCn ? `当前关键入口：${routeSummary}` : `Current key routes: ${routeSummary}`,
+      ...(planner.productType === "ai_code_platform"
+        ? [
+            isCn ? "必须保留 IDE 式工作区与实时预览。" : "Must preserve an IDE-like workspace with live preview.",
+            /system|ops|control|admin|系统|控制台/.test(text)
+              ? isCn ? "这次需求更偏工程控制台，不能只生成创作型 IDE。" : "This prompt leans toward an engineering control plane, not just a creator IDE."
+              : "",
+          ].filter(Boolean)
+        : planner.productType === "crm_workspace"
+          ? [isCn ? "必须体现线索、pipeline、客户三层结构。" : "Must expose lead, pipeline, and customer layers."]
+          : planner.productType === "api_platform"
+            ? [
+                isCn ? "必须体现 endpoint、logs、auth、environments。" : "Must expose endpoints, logs, auth, and environments.",
+                /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+                  ? isCn ? "这次需求强调安全与鉴权，不能退化成普通接口列表。" : "This prompt emphasizes security and auth, not a generic endpoint list."
+                  : "",
+              ].filter(Boolean)
+            : planner.productType === "community_hub"
+              ? [
+                  eventDrivenCommunity
+                    ? (isCn ? "必须体现活动、报名、成员分层与社区运营模块。" : "Must expose events, registrations, member segments, and community ops modules.")
+                    : (isCn ? "必须体现社区、反馈、成员、运营模块。" : "Must expose community, feedback, members, and ops modules."),
+                ]
+              : specialized
+                ? [isCn ? `必须体现${specialized.category}的实体、流程、字段和页面原型。` : `Must expose the entities, workflow, fields, and page prototypes for a ${specialized.category}.`]
+              : [
+                  /security|access|permission|role|policy|安全|权限|角色|策略/.test(text)
+                    ? isCn ? "这次需求更偏权限与安全控制平面，不能只做普通任务列表。" : "This prompt leans toward a security and access control plane, not a generic task list."
+                    : /incident|alert|outage|incident response|告警|故障|异常|应急/.test(text)
+                      ? isCn ? "这次需求更偏异常与运维响应，不能退化成普通待办壳。" : "This prompt leans toward incident and ops response, not a generic task shell."
+                      : isCn ? "必须体现官网、下载、文档与后台联动。" : "Must connect website, downloads, docs, and admin surfaces.",
+                ])],
+  }
+}
+
+function mergePlannerRouteHintsIntoSpec(spec: AppSpec, plannerRouteBlueprint: NonNullable<AppSpec["routeBlueprint"]>) {
+  if (!spec.routeBlueprint?.length || !plannerRouteBlueprint?.length) return spec
+
+  const specById = new Map(
+    spec.routeBlueprint.map((route) => [
+      route.id,
+      route,
+    ])
+  )
+  const specByPath = new Map(
+    spec.routeBlueprint.map((route) => [
+      route.path,
+      route,
+    ])
+  )
+  const mergedRoutes = plannerRouteBlueprint.map((plannerRoute) => {
+    const route = specById.get(plannerRoute.id) || specByPath.get(plannerRoute.path) || plannerRoute
+    const looksGenericPurpose =
+      /core surface in .*used to support/i.test(plannerRoute.purpose || "") ||
+      /key surface in this/i.test(plannerRoute.purpose || "")
+    const looksGenericActions =
+      (plannerRoute.primaryActions ?? []).map((item) => String(item ?? "").trim().toLowerCase()).join("|") ===
+        "view page|run action|continue generation" ||
+      (plannerRoute.primaryActions ?? []).map((item) => String(item ?? "").trim().toLowerCase()).join("|") ===
+        "查看页面|执行主操作|继续生成" ||
+      (plannerRoute.primaryActions ?? []).map((item) => String(item ?? "").trim().toLowerCase()).join("|") ===
+        "view surface|run primary action|continue iterating" ||
+      (plannerRoute.primaryActions ?? []).map((item) => String(item ?? "").trim().toLowerCase()).join("|") ===
+        "查看页面|执行主操作|继续迭代"
+    return {
+      ...route,
+      label: plannerRoute.label || route.label,
+      purpose: plannerRoute.purpose && !looksGenericPurpose ? plannerRoute.purpose : route.purpose,
+      primaryActions: plannerRoute.primaryActions?.length && !looksGenericActions ? plannerRoute.primaryActions : route.primaryActions,
+      surface: route.surface,
+    }
+  })
+
+  const orderedRouteIds = new Set(mergedRoutes.map((route) => route.id))
+  const orderedRoutePaths = new Set(mergedRoutes.map((route) => route.path))
+  const appendedSpecRoutes = spec.routeBlueprint.filter(
+    (route) => !orderedRouteIds.has(route.id) && !orderedRoutePaths.has(route.path)
+  )
+  const nextRouteBlueprint = [...mergedRoutes, ...appendedSpecRoutes]
+
+  if (spec.kind !== "code_platform" || !spec.moduleBlueprint?.length) {
+    return {
+      ...spec,
+      routeBlueprint: nextRouteBlueprint,
+    }
+  }
+
+  const resolvedRouteIds = new Set(nextRouteBlueprint.map((route) => route.id))
+  const includeRoutes = (ids: string[]) => ids.filter((item) => resolvedRouteIds.has(item))
+  const refreshedModules = spec.moduleBlueprint.map((module) => {
+    if (module.id === "assistant_context") {
+      return { ...module, routeIds: includeRoutes(["assistant", "editor"]) }
+    }
+    if (module.id === "publish_lane") {
+      return { ...module, routeIds: includeRoutes(["publish", "runs", "dashboard"]) }
+    }
+    if (module.id === "ai_orchestrator") {
+      return { ...module, routeIds: includeRoutes(["dashboard", "editor", "assistant", "runs"]) }
+    }
+    if (module.id === "release_control") {
+      return { ...module, routeIds: includeRoutes(["runs", "publish", "settings", "dashboard"]) }
+    }
+    return module
+  })
+
+  return {
+    ...spec,
+    routeBlueprint: nextRouteBlueprint,
+    moduleBlueprint: refreshedModules,
+  }
+}
+
+function syncCodePlatformPlannerBlueprint(spec: AppSpec): AppSpec {
+  if (spec.kind !== "code_platform" || !spec.routeBlueprint?.length || !spec.moduleBlueprint?.length) return spec
+  const routeIds = new Set(spec.routeBlueprint.map((route) => route.id))
+  const includeRoutes = (ids: string[]) => ids.filter((item) => routeIds.has(item))
+  return {
+    ...spec,
+    moduleBlueprint: spec.moduleBlueprint.map((module) => {
+      if (module.id === "assistant_context") {
+        return { ...module, routeIds: includeRoutes(["assistant", "editor"]) }
+      }
+      if (module.id === "publish_lane") {
+        return { ...module, routeIds: includeRoutes(["publish", "runs", "dashboard"]) }
+      }
+      if (module.id === "ai_orchestrator") {
+        return { ...module, routeIds: includeRoutes(["dashboard", "editor", "assistant", "runs"]) }
+      }
+      if (module.id === "release_control") {
+        return { ...module, routeIds: includeRoutes(["runs", "publish", "settings", "dashboard"]) }
+      }
+      return module
+    }),
+  }
+}
+
 function createPlannedAppSpec(args: {
   prompt: string
   region: Region
@@ -1576,45 +2778,85 @@ function createPlannedAppSpec(args: {
   const { prompt, region, planTier, planner, deploymentTarget, databaseTarget, context } = args
   const planPolicy = getPlanPolicy(planTier)
   const kind = plannerProductTypeToAppKind(planner.productType)
+  const pageSet = new Set(planner.pages)
+  const promptDrivenModules = getPromptDrivenPlannerModules(planner.productType, prompt, region, planner.pages)
+  const specialized = planner.productType === "task_workspace" ? getSpecializedWorkspaceFlavor(prompt, region) : null
   const templateId =
     kind === "code_platform"
       ? ""
       : getDefaultTemplateIdForPlannerProductType(planner.productType, prompt, context)
   const modules = Array.from(
-    new Set([
-    ...planner.pages.map((page) => `${page} page`),
-    ...planner.aiTools.map((tool) => `ai:${tool}`),
-    ...planner.templates,
-    ...(planner.productType === "crm_workspace"
-      ? region === "cn"
-        ? ["销售阶段推进", "客户交付衔接", "负责人节奏", "自动化提醒"]
-        : ["Sales stage flow", "Customer handoff", "Owner cadence", "Automation reminders"]
-      : planner.productType === "api_platform"
-        ? region === "cn"
-          ? ["接口目录", "运行日志", "鉴权策略", "环境发布"]
-          : ["Endpoint catalog", "Runtime logs", "Auth policy", "Environment promotion"]
-        : planner.productType === "community_hub"
+    new Set(
+      [
+        ...planner.pages.map((page) => `${page} page`),
+        ...planner.templates,
+        ...promptDrivenModules,
+        ...(planner.productType === "crm_workspace"
           ? region === "cn"
-            ? ["活动运营", "反馈回路", "成员分层", "社区设置"]
-            : ["Event ops", "Feedback loop", "Member segments", "Community settings"]
-          : planner.productType === "content_site"
+            ? ["销售阶段推进", "客户交付衔接", "负责人节奏", "自动化提醒"]
+            : ["Sales stage flow", "Customer handoff", "Owner cadence", "Automation reminders"]
+          : planner.productType === "ai_code_platform"
             ? region === "cn"
-              ? ["官网叙事", "下载分发", "文档中心", "后台联动"]
-              : ["Website narrative", "Download distribution", "Docs center", "Admin linkage"]
-            : region === "cn"
-              ? ["审批流", "任务队列", "访问控制", "分析视图"]
-              : ["Approval flow", "Task queue", "Access control", "Analytics view"]),
-    ])
+              ? ["AI 命令中心", "文件工作区", "多标签编辑器", "运行与交付"]
+              : ["AI command center", "File workspace", "Multi-tab editor", "Runs and delivery"]
+            : planner.productType === "api_platform"
+              ? region === "cn"
+                ? ["接口目录", "运行日志", "鉴权策略", "环境发布"]
+                : ["Endpoint catalog", "Runtime logs", "Auth policy", "Environment promotion"]
+              : planner.productType === "community_hub"
+                ? region === "cn"
+                  ? ["活动运营", "反馈回路", "成员分层", "社区设置"]
+                  : ["Event ops", "Feedback loop", "Member segments", "Community settings"]
+                  : planner.productType === "content_site"
+                    ? region === "cn"
+                      ? ["官网叙事", "下载分发", "文档中心", "后台联动"]
+                      : ["Website narrative", "Download distribution", "Docs center", "Admin linkage"]
+                    : specialized
+                      ? specialized.modules
+                  : region === "cn"
+                    ? ["审批流", "任务队列", "访问控制", "分析视图"]
+                    : ["Approval flow", "Task queue", "Access control", "Analytics view"]),
+        ...(planner.productType === "crm_workspace"
+          ? [
+              pageSet.has("reports") ? (region === "cn" ? "预测报表" : "Forecast reporting") : undefined,
+              pageSet.has("customers") ? (region === "cn" ? "客户运营" : "Customer operations") : undefined,
+            ]
+          : planner.productType === "api_platform"
+            ? [
+                pageSet.has("webhooks") ? (region === "cn" ? "Webhook 投递" : "Webhook delivery") : undefined,
+                pageSet.has("environments") ? (region === "cn" ? "环境发布" : "Environment promotion") : undefined,
+                pageSet.has("auth") ? (region === "cn" ? "访问策略" : "Access policy") : undefined,
+              ]
+            : planner.productType === "community_hub"
+              ? [
+                  pageSet.has("roadmap") ? (region === "cn" ? "路线图规划" : "Roadmap planning") : undefined,
+                  pageSet.has("posts") ? (region === "cn" ? "帖子与公告" : "Community content") : undefined,
+                  pageSet.has("members") ? (region === "cn" ? "成员分层" : "Member segments") : undefined,
+                ]
+              : planner.productType === "content_site"
+                ? [
+                    pageSet.has("pricing") ? (region === "cn" ? "套餐对比" : "Pricing comparison") : undefined,
+                    pageSet.has("changelog") ? (region === "cn" ? "版本说明中心" : "Release center") : undefined,
+                    pageSet.has("downloads") ? (region === "cn" ? "下载分发中台" : "Distribution hub") : undefined,
+                  ]
+                : []),
+      ].filter((item): item is string => Boolean(item) && !/^ai:/i.test(String(item)))
+    )
   ).slice(0, planPolicy.maxGeneratedModules)
+  const promptText = String(prompt ?? body?.prompt ?? "").toLowerCase()
   const features = new Set<SpecFeature>(["description_field", "assignee_filter"])
-  if (kind === "code_platform" || planner.productType === "content_site" || planner.productType === "community_hub") {
+  if (
+    planner.productType === "content_site" ||
+    planner.productType === "community_hub" ||
+    (kind === "code_platform" && /about|story|intro|介绍|说明|关于/.test(promptText))
+  ) {
     features.add("about_page")
   }
   if (
-    kind === "code_platform" ||
     planner.productType === "crm_workspace" ||
     planner.productType === "api_platform" ||
     planner.productType === "task_workspace" ||
+    (kind === "code_platform" && /analytics|metrics|usage|analysis|report|分析|指标|用量|报表/.test(promptText)) ||
     planTier === "pro" ||
     planTier === "elite"
   ) {
@@ -1623,7 +2865,7 @@ function createPlannedAppSpec(args: {
   if (
     planner.productType === "crm_workspace" ||
     planner.productType === "task_workspace" ||
-    kind === "code_platform" ||
+    (kind === "code_platform" && /blocked|incident|alert|triage|阻塞|异常|告警|排障/.test(promptText)) ||
     planTier === "builder" ||
     planTier === "pro" ||
     planTier === "elite"
@@ -1634,7 +2876,11 @@ function createPlannedAppSpec(args: {
     features.add("csv_export")
   }
 
-  return createAppSpec(prompt, region, {
+  const routeBlueprint = buildPlannerRouteBlueprint(planner, region)
+  const visualSeed = buildPlannerVisualSeed(planner, planner.productName, prompt)
+  const appIntent = buildPlannerIntentSeed(planner, region, prompt)
+
+  const baseSpec = createAppSpec(prompt, region, {
     title: planner.productName,
     kind,
     planTier,
@@ -1643,7 +2889,78 @@ function createPlannedAppSpec(args: {
     databaseTarget,
     modules,
     features: Array.from(features),
+    appIntent,
+    routeBlueprint,
+    visualSeed,
   })
+
+  const mergedSpec = syncCodePlatformPlannerBlueprint(mergePlannerRouteHintsIntoSpec(baseSpec, routeBlueprint))
+  const finalizedSpec = finalizeAppSpec(mergedSpec)
+  return kind === "code_platform" ? refreshCodePlatformBlueprintNarrative(finalizedSpec) : finalizedSpec
+}
+
+function buildDeterministicScaffoldSummary(planner: PlannerSpec, region: Region) {
+  const routeSummary = describePlannerPages(planner.pages, region)
+  if (region === "cn") {
+    if (planner.productType === "ai_code_platform") {
+      return `已生成 ${planner.productName} 的 AI 代码平台骨架，当前主入口包括 ${routeSummary}。`
+    }
+    if (planner.productType === "crm_workspace") {
+      return `已生成 ${planner.productName} 的 CRM 工作台骨架，当前主入口包括 ${routeSummary}。`
+    }
+    if (planner.productType === "api_platform") {
+      return `已生成 ${planner.productName} 的 API 平台骨架，当前主入口包括 ${routeSummary}。`
+    }
+    if (planner.productType === "community_hub") {
+      return `已生成 ${planner.productName} 的社区工作区骨架，当前主入口包括 ${routeSummary}。`
+    }
+    if (planner.productType === "content_site") {
+      return `已生成 ${planner.productName} 的官网与下载产品骨架，当前主入口包括 ${routeSummary}。`
+    }
+    return `已生成 ${planner.productName} 的稳定骨架，当前主入口包括 ${routeSummary}。`
+  }
+
+  if (planner.productType === "ai_code_platform") {
+    return `Generated the ${planner.productName} AI code platform scaffold with ${routeSummary}.`
+  }
+  if (planner.productType === "crm_workspace") {
+    return `Generated the ${planner.productName} CRM workspace scaffold with ${routeSummary}.`
+  }
+  if (planner.productType === "api_platform") {
+    return `Generated the ${planner.productName} API platform scaffold with ${routeSummary}.`
+  }
+  if (planner.productType === "community_hub") {
+    return `Generated the ${planner.productName} community workspace scaffold with ${routeSummary}.`
+  }
+  if (planner.productType === "content_site") {
+    return `Generated the ${planner.productName} website and download scaffold with ${routeSummary}.`
+  }
+  return `Generated the ${planner.productName} stable scaffold with ${routeSummary}.`
+}
+
+function getResolvedTemplateTitleForSpec(spec: AppSpec, region: Region) {
+  const isCn = region === "cn"
+  const archetype = getScaffoldArchetype(spec)
+  if (archetype === "code_platform") {
+    return isCn ? "AI 代码平台基线" : "AI Code Platform Baseline"
+  }
+  if (archetype === "api_platform") {
+    return isCn ? "API 控制平面基线" : "API Control Plane Baseline"
+  }
+  if (archetype === "community") {
+    return isCn ? "社区工作台基线" : "Community Workspace Baseline"
+  }
+  if (archetype === "marketing_admin" || archetype === "content") {
+    return isCn ? "下载站与分发基线" : "Download Site Baseline"
+  }
+  if (isAdminOpsTaskSpec(spec)) {
+    return isCn ? "内部控制平面基线" : "Internal Control Plane Baseline"
+  }
+  if (archetype === "crm") {
+    return isCn ? "CRM 工作台基线" : "CRM Workspace Baseline"
+  }
+  const template = spec.templateId ? getTemplateById(spec.templateId) : null
+  return template ? (isCn ? template.titleZh : template.titleEn) : undefined
 }
 
 async function callGeneratorModel(
@@ -2620,8 +3937,14 @@ function extractProductNameFromPrompt(prompt: string) {
 
 function inferAppKind(prompt: string) {
   const text = prompt.toLowerCase()
+  if (looksLikeApiPlatformPrompt(text)) {
+    return "task"
+  }
   if (looksLikeCodePlatformPrompt(text)) {
     return "code_platform"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(text)) {
+    return "task"
   }
   if (
     /crm|customer|sales|pipeline|lead|\u5ba2\u6237|\u9500\u552e|\u8ddf\u8fdb/.test(text)
@@ -2643,17 +3966,29 @@ function inferAppKind(prompt: string) {
 
 function inferTemplateIdFromPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
+  if (looksLikeApiPlatformPrompt(text)) {
+    return "taskflow"
+  }
   if (looksLikeCodePlatformPrompt(text)) {
     return "siteforge"
+  }
+  if (looksLikeMarketingDistributionPrompt(text)) {
+    return "launchpad"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(text)) {
+    return undefined
+  }
+  if (shouldPreferAdminOpsOverCrm(text)) {
+    return undefined
   }
   if (/crm|customer|sales|pipeline|lead|\u5ba2\u6237|\u9500\u552e|\u8ddf\u8fdb/.test(text)) {
     return "opsdesk"
   }
-  if (/admin|ops|internal tool|backoffice|back office|control plane|\u7ba1\u7406\u540e\u53f0|\u8fd0\u8425\u540e\u53f0|\u5185\u90e8\u5de5\u5177|\u5ba1\u6279|\u5de5\u5355|\u63a7\u5236\u53f0/.test(text)) {
-    return "opsdesk"
-  }
   if (/website|landing|homepage|download|docs|documentation|\u5b98\u7f51|\u843d\u5730\u9875|\u4e0b\u8f7d\u9875|\u6587\u6863/.test(text)) {
     return "launchpad"
+  }
+  if (/admin|ops|internal tool|backoffice|back office|control plane|\u7ba1\u7406\u540e\u53f0|\u8fd0\u8425\u540e\u53f0|\u5185\u90e8\u5de5\u5177|\u5ba1\u6279|\u5de5\u5355|\u63a7\u5236\u53f0/.test(text)) {
+    return "opsdesk"
   }
   if (/api|analytics|dashboard|monitoring|usage trend|error alert|\u63a5\u53e3|\u5206\u6790\u5e73\u53f0|\u4eea\u8868\u76d8|\u76d1\u63a7|\u8d8b\u52bf/.test(text)) {
     return "taskflow"
@@ -2919,10 +4254,13 @@ async function applyPromptDrivenFallback(
   const previousSpec = await readProjectSpec(outDir)
   const spec =
     options?.plannedSpec
-      ? createAppSpec(prompt, region, {
+      ? {
           ...options.plannedSpec,
-          title: options.plannedSpec.title || previousSpec?.title,
-          planTier: (options.plannedSpec.planTier as PlanTier | undefined) ?? (previousSpec?.planTier as PlanTier | undefined) ?? "free",
+          title: options.plannedSpec.title || previousSpec?.title || options.plannedSpec.title,
+          planTier:
+            (options.plannedSpec.planTier as PlanTier | undefined) ??
+            (previousSpec?.planTier as PlanTier | undefined) ??
+            "free",
           deploymentTarget:
             (options.plannedSpec.deploymentTarget as DeploymentTarget | undefined) ??
             (previousSpec?.deploymentTarget as DeploymentTarget | undefined) ??
@@ -2931,7 +4269,8 @@ async function applyPromptDrivenFallback(
             (options.plannedSpec.databaseTarget as DatabaseTarget | undefined) ??
             (previousSpec?.databaseTarget as DatabaseTarget | undefined) ??
             getDefaultDatabaseTarget(region),
-        })
+          updatedAt: new Date().toISOString(),
+        }
       : createAppSpec(prompt, region, previousSpec ?? undefined)
   await writeProjectSpec(outDir, spec)
   const files = await buildSpecDrivenWorkspaceFiles(outDir, spec, undefined, {
@@ -3125,7 +4464,7 @@ async function runGenerateTaskWorker(jobId: string) {
   await updateGenerateTask(jobId, (t) => ({ ...t, status: "running", error: undefined }))
   await appendGenerateTaskLog(jobId, "[1/6] 任务开始：准备工作区")
   if (current.templateTitle) {
-    await appendGenerateTaskLog(jobId, `[1.5/6] 已加载模板基线：${current.templateTitle}`)
+    await appendGenerateTaskLog(jobId, `[1.5/6] 已预载模板参考：${current.templateTitle}`)
   }
   if (current.contextSummary) {
     await appendGenerateTaskLog(jobId, `[1.6/6] 已锁定生成锚点：${current.contextSummary}`)
@@ -3149,13 +4488,15 @@ async function runGenerateTaskWorker(jobId: string) {
           PLANNER_TIMEOUT_MS,
           "Planner"
         ),
-        current.planTier ?? "free"
+        current.planTier ?? "free",
+        rawPrompt
       )
     } catch (plannerError: any) {
       const reason = plannerError?.message || String(plannerError)
       planner = constrainPlannerByPlanTier(
         fallbackPlannerSpec(rawPrompt, current.region, deploymentTarget, databaseTarget, requestContext),
-        current.planTier ?? "free"
+        current.planTier ?? "free",
+        rawPrompt
       )
       await appendGenerateTaskLog(jobId, `[2.2/6] Planner 超时或失败，已回退到本地蓝图：${reason}`)
     }
@@ -3182,11 +4523,17 @@ async function runGenerateTaskWorker(jobId: string) {
       databaseTarget,
       context: requestContext,
     })
+    const resolvedTemplateTitle = getResolvedTemplateTitleForSpec(plannedSpec, current.region)
     await updateGenerateTask(jobId, (t) => ({
       ...t,
+      templateId: plannedSpec.templateId,
+      templateTitle: resolvedTemplateTitle,
       workflowMode,
       planner: plannerSnapshot,
     }))
+    if (resolvedTemplateTitle && resolvedTemplateTitle !== current.templateTitle) {
+      await appendGenerateTaskLog(jobId, `[2.6/6] 已切换到 archetype 基线：${resolvedTemplateTitle}`)
+    }
     const scheduleBuilderWatchdog = () => {
       clearBuilderWatchdog()
       builderWatchdog = setTimeout(() => {
@@ -3361,26 +4708,7 @@ async function runGenerateTaskWorker(jobId: string) {
         current.region === "cn"
           ? "当前走稳定生成路径：先交付完整可运行骨架，再把后续定制交给 iterate/上下文改写。"
           : "Using the deterministic generation path: ship the runnable app scaffold first, then push deeper customization into iterate/context edits."
-      summary =
-        planner.productType === "ai_code_platform"
-          ? current.region === "cn"
-            ? `已生成 ${planner.productName} 的 AI 代码平台骨架，包含 dashboard、editor、runs、templates、pricing、settings 六页与可演示工作台。`
-            : `Generated the ${planner.productName} AI code platform scaffold with dashboard, editor, runs, templates, pricing, and settings.`
-          : planner.productType === "crm_workspace"
-            ? current.region === "cn"
-              ? `已生成 ${planner.productName} 的 CRM 工作台骨架，包含 dashboard、leads、pipeline、customers、automations 五页。`
-              : `Generated the ${planner.productName} CRM workspace scaffold with dashboard, leads, pipeline, customers, and automations.`
-            : planner.productType === "api_platform"
-              ? current.region === "cn"
-                ? `已生成 ${planner.productName} 的 API 平台骨架，包含 dashboard、endpoints、logs、auth、environments 五页。`
-                : `Generated the ${planner.productName} API platform scaffold with dashboard, endpoints, logs, auth, and environments.`
-              : planner.productType === "community_hub"
-                ? current.region === "cn"
-                  ? `已生成 ${planner.productName} 的社区工作区骨架，并保留后续继续补强的页面入口。`
-                  : `Generated the ${planner.productName} community workspace scaffold with follow-up expansion routes.`
-                : current.region === "cn"
-                  ? `已生成 ${planner.productName} 的稳定骨架，并跳过自由生成以优先保证 preview 与 build 验收。`
-                  : `Generated the ${planner.productName} stable scaffold and skipped free-form generation to prioritize preview and build acceptance.`
+      summary = buildDeterministicScaffoldSummary(planner, current.region)
       await appendGenerateTaskLog(jobId, "[4/6] 走稳定生成路径：直接交付完整 scaffold，并跳过长耗时自由生成")
       const stabilized = await stabilizeGeneratedWorkspace(outDir, current.prompt, current.region, {
         plannedSpec,
@@ -3705,10 +5033,14 @@ export async function POST(req: Request) {
       databaseTarget: normalizeDatabaseTarget(String(body?.databaseTarget ?? ""), region),
     })
     const inferredKind = resolveContextAppKind(rawPrompt, provisionalContext)
-    const templateId =
+    const initialPlannerProductType = resolvePlannerProductType(rawPrompt, provisionalContext)
+    const inferredTemplateId =
       inferredKind === "code_platform"
         ? ""
-        : requestedTemplateId || resolveTemplateId(rawPrompt, provisionalContext) || ""
+        : getDefaultTemplateIdForPlannerProductType(initialPlannerProductType, rawPrompt, provisionalContext) ||
+          resolveTemplateId(rawPrompt, provisionalContext) ||
+          ""
+    const templateId = requestedTemplateId || inferredTemplateId
     const template = getTemplateById(templateId)
     const templatePrompt = String(body?.templatePrompt ?? "").trim()
     const shouldInjectTemplateBaseline = Boolean(template && requestedTemplateId && inferredKind !== "code_platform")

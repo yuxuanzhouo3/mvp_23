@@ -57,6 +57,11 @@ function HostedPaymentPageContent() {
     setCountry(payment.region === "cn" ? "中国" : "United States")
   }, [payment])
 
+  useEffect(() => {
+    if (!paymentId || payment?.status !== "completed") return
+    router.push(`/payment/success?paymentId=${encodeURIComponent(paymentId)}`)
+  }, [payment?.status, paymentId, router])
+
   const isWechatHosted = (payment?.method || provider) === "wechatpay"
 
   useEffect(() => {
@@ -429,9 +434,11 @@ function HostedPaymentPageContent() {
               <Button variant="outline" onClick={refreshStatus} disabled={checking} className="min-w-40">
                 {checking ? copy.checking : copy.refresh}
               </Button>
-              <Button onClick={verifyPaid} disabled={checking} className="min-w-48">
-                {checking ? copy.checking : copy.verify}
-              </Button>
+              {!isWechatHosted ? (
+                <Button onClick={verifyPaid} disabled={checking} className="min-w-48">
+                  {checking ? copy.checking : copy.verify}
+                </Button>
+              ) : null}
               {showDebugActions ? (
                 <Button variant="secondary" onClick={simulateCallback} disabled={checking} className="min-w-48">
                   {checking ? copy.checking : copy.demoCallback}

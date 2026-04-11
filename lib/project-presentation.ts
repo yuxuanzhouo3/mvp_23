@@ -14,6 +14,12 @@ export type ProjectPresentation = {
   summary: string
   icon: ProjectIconSpec
   routes: string[]
+  archetype?: string
+  category?: string
+  coreModules?: string[]
+  entities?: string[]
+  visualTone?: string
+  capabilityFlags?: Partial<NonNullable<AppSpec["capabilityFlags"]>>
 }
 
 function sanitizeText(input?: string | null) {
@@ -55,6 +61,12 @@ function inferNameFromPrompt(prompt?: string | null, region?: Region, spec?: Par
 }
 
 function inferRoutesFromSpec(spec?: Partial<AppSpec> | null) {
+  if (Array.isArray(spec?.routeBlueprint) && spec.routeBlueprint.length) {
+    const routes = spec.routeBlueprint
+      .map((item) => sanitizeText(item?.path))
+      .filter(Boolean)
+    if (routes.length) return Array.from(new Set(routes))
+  }
   const routes = new Set<string>()
   const routeMatchers: Array<[string, string[]]> = [
     ["/dashboard", ["dashboard", "overview"]],
@@ -100,6 +112,9 @@ function buildSummary(spec: Partial<AppSpec> | null | undefined, latest?: Projec
   const latestSummary = sanitizeText(latest?.summary)
   if (latestSummary) return latestSummary
 
+  const identitySummary = sanitizeText(spec?.appIdentity?.shortDescription)
+  if (identitySummary) return identitySummary
+
   const modules = Array.isArray(spec?.modules) ? spec.modules.slice(0, 5).map((item) => sanitizeText(item)) : []
   if (modules.length) {
     return modules.join(" / ")
@@ -114,6 +129,9 @@ function buildSummary(spec: Partial<AppSpec> | null | undefined, latest?: Projec
 }
 
 function buildSubtitle(spec: Partial<AppSpec> | null | undefined, region: Region) {
+  const identityCategory = sanitizeText(spec?.appIdentity?.archetypeLabel)
+  if (identityCategory) return identityCategory
+
   if (spec?.kind === "code_platform") {
     return region === "cn" ? "中国版 AI 代码编辑平台" : "AI coding platform"
   }
@@ -130,6 +148,17 @@ function buildSubtitle(spec: Partial<AppSpec> | null | undefined, region: Region
 }
 
 function buildIcon(spec: Partial<AppSpec> | null | undefined): ProjectIconSpec {
+  if (spec?.visualSeed?.icon) {
+    return {
+      glyph: spec.visualSeed.icon.glyph,
+      from: spec.visualSeed.icon.from,
+      to: spec.visualSeed.icon.to,
+      ring: spec.visualSeed.icon.ring,
+    }
+  }
+  if (spec?.appIdentity?.icon) {
+    return spec.appIdentity.icon
+  }
   if (spec?.kind === "code_platform") {
     return { glyph: "✦", from: "#6d28d9", to: "#a855f7", ring: "rgba(168,85,247,0.24)" }
   }
@@ -154,6 +183,7 @@ export function buildProjectPresentation(args: {
   const { projectId, region, spec, latestHistory } = args
   const explicitTitle = sanitizeText(spec?.title)
   const displayName =
+    sanitizeText(spec?.appIdentity?.displayName) ||
     (explicitTitle && !looksLikeInternalProjectId(explicitTitle) ? toDisplayCase(explicitTitle) : "") ||
     inferNameFromPrompt(latestHistory?.prompt, region, spec) ||
     (looksLikeInternalProjectId(projectId) ? "AI App Studio" : projectId)
@@ -163,5 +193,15 @@ export function buildProjectPresentation(args: {
     summary: buildSummary(spec, latestHistory),
     icon: buildIcon(spec),
     routes: inferRoutesFromSpec(spec),
+    archetype: sanitizeText(spec?.appIdentity?.category) || sanitizeText(spec?.appIntent?.archetype),
+    category: sanitizeText(spec?.appIntent?.productCategory),
+    coreModules: Array.isArray(spec?.moduleBlueprint) && spec.moduleBlueprint.length
+      ? spec.moduleBlueprint.slice(0, 6).map((item) => sanitizeText(item.label)).filter(Boolean)
+      : (spec?.modules ?? []).slice(0, 6).map((item) => sanitizeText(item)).filter(Boolean),
+    entities: Array.isArray(spec?.entityBlueprint)
+      ? spec.entityBlueprint.slice(0, 6).map((item) => sanitizeText(item.label)).filter(Boolean)
+      : [],
+    visualTone: sanitizeText(spec?.visualSeed?.tone),
+    capabilityFlags: spec?.capabilityFlags,
   } satisfies ProjectPresentation
 }

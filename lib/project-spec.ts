@@ -52,6 +52,105 @@ export type SeedItem = {
   status: string
 }
 
+export type AppIdentityIconSeed = {
+  glyph: string
+  from: string
+  to: string
+  ring: string
+}
+
+export type AppIntent = {
+  archetype: ScaffoldArchetype | "admin_ops_internal_tool"
+  productCategory: string
+  targetAudience: string[]
+  primaryJobs: string[]
+  primaryWorkflow: string
+  integrationTargets: string[]
+  automationScopes: string[]
+  differentiationNotes: string[]
+}
+
+export type AppIdentity = {
+  displayName: string
+  shortDescription: string
+  archetypeLabel: string
+  category: string
+  icon: AppIdentityIconSeed
+}
+
+export type RoutePagePrototype =
+  | "dashboard"
+  | "hero"
+  | "list"
+  | "detail"
+  | "form"
+  | "kanban"
+  | "docs"
+  | "distribution"
+  | "admin_queue"
+  | "timeline"
+  | "analytics"
+  | "settings"
+  | "editor"
+  | "workflow"
+  | "feed"
+
+export type RouteBlueprint = {
+  id: string
+  path: string
+  label: string
+  purpose: string
+  moduleIds: string[]
+  entityIds: string[]
+  primaryActions: string[]
+  surface: "workspace" | "dashboard" | "code" | "data" | "settings" | "marketing"
+  pagePrototype?: RoutePagePrototype
+}
+
+export type ModuleBlueprint = {
+  id: string
+  label: string
+  summary: string
+  routeIds: string[]
+  capabilityIds: string[]
+}
+
+export type EntityBlueprint = {
+  id: string
+  label: string
+  summary: string
+  fields: string[]
+  primaryViews: string[]
+  workflows: string[]
+}
+
+export type CapabilityFlags = {
+  hasAiChat: boolean
+  hasVisualEdit: boolean
+  hasCodeEditor: boolean
+  hasLivePreview: boolean
+  hasControlPlane: boolean
+  hasDataConsole: boolean
+  hasAutomations: boolean
+  hasIntegrations: boolean
+  hasApiSurface: boolean
+  hasPricing: boolean
+  hasPermissions: boolean
+  hasPublishing: boolean
+}
+
+export type VisualSeed = {
+  theme: "dark" | "light"
+  tone: string
+  density: "compact" | "comfortable"
+  navStyle: "editor_shell" | "control_plane" | "marketing_shell" | "community_shell"
+  layoutVariant: "split_command" | "sidebar_board" | "story_stack" | "marketing_split" | "docs_console"
+  heroVariant: "statement" | "pipeline" | "operations" | "distribution" | "community"
+  surfaceVariant: "solid" | "glass" | "soft"
+  ctaVariant: "pill" | "block" | "outline"
+  icon: AppIdentityIconSeed
+}
+
 export type RegionDefaults = {
   language: "zh-CN" | "en-US"
   timezone: string
@@ -100,6 +199,13 @@ export type AppSpec = {
   features: SpecFeature[]
   modules: string[]
   seedItems: SeedItem[]
+  appIntent?: AppIntent
+  appIdentity?: AppIdentity
+  routeBlueprint?: RouteBlueprint[]
+  moduleBlueprint?: ModuleBlueprint[]
+  entityBlueprint?: EntityBlueprint[]
+  capabilityFlags?: CapabilityFlags
+  visualSeed?: VisualSeed
 }
 
 type AppSpecSeed = Partial<AppSpec> & {
@@ -255,35 +361,108 @@ export function deriveProjectHeadline(prompt: string) {
   return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean
 }
 
+function looksLikeApiPlatformPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+    text
+  )
+}
+
+function looksLikeAdminOpsPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|运营后台|内部工具|审批|工单|控制台|权限|角色|审计|告警|故障|合规|安全/.test(
+    text
+  )
+}
+
+function looksLikeMarketingDistributionPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|落地页|下载|文档|设备|分发|安装包|桌面端/.test(
+    text
+  )
+}
+
+function looksLikeCommunityPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|社区|社团|社交|公告|活动|反馈|路线图|审核|治理|成员|投票/.test(
+    text
+  )
+}
+
+function looksLikeSpecializedWorkspacePrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(
+    text
+  )
+}
+
+function shouldPreferAdminOpsOverCrm(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  if (!looksLikeAdminOpsPrompt(text)) return false
+  if (looksLikeMarketingDistributionPrompt(text)) return false
+  if (looksLikeCommunityPrompt(text)) return false
+  if (looksLikeSpecializedWorkspacePrompt(text)) return false
+  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|商机|报价|续约/.test(
+    text
+  )
+}
+
+function looksLikeCodePlatformPrompt(prompt: string) {
+  const text = String(prompt ?? "").toLowerCase()
+  const explicitApiSignals = looksLikeApiPlatformPrompt(text)
+  const explicitCodeSignals =
+    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
+      text
+    )
+  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制/.test(text)
+  if (explicitApiSignals && !ideSignals && !explicitCodeSignals) return false
+  return explicitCodeSignals || ideSignals
+}
+
 export function inferAppKind(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) return "code_platform"
+  if (looksLikeApiPlatformPrompt(text)) return "task"
+  if (looksLikeCodePlatformPrompt(text)) return "code_platform"
+  if (looksLikeCommunityPrompt(text)) return "community"
+  if (looksLikeSpecializedWorkspacePrompt(text)) return "task"
+  if (shouldPreferAdminOpsOverCrm(text)) return "task"
   if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) return "crm"
   if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) return "blog"
   if (/blog|article|post|博客|文章|内容/.test(text)) return "blog"
-  if (/community|club|social|group|社区|社团|社交/.test(text)) return "community"
   return "task"
 }
 
 function inferTemplateIdFromPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
+  if (looksLikeApiPlatformPrompt(text)) {
+    return "taskflow"
+  }
+  if (looksLikeCodePlatformPrompt(text)) {
     return "siteforge"
   }
-  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
-    return "opsdesk"
+  if (looksLikeMarketingDistributionPrompt(text)) {
+    return "launchpad"
   }
-  if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
+  if (looksLikeCommunityPrompt(text)) {
+    return "orbital"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(text)) {
+    return undefined
+  }
+  if (shouldPreferAdminOpsOverCrm(text)) {
+    return undefined
+  }
+  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
     return "opsdesk"
   }
   if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) {
     return "launchpad"
   }
+  if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
+    return "opsdesk"
+  }
   if (/api|analytics|dashboard|monitoring|usage trend|error alert|接口|分析平台|仪表盘|监控|趋势/.test(text)) {
     return "taskflow"
-  }
-  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
-    return "orbital"
   }
   return undefined
 }
@@ -294,20 +473,29 @@ function uniqueStrings(input: string[]) {
 
 function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
   const text = String(prompt ?? "").toLowerCase()
-  if (/cursor|code editor|ide|developer platform|coding workspace|ai coding|代码编辑器|编程平台|开发者平台|代码平台|代码工作台/.test(text)) {
-    return "code_platform"
+  if (looksLikeMarketingDistributionPrompt(text)) {
+    return "marketing_admin"
+  }
+  if (looksLikeCommunityPrompt(text)) {
+    return "community"
+  }
+  if (looksLikeSpecializedWorkspacePrompt(text)) {
+    return "task"
+  }
+  if (shouldPreferAdminOpsOverCrm(text)) {
+    return "task"
   }
   if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
     return "crm"
   }
-  if (/api|sdk|developer portal|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/.test(text)) {
+  if (looksLikeApiPlatformPrompt(text)) {
     return "api_platform"
+  }
+  if (looksLikeCodePlatformPrompt(text)) {
+    return "code_platform"
   }
   if (/website|landing|homepage|download|docs|documentation|marketing|brand|官网|落地页|下载页|文档|品牌|增长/.test(text)) {
     return "marketing_admin"
-  }
-  if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/.test(text)) {
-    return "community"
   }
   if (/blog|article|post|博客|文章|内容/.test(text)) {
     return "content"
@@ -315,14 +503,31 @@ function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
   return "task"
 }
 
-function getScaffoldArchetype(spec: Pick<AppSpec, "kind" | "templateId" | "prompt">): ScaffoldArchetype {
+export function getScaffoldArchetype(spec: Pick<AppSpec, "kind" | "templateId" | "prompt">): ScaffoldArchetype {
   if (spec.kind === "code_platform") return "code_platform"
   if (spec.kind === "crm" || spec.templateId === "opsdesk") return "crm"
   if (spec.kind === "community" || spec.templateId === "orbital") return "community"
-  if (spec.kind === "blog") return "content"
   if (spec.templateId === "taskflow") return "api_platform"
   if (spec.templateId === "launchpad") return "marketing_admin"
+  if (spec.kind === "blog") return "content"
   return inferScaffoldArchetypeFromPrompt(spec.prompt)
+}
+
+function scaffoldArchetypeToKind(archetype: ScaffoldArchetype): AppKind {
+  if (archetype === "code_platform") return "code_platform"
+  if (archetype === "crm") return "crm"
+  if (archetype === "community") return "community"
+  if (archetype === "marketing_admin" || archetype === "content") return "blog"
+  return "task"
+}
+
+function getDefaultTemplateIdForArchetype(archetype: ScaffoldArchetype) {
+  if (archetype === "code_platform") return "siteforge"
+  if (archetype === "crm") return "opsdesk"
+  if (archetype === "community") return "orbital"
+  if (archetype === "marketing_admin" || archetype === "content") return "launchpad"
+  if (archetype === "api_platform") return "taskflow"
+  return undefined
 }
 
 function pushFeature(features: SpecFeature[], feature: SpecFeature) {
@@ -367,7 +572,19 @@ function getStatusConfig(spec: AppSpec): Array<{ key: string; label: string }> {
   return base
 }
 
-function getKindModules(kind: AppKind, region: Region) {
+function getKindModules(kind: AppKind, region: Region, archetype?: ScaffoldArchetype, prompt?: string) {
+  const promptText = String(prompt ?? "").toLowerCase()
+  const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
+  if (archetype === "api_platform") {
+    return region === "cn"
+      ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
+      : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switching"]
+  }
+  if (archetype === "marketing_admin") {
+    return region === "cn"
+      ? ["官网入口", "下载分发", "文档中心", "后台控制台"]
+      : ["Website entry", "Download distribution", "Docs center", "Admin console"]
+  }
   if (kind === "code_platform") {
     return region === "cn"
       ? ["AI 对话编程", "项目文件树", "多标签编辑器", "终端与运行反馈"]
@@ -388,12 +605,19 @@ function getKindModules(kind: AppKind, region: Region) {
       ? ["活动安排", "成员分组", "公告管理"]
       : ["Events", "Member groups", "Announcements"]
   }
+  if (prefersAdminOps) {
+    return region === "cn"
+      ? ["审批队列", "权限策略", "审计时间线", "事件响应"]
+      : ["Approval queue", "Access policy", "Audit timeline", "Incident response"]
+  }
   return region === "cn"
     ? ["任务看板", "优先级管理", "负责人协同"]
     : ["Task board", "Priority management", "Assignee collaboration"]
 }
 
-function getArchetypeModules(archetype: ScaffoldArchetype, region: Region) {
+function getArchetypeModules(archetype: ScaffoldArchetype, region: Region, prompt?: string) {
+  const promptText = String(prompt ?? "").toLowerCase()
+  const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
   if (archetype === "api_platform") {
     return region === "cn"
       ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
@@ -414,26 +638,128 @@ function getArchetypeModules(archetype: ScaffoldArchetype, region: Region) {
       ? ["内容日历", "栏目管理", "作者协作", "发布节奏"]
       : ["Content calendar", "Section management", "Author collaboration", "Publishing cadence"]
   }
+  if (prefersAdminOps) {
+    return region === "cn"
+      ? ["团队席位", "规则编排", "控制面板", "合规留痕"]
+      : ["Team seats", "Rule orchestration", "Control plane", "Compliance trail"]
+  }
   return []
 }
 
-function getPlanModules(planTier: PlanTier, region: Region) {
+function getPlanModules(planTier: PlanTier, region: Region, archetype?: ScaffoldArchetype, prompt?: string) {
+  const promptText = String(prompt ?? "").toLowerCase()
+  const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
   if (planTier === "elite") {
+    if (archetype === "code_platform") {
+      return region === "cn"
+        ? ["多工作区切换", "发布审计轨道", "团队编码协同"]
+        : ["Multi-workspace switcher", "Release audit rail", "Team coding collaboration"]
+    }
+    if (archetype === "api_platform") {
+      return region === "cn"
+        ? ["多环境发布", "密钥轮换控制", "团队平台治理"]
+        : ["Multi-environment release", "Key rotation controls", "Platform governance"]
+    }
+    if (archetype === "marketing_admin") {
+      return region === "cn"
+        ? ["多端分发工作台", "展示级品牌系统", "团队发布协同"]
+        : ["Multi-device distribution", "Showcase brand system", "Team publishing collaboration"]
+    }
+    if (prefersAdminOps) {
+      return region === "cn"
+        ? ["跨团队访问治理", "审计导出轨道", "事件指挥工作区"]
+        : ["Cross-team access governance", "Audit export rail", "Incident command workspace"]
+    }
     return region === "cn"
       ? ["多页面工作台", "展示级视觉系统", "团队协同模块"]
       : ["Multi-page workspace", "Showcase visual system", "Team collaboration modules"]
   }
   if (planTier === "pro") {
+    if (archetype === "code_platform") {
+      return region === "cn"
+        ? ["运行分析总览", "导出交付流程", "持续改码面板"]
+        : ["Run analytics overview", "Export delivery flow", "Continuous code iteration"]
+    }
+    if (archetype === "api_platform") {
+      return region === "cn"
+        ? ["接口分析总览", "日志导出流程", "持续发布面板"]
+        : ["API analytics overview", "Log export flow", "Continuous release panel"]
+    }
+    if (archetype === "community") {
+      return region === "cn"
+        ? ["社区分析总览", "成员导出流程", "持续运营面板"]
+        : ["Community analytics overview", "Member export flow", "Continuous ops panel"]
+    }
+    if (prefersAdminOps) {
+      return region === "cn"
+        ? ["安全分析总览", "审批导出流程", "持续治理面板"]
+        : ["Security analytics overview", "Approval export flow", "Continuous governance panel"]
+    }
     return region === "cn"
       ? ["分析总览", "导出流程", "持续迭代面板"]
       : ["Analytics overview", "Export flow", "Continuous iteration panel"]
   }
   if (planTier === "builder") {
+    if (archetype === "code_platform") {
+      return region === "cn"
+        ? ["分屏代码预览", "文件筛选器", "运行指标卡"]
+        : ["Split code preview", "File filters", "Run metrics"]
+    }
+    if (archetype === "api_platform") {
+      return region === "cn"
+        ? ["接口列表视图", "环境筛选器", "用量指标卡"]
+        : ["Endpoint list views", "Environment filters", "Usage metrics"]
+    }
+    if (archetype === "community") {
+      return region === "cn"
+        ? ["成员与反馈双视图", "分群筛选", "活跃度指标卡"]
+        : ["Member and feedback views", "Audience filters", "Engagement metrics"]
+    }
+    if (archetype === "marketing_admin") {
+      return region === "cn"
+        ? ["落地页与下载双视图", "渠道筛选", "转化指标卡"]
+        : ["Landing and download views", "Channel filters", "Conversion metrics"]
+    }
+    if (prefersAdminOps) {
+      return region === "cn"
+        ? ["审批与审计双视图", "权限筛选器", "事件指标卡"]
+        : ["Approvals and audit views", "Policy filters", "Incident metrics"]
+    }
     return region === "cn"
       ? ["看板与列表双视图", "分组筛选", "统计卡片"]
       : ["Board and list views", "Grouped filtering", "Metric cards"]
   }
   if (planTier === "starter" || planTier === "free") {
+    if (archetype === "code_platform") {
+      return region === "cn"
+        ? ["首版编码工作台", "快速生成入口", "运行状态流转"]
+        : ["First coding workspace", "Quick generation entry", "Run status workflow"]
+    }
+    if (archetype === "crm") {
+      return region === "cn"
+        ? ["Pipeline 控制室", "线索资格分层", "成交与交付节奏"]
+        : ["Pipeline control room", "Lead qualification lanes", "Close and handoff rhythm"]
+    }
+    if (archetype === "api_platform") {
+      return region === "cn"
+        ? ["首版接口控制台", "快速查看日志", "环境状态流转"]
+        : ["First API console", "Quick log review", "Environment status workflow"]
+    }
+    if (archetype === "community") {
+      return region === "cn"
+        ? ["反馈分流工作台", "成员信任分层", "公告与活动节奏"]
+        : ["Feedback triage workspace", "Member trust segments", "Announcement and event rhythm"]
+    }
+    if (archetype === "marketing_admin" || archetype === "content") {
+      return region === "cn"
+        ? ["首版增长官网", "快速下载分发", "版本更新流转"]
+        : ["First growth site", "Quick download distribution", "Release update workflow"]
+    }
+    if (prefersAdminOps) {
+      return region === "cn"
+        ? ["首版审批控制台", "快速策略调整", "审计状态流转"]
+        : ["First approvals console", "Quick policy changes", "Audit status workflow"]
+    }
     return region === "cn"
       ? ["首版工作台", "快速录入", "状态流转"]
       : ["First version workspace", "Quick create", "Status workflow"]
@@ -499,9 +825,2876 @@ function getTemplateFeatures(templateId: string | undefined, planTier: PlanTier)
   }
 }
 
-function getSeedItems(kind: AppKind, region: Region, features: SpecFeature[], planTier: PlanTier): SeedItem[] {
+function toBlueprintId(input: string) {
+  const normalized = sanitizeUiText(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return normalized || "module"
+}
+
+function getIdentityGlyph(title: string) {
+  const normalized = sanitizeUiText(title).replace(/[^A-Za-z0-9 ]/g, " ").trim()
+  if (!normalized) return "M"
+  const tokens = normalized.split(/\s+/).filter(Boolean)
+  if (tokens.length >= 2) {
+    return `${tokens[0].charAt(0)}${tokens[1].charAt(0)}`.toUpperCase().slice(0, 2)
+  }
+  const token = tokens[0] || normalized
+  if (token.length >= 2 && /^[A-Z][a-z]+[A-Z]/.test(token)) {
+    return `${token.charAt(0)}${token.match(/[A-Z](?=[a-z]*$)/)?.[0] || token.charAt(1)}`.toUpperCase()
+  }
+  return token.slice(0, 2).toUpperCase()
+}
+
+function getArchetypeIconSeed(archetype: ScaffoldArchetype, title: string, prompt?: string): AppIdentityIconSeed {
+  const glyph = getIdentityGlyph(title)
+  const text = String(prompt ?? title ?? "").toLowerCase()
+  if (archetype === "code_platform") {
+    if (/system|ops|control|admin|系统|控制台/.test(text)) {
+      return { glyph, from: "#312e81", to: "#6366f1", ring: "rgba(99,102,241,0.26)" }
+    }
+    if (/cursor|assistant|agent|copilot|助手|智能体/.test(text)) {
+      return { glyph, from: "#5b21b6", to: "#8b5cf6", ring: "rgba(139,92,246,0.24)" }
+    }
+    return { glyph, from: "#5b21b6", to: "#8b5cf6", ring: "rgba(139,92,246,0.24)" }
+  }
+  if (archetype === "crm") {
+    if (/renewal|success|account|续约|成功团队|账户/.test(text)) {
+      return { glyph, from: "#065f46", to: "#14b8a6", ring: "rgba(20,184,166,0.24)" }
+    }
+    return { glyph, from: "#1d4ed8", to: "#38bdf8", ring: "rgba(56,189,248,0.24)" }
+  }
+  if (archetype === "api_platform") {
+    if (/security|auth|token|oauth|安全|鉴权|令牌/.test(text)) {
+      return { glyph, from: "#0f172a", to: "#10b981", ring: "rgba(16,185,129,0.24)" }
+    }
+    if (/sdk|developer|docs|文档|开发者/.test(text)) {
+      return { glyph, from: "#0f172a", to: "#3b82f6", ring: "rgba(59,130,246,0.24)" }
+    }
+    return { glyph, from: "#0f172a", to: "#06b6d4", ring: "rgba(6,182,212,0.22)" }
+  }
+  if (archetype === "community") {
+    if (/feedback|roadmap|vote|反馈|路线图|投票/.test(text)) {
+      return { glyph, from: "#b45309", to: "#f59e0b", ring: "rgba(245,158,11,0.22)" }
+    }
+    if (/member|social|community|成员|社区|社交/.test(text)) {
+      return { glyph, from: "#9f1239", to: "#fb7185", ring: "rgba(251,113,133,0.22)" }
+    }
+    return { glyph, from: "#b45309", to: "#f59e0b", ring: "rgba(245,158,11,0.22)" }
+  }
+  if (archetype === "marketing_admin" || archetype === "content") {
+    if (/download|device|ios|android|desktop|下载|设备/.test(text)) {
+      return { glyph, from: "#1e1b4b", to: "#2563eb", ring: "rgba(37,99,235,0.22)" }
+    }
+    if (/brand|marketing|growth|官网|品牌|增长/.test(text)) {
+      return { glyph, from: "#7c2d12", to: "#f97316", ring: "rgba(249,115,22,0.22)" }
+    }
+    return { glyph, from: "#111827", to: "#6366f1", ring: "rgba(99,102,241,0.22)" }
+  }
+  return { glyph, from: "#0f766e", to: "#22c55e", ring: "rgba(34,197,94,0.22)" }
+}
+
+function getArchetypeCategoryLabel(archetype: ScaffoldArchetype, region: Region) {
+  const isCn = region === "cn"
+  switch (archetype) {
+    case "code_platform":
+      return isCn ? "AI 代码平台" : "AI code platform"
+    case "crm":
+      return isCn ? "CRM 与销售工作台" : "CRM and sales workspace"
+    case "api_platform":
+      return isCn ? "API 与运行平台" : "API and runtime platform"
+    case "marketing_admin":
+      return isCn ? "官网与下载平台" : "Website and download platform"
+    case "community":
+      return isCn ? "社区与反馈平台" : "Community and feedback platform"
+    case "content":
+      return isCn ? "内容与品牌产品" : "Content and brand product"
+    default:
+      return isCn ? "内部工作台" : "Internal workspace"
+  }
+}
+
+export function isAdminOpsTaskSpec(spec: Pick<AppSpec, "prompt" | "title" | "kind" | "templateId">) {
+  return getScaffoldArchetype(spec) === "task" && shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? "").toLowerCase())
+}
+
+type DomainFlavor = "healthcare" | "education" | "finance" | "recruiting" | "support" | "commerce_ops" | "general"
+
+function inferDomainFlavor(prompt: string): DomainFlavor {
+  const text = String(prompt ?? "").toLowerCase()
+  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|医疗|健康|诊所|患者|医生|医院|预约|病历|护理/.test(text)) {
+    return "healthcare"
+  }
+  if (/school|education|course|student|teacher|class|lesson|assignment|campus|教育|学校|课程|学生|老师|班级|作业|校园/.test(text)) {
+    return "education"
+  }
+  if (/finance|financial|bank|ledger|transaction|reconciliation|invoice|expense|portfolio|金融|财务|银行|账本|交易|对账|发票|费用|投资组合/.test(text)) {
+    return "finance"
+  }
+  if (/recruit|hiring|candidate|interview|job|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用/.test(text)) {
+    return "recruiting"
+  }
+  if (/support|ticket|helpdesk|sla|knowledge base|incident|case|客服|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+    return "support"
+  }
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|merchant|retail|电商|商城|库存|商品|履约|零售|商家/.test(text)) {
+    return "commerce_ops"
+  }
+  return "general"
+}
+
+function getDomainFlavorCategory(flavor: DomainFlavor, region: Region) {
+  const isCn = region === "cn"
+  const labels: Record<DomainFlavor, string> = {
+    healthcare: isCn ? "医疗运营工作台" : "Healthcare operations workspace",
+    education: isCn ? "教育学习工作台" : "Education and learning workspace",
+    finance: isCn ? "金融财务控制台" : "Finance operations console",
+    recruiting: isCn ? "招聘人才工作台" : "Recruiting and talent workspace",
+    support: isCn ? "客服工单工作台" : "Support and ticketing workspace",
+    commerce_ops: isCn ? "电商运营工作台" : "Commerce operations workspace",
+    general: isCn ? "内部工作台" : "Internal workspace",
+  }
+  return labels[flavor]
+}
+
+function getDomainFlavorIntent(flavor: DomainFlavor, region: Region) {
+  const isCn = region === "cn"
+  const intents: Record<DomainFlavor, Pick<AppIntent, "targetAudience" | "primaryJobs" | "primaryWorkflow" | "automationScopes">> = {
+    healthcare: {
+      targetAudience: isCn ? ["护士团队", "医生", "诊所运营"] : ["Nurses", "clinicians", "clinic operators"],
+      primaryJobs: isCn ? ["管理患者队列", "安排预约", "跟进护理计划"] : ["Manage patient queues", "schedule appointments", "track care plans"],
+      primaryWorkflow: isCn ? "患者 -> 预约 -> 护理计划 -> 风险跟进" : "Patient -> appointment -> care plan -> risk follow-up",
+      automationScopes: isCn ? ["复诊提醒", "风险预警", "护理任务"] : ["follow-up reminders", "risk alerts", "care tasks"],
+    },
+    education: {
+      targetAudience: isCn ? ["教师", "教务运营", "学生管理"] : ["Teachers", "program operators", "student managers"],
+      primaryJobs: isCn ? ["管理课程", "跟踪学生", "安排作业"] : ["Manage courses", "track students", "coordinate assignments"],
+      primaryWorkflow: isCn ? "课程 -> 学生 -> 作业 -> 学习反馈" : "Course -> student -> assignment -> learning feedback",
+      automationScopes: isCn ? ["作业提醒", "学习进度", "课程通知"] : ["assignment reminders", "learning progress", "course notices"],
+    },
+    finance: {
+      targetAudience: isCn ? ["财务运营", "风控团队", "对账负责人"] : ["Finance ops", "risk teams", "reconciliation owners"],
+      primaryJobs: isCn ? ["维护账本", "核对交易", "处理异常"] : ["Maintain ledgers", "reconcile transactions", "resolve exceptions"],
+      primaryWorkflow: isCn ? "账本 -> 交易 -> 对账 -> 异常处理" : "Ledger -> transaction -> reconciliation -> exception handling",
+      automationScopes: isCn ? ["对账规则", "异常告警", "结算同步"] : ["reconciliation rules", "exception alerts", "settlement sync"],
+    },
+    recruiting: {
+      targetAudience: isCn ? ["招聘负责人", "面试官", "HRBP"] : ["Recruiting leads", "interviewers", "HR business partners"],
+      primaryJobs: isCn ? ["管理候选人", "安排面试", "推进 offer 审批"] : ["Manage candidates", "schedule interviews", "advance offer approvals"],
+      primaryWorkflow: isCn ? "候选人 -> 岗位 -> 面试 -> offer 审批" : "Candidate -> role -> interview -> offer approval",
+      automationScopes: isCn ? ["面试提醒", "候选人阶段", "offer 审批"] : ["interview reminders", "candidate stages", "offer approvals"],
+    },
+    support: {
+      targetAudience: isCn ? ["客服团队", "升级处理人", "客户成功"] : ["Support agents", "escalation owners", "customer success"],
+      primaryJobs: isCn ? ["处理工单", "同步客户案例", "维护知识库"] : ["Resolve tickets", "sync customer cases", "maintain knowledge base"],
+      primaryWorkflow: isCn ? "工单 -> 客户案例 -> 升级 -> 知识库沉淀" : "Ticket -> customer case -> escalation -> knowledge base",
+      automationScopes: isCn ? ["SLA 提醒", "升级规则", "知识库同步"] : ["SLA reminders", "escalation rules", "knowledge sync"],
+    },
+    commerce_ops: {
+      targetAudience: isCn ? ["仓储运营", "履约负责人", "供应链团队"] : ["Warehouse ops", "fulfillment owners", "supply chain teams"],
+      primaryJobs: isCn ? ["管理 SKU", "跟踪库存", "推进履约订单"] : ["Manage SKUs", "track inventory", "advance fulfillment orders"],
+      primaryWorkflow: isCn ? "SKU -> 库存 -> 履约订单 -> 供应商交接" : "SKU -> inventory -> fulfillment order -> supplier handoff",
+      automationScopes: isCn ? ["补货提醒", "履约异常", "供应商同步"] : ["reorder alerts", "fulfillment exceptions", "supplier sync"],
+    },
+    general: {
+      targetAudience: isCn ? ["内部团队"] : ["Internal teams"],
+      primaryJobs: isCn ? ["管理工作", "跟踪状态", "协调审批"] : ["Manage work", "track status", "coordinate approvals"],
+      primaryWorkflow: isCn ? "创建 -> 跟进 -> 审批 -> 完成" : "Create -> track -> approve -> complete",
+      automationScopes: isCn ? ["审批", "提醒", "报表"] : ["approvals", "reminders", "reporting"],
+    },
+  }
+  return intents[flavor]
+}
+
+function isGenericAdminOpsAppIdentity(appIdentity: AppIdentity | undefined) {
+  if (!appIdentity) return true
+  return (
+    appIdentity.category === "task" ||
+    /internal workspace/i.test(appIdentity.archetypeLabel || "") ||
+    /generated internal workspace/i.test(appIdentity.shortDescription || "")
+  )
+}
+
+function isGenericAdminOpsAppIntent(appIntent: AppIntent | undefined) {
+  if (!appIntent) return true
+  return (
+    appIntent.productCategory === "Internal workspace" ||
+    appIntent.productCategory === "内部工作台" ||
+    appIntent.primaryWorkflow === "Create -> track -> approve -> complete" ||
+    appIntent.primaryWorkflow === "创建 -> 跟进 -> 审批 -> 完成"
+  )
+}
+
+function shouldRefreshAppIdentity(spec: AppSpec, appIdentity: AppIdentity | undefined, archetype: ScaffoldArchetype) {
+  if (!appIdentity) return true
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  const expectedCategory = isAdminOps ? "admin_ops_internal_tool" : archetype
+  if (isAdminOps && isGenericAdminOpsAppIdentity(appIdentity)) return true
+  if (isSpecializedTask && (appIdentity.category === "task" || /internal workspace/i.test(appIdentity.archetypeLabel || ""))) return true
+  if (appIdentity.category !== expectedCategory) return true
+  if (expectedCategory !== "task" && /internal workspace/i.test(appIdentity.archetypeLabel || "")) return true
+  return false
+}
+
+function shouldRefreshAppIntent(spec: AppSpec, appIntent: AppIntent | undefined, archetype: ScaffoldArchetype) {
+  if (!appIntent) return true
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  const expectedArchetype = isAdminOps ? "admin_ops_internal_tool" : archetype
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  const intentSnapshot = `${appIntent.primaryWorkflow} ${appIntent.primaryJobs.join(" ")} ${appIntent.automationScopes.join(" ")}`.toLowerCase()
+  if (isAdminOps && isGenericAdminOpsAppIntent(appIntent)) return true
+  if (isSpecializedTask && isGenericAdminOpsAppIntent(appIntent)) return true
+  if (isSpecializedTask && appIntent.productCategory !== getDomainFlavorCategory(domainFlavor, spec.region)) return true
+  if (appIntent.archetype !== expectedArchetype) return true
+  if (archetype !== "task" && (appIntent.productCategory === "Internal workspace" || appIntent.productCategory === "内部工作台")) {
+    return true
+  }
+  if (archetype === "code_platform" && /run|runs|terminal|publish|release|preview|运行|发布|预览/.test(text)) {
+    if (!/run -> preview -> publish|运行 -> 预览 -> 发布/.test(intentSnapshot)) return true
+  }
+  if (archetype === "crm" && /order|quote|invoice|billing|approval|订单|报价|发票|账单|审批/.test(text)) {
+    if (!/quote -> approval -> order|报价 -> 审批 -> 订单/.test(intentSnapshot)) return true
+  }
+  if (archetype === "api_platform" && /usage|metering|billing|onboarding|guide|docs|sdk|用量|计量|计费|引导|文档|指南/.test(text)) {
+    if (!/developer onboarding|开发者引导|usage metering|计量|docs sync|文档/.test(intentSnapshot)) return true
+  }
+  if (archetype === "community" && /event|events|meetup|webinar|moderation|review|report|活动|直播|聚会|审核|举报/.test(text)) {
+    const eventDrivenCommunity = /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+      text
+    )
+    if (
+      eventDrivenCommunity &&
+      !/event planning|活动策划|registration sync|报名同步|member segment|成员分层|invite outreach|邀请触达/.test(intentSnapshot)
+    ) {
+      return true
+    }
+    if (!eventDrivenCommunity && !/moderation|审核/.test(intentSnapshot)) return true
+  }
+  if ((archetype === "marketing_admin" || archetype === "content") && /device|distribution|rollout|release|admin|设备|分发|灰度|发布|后台/.test(text)) {
+    if (!/device distribution|设备分发|admin sync|后台同步/.test(intentSnapshot)) return true
+  }
+  return false
+}
+
+function shouldRefreshVisualSeed(spec: AppSpec, visualSeed: VisualSeed | undefined, archetype: ScaffoldArchetype) {
+  if (!visualSeed) return true
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  if (!isSpecializedTask) return false
+  return (
+    visualSeed.tone === "brand and growth product" ||
+    visualSeed.tone === "Brand and distribution product" ||
+    visualSeed.tone === "品牌与分发产品" ||
+    visualSeed.icon?.to === "#6366f1"
+  )
+}
+
+function getArchetypeIntentSeed(archetype: ScaffoldArchetype, region: Region, prompt?: string, title?: string) {
+  const isCn = region === "cn"
+  const text = String(prompt ?? title ?? "").toLowerCase()
+  switch (archetype) {
+    case "code_platform":
+      return {
+        targetAudience:
+          /system|ops|control|admin|运维|控制台/.test(text)
+            ? isCn
+              ? ["平台工程团队", "运维负责人", "交付负责人"]
+              : ["Platform engineers", "runtime owners", "delivery leads"]
+            : isCn
+              ? ["产品团队", "开发者", "交付负责人"]
+              : ["Product teams", "developers", "delivery leads"],
+        primaryJobs:
+          /system|ops|control|admin|运维|控制台/.test(text)
+            ? isCn
+              ? ["编排 AI 工程工作流", "管理运行与发布状态", "审查环境与代码变更"]
+              : ["Orchestrate AI engineering workflows", "Manage runtime and releases", "Review environment and code changes"]
+            : isCn
+              ? ["生成全栈应用", "编辑代码并即时预览", "跟踪构建与发布状态"]
+              : ["Generate fullstack apps", "Edit code with live preview", "Track build and release status"],
+        primaryWorkflow:
+          /system|ops|control|admin|运维|控制台/.test(text)
+            ? isCn ? "规划 -> 改码 -> 预览 -> 发布 -> 观测" : "Plan -> edit -> preview -> release -> observe"
+            : /run|runs|terminal|publish|release|preview|运行|发布|预览/.test(text)
+              ? isCn
+                ? "生成 -> 编辑 -> 运行 -> 预览 -> 发布"
+                : "Generate -> edit -> run -> preview -> publish"
+            : isCn ? "生成 -> 编辑 -> 预览 -> 发布" : "Generate -> edit -> preview -> publish",
+        integrationTargets:
+          /doc|docs|knowledge|guide|文档|知识库/.test(text)
+            ? isCn
+              ? ["CloudBase", "文档库", "Git 仓库", "知识库"]
+              : ["Vercel", "Supabase", "Git repos", "knowledge base"]
+            : isCn
+              ? ["CloudBase", "文档库", "Git 仓库"]
+              : ["Vercel", "Supabase", "Git repos"],
+        automationScopes:
+          /assistant|chat|copilot|agent|助手|对话|智能体/.test(text)
+            ? isCn
+              ? ["AI 改码", "对话驱动修改", "构建验收", "模板切换"]
+              : ["AI edits", "chat-driven updates", "build acceptance", "template switching"]
+            : isCn
+              ? ["AI 改码", "构建验收", "模板切换"]
+              : ["AI edits", "build acceptance", "template switching"],
+        differentiationNotes: isCn
+          ? ["应具备 IDE 主工作区而不是普通后台", "Code/Preview/Dashboard 需要同一上下文"]
+          : ["Must feel like an IDE workspace, not a generic admin", "Code/preview/dashboard should share one context"],
+      }
+    case "crm":
+      return {
+        targetAudience:
+          /order|quote|invoice|billing|approval|account executive|account executives|订单|报价|发票|账单|审批|客户经理|销售/.test(text)
+            ? isCn
+              ? ["销售团队", "客户经理", "报价审批负责人"]
+              : ["Sales teams", "account executives", "quote approvers"]
+            : /renewal|account|success|续约|账户|成功/.test(text)
+            ? isCn
+              ? ["客户成功团队", "续约负责人", "交付协同"]
+              : ["Customer success teams", "renewal owners", "handoff managers"]
+            : isCn
+              ? ["销售团队", "运营负责人", "交付协同"]
+              : ["Sales teams", "ops leads", "handoff managers"],
+        primaryJobs:
+          /order|quote|invoice|billing|订单|报价|发票|账单/.test(text)
+            ? isCn
+              ? ["管理报价与订单", "推进成交阶段", "同步客户交付状态"]
+              : ["Manage quotes and orders", "Advance pipeline stages", "Sync customer handoff"]
+            : isCn
+              ? ["管理线索和商机", "推进成交阶段", "同步客户交付状态"]
+              : ["Manage leads and deals", "Advance pipeline stages", "Sync customer handoff"],
+        primaryWorkflow:
+          /order|quote|invoice|billing|approval|订单|报价|发票|账单|审批/.test(text)
+              ? isCn
+                ? "线索 -> 报价 -> 审批 -> 订单 -> 交付"
+                : "Lead -> quote -> approval -> order -> handoff"
+            : /renewal|account|success|续约|账户|成功/.test(text)
+              ? isCn ? "账户健康 -> 续约 -> 扩容 -> 交付" : "Account health -> renew -> expand -> handoff"
+            : isCn ? "线索 -> 商机 -> 成交 -> 交付" : "Lead -> opportunity -> close -> handoff",
+        integrationTargets:
+          /quote|invoice|billing|报价|发票|账单/.test(text)
+            ? isCn
+              ? ["邮件或表单线索", "报价系统", "回款/账单工具"]
+              : ["Inbound forms", "quoting", "billing tooling"]
+            : isCn
+              ? ["邮件或表单线索", "报价系统", "客户成功工具"]
+              : ["Inbound forms", "quoting", "success tooling"],
+        automationScopes:
+          /quota|leaderboard|team|配额|排行|团队/.test(text)
+            ? isCn
+              ? ["提醒", "审批", "配额同步", "交付同步"]
+              : ["reminders", "approvals", "quota sync", "handoff sync"]
+            : isCn
+              ? ["提醒", "审批", "交付同步"]
+              : ["reminders", "approvals", "handoff sync"],
+        differentiationNotes: isCn
+          ? ["不能退化成普通任务面板", "需要 pipeline 与客户视图"]
+          : ["Cannot collapse into a task board", "Needs pipeline and customer views"],
+      }
+    case "api_platform":
+      return {
+        targetAudience:
+          /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+            ? isCn
+              ? ["平台安全团队", "开发者", "运维负责人"]
+              : ["Platform security teams", "developers", "runtime owners"]
+            : isCn
+              ? ["开发者", "平台工程团队", "运维负责人"]
+              : ["Developers", "platform engineers", "runtime owners"],
+        primaryJobs:
+          /docs|sdk|guide|reference|文档|sdk|指南|参考/.test(text)
+            ? isCn
+              ? ["浏览接口目录", "维护开发者文档", "管理令牌和环境"]
+              : ["Browse endpoints", "Maintain developer docs", "Manage tokens and environments"]
+            : isCn
+              ? ["浏览接口目录", "排查日志与错误", "管理令牌和环境"]
+              : ["Browse endpoints", "Inspect logs and errors", "Manage tokens and environments"],
+        primaryWorkflow:
+          /usage|metering|billing|onboarding|guide|docs|sdk|developer onboarding|用量|计量|计费|引导|文档|指南/.test(text)
+            ? isCn
+              ? "开发者引导 -> 接口试用 -> 用量计量 -> Webhook 交付"
+              : "Developer onboarding -> endpoint trial -> usage metering -> webhook delivery"
+            : /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+              ? isCn ? "令牌/鉴权 -> 日志排查 -> 环境授权 -> 发布" : "Token/auth -> log triage -> environment access -> release"
+            : isCn ? "接口查看 -> 日志排查 -> 权限控制 -> 环境发布" : "Endpoint review -> log triage -> access control -> environment release",
+        integrationTargets:
+          /docs|sdk|guide|reference|文档|sdk|指南|参考/.test(text)
+            ? isCn
+              ? ["Webhook", "SDK", "密钥管理", "开发者文档"]
+              : ["Webhooks", "SDKs", "secret management", "developer docs"]
+            : isCn
+              ? ["Webhook", "SDK", "密钥管理"]
+              : ["Webhooks", "SDKs", "secret management"],
+        automationScopes:
+          /usage|metering|billing|onboarding|guide|docs|sdk|用量|计量|计费|引导|文档|指南/.test(text)
+            ? isCn
+              ? ["告警", "发布验证", "令牌轮换", "计量结算", "开发者引导同步", "文档同步"]
+              : ["alerts", "release checks", "token rotation", "usage metering", "developer onboarding sync", "docs sync"]
+            : isCn
+              ? ["告警", "发布验证", "令牌轮换"]
+              : ["alerts", "release checks", "token rotation"],
+        differentiationNotes: isCn
+          ? ["应体现开发者平台与 observability", "不能套销售或任务后台"]
+          : ["Should feel like an API product and observability console", "Cannot reuse CRM/task shells"],
+      }
+    case "community":
+      return {
+        targetAudience:
+          /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+            text
+          )
+            ? isCn
+              ? ["社区运营", "活动负责人", "成员增长负责人"]
+              : ["Community operators", "program managers", "member growth leads"]
+            : /member|invite|segment|成员|邀请|分层/.test(text)
+              ? isCn
+                ? ["成员管理员", "社区运营", "内容团队"]
+                : ["Member admins", "community operators", "content teams"]
+              : isCn
+                ? ["社区运营", "成员管理员", "内容团队"]
+                : ["Community operators", "member admins", "content teams"],
+        primaryJobs:
+          /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+            text
+          )
+            ? isCn
+              ? ["策划活动项目", "维护报名与邀请", "运营成员分层"]
+              : ["Plan event programs", "Maintain registrations and invites", "Operate member segments"]
+            : isCn
+              ? ["管理反馈和公告", "组织活动", "维护成员分层"]
+              : ["Manage feedback and announcements", "Organize events", "Maintain member segments"],
+        primaryWorkflow:
+          /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+            text
+          )
+            ? isCn
+              ? "活动策划 -> 邀请触达 -> 反馈归档 -> 社区运营"
+              : "Event planning -> invite outreach -> feedback intake -> community ops"
+            : /moderation|review|report|审核|举报|治理/.test(text)
+              ? isCn ? "发帖/反馈 -> 审核 -> 路线图 -> 社区运营" : "Post/feedback -> moderation -> roadmap -> community ops"
+              : isCn ? "发帖/反馈 -> 处理 -> 路线图 -> 社区运营" : "Post/feedback -> moderation -> roadmap -> community ops",
+        integrationTargets:
+          /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+            text
+          )
+            ? isCn
+              ? ["通知", "问卷", "成员邀请", "活动报名"]
+              : ["Notifications", "surveys", "member invites", "event registration"]
+            : isCn
+              ? ["通知", "问卷", "成员邀请"]
+              : ["Notifications", "surveys", "member invites"],
+        automationScopes:
+          /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+            text
+          )
+            ? isCn
+              ? ["活动提醒", "报名同步", "成员分层同步", "路线图同步"]
+              : ["event reminders", "registration sync", "member segment sync", "roadmap sync"]
+            : /roadmap|vote|wishlist|路线图|投票|愿望单/.test(text)
+              ? isCn
+                ? ["审核", "路线图同步", "投票统计", "活动提醒"]
+                : ["moderation", "roadmap sync", "vote aggregation", "event reminders"]
+              : isCn
+                ? ["审核", "路线图同步", "活动提醒"]
+                : ["moderation", "roadmap sync", "event reminders"],
+        differentiationNotes: isCn
+          ? [
+              /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+                text
+              )
+                ? "需要活动、报名、成员分层与社区运营路由"
+                : "需要帖子、反馈、成员与运营路由",
+              "不能长成后台报表页",
+            ]
+          : [
+              /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+                text
+              )
+                ? "Needs events, registrations, member segments, and community ops surfaces"
+                : "Needs posts, feedback, members, and ops surfaces",
+              "Cannot look like a dashboard-only admin",
+            ],
+      }
+    case "marketing_admin":
+    case "content":
+      return {
+        targetAudience:
+          /download|device|ios|android|apk|mac|windows|desktop|下载|设备|安装/.test(text)
+            ? isCn
+              ? ["访客", "分发运营", "增长负责人"]
+              : ["Visitors", "distribution operators", "growth leads"]
+            : isCn
+              ? ["访客", "品牌团队", "增长负责人"]
+              : ["Visitors", "brand teams", "growth leads"],
+        primaryJobs:
+          /docs|documentation|guide|faq|文档|指南|faq/.test(text)
+            ? isCn
+              ? ["展示产品价值", "承接下载或转化", "维护文档和分发"]
+              : ["Show product value", "Handle downloads or conversion", "Manage docs and distribution"]
+            : isCn
+              ? ["展示产品价值", "承接下载或转化", "维护内容和分发"]
+              : ["Show product value", "Handle downloads or conversion", "Manage content and distribution"],
+        primaryWorkflow:
+          /download|device|ios|android|apk|mac|windows|desktop|下载|设备|安装/.test(text)
+            ? isCn ? "官网浏览 -> 下载对比 -> 设备分发 -> 后台联动" : "Site browse -> download compare -> device distribution -> admin linkage"
+            : /release|distribution|rollout|changelog|admin|发布|分发|灰度|更新日志|后台/.test(text)
+              ? isCn
+                ? "官网浏览 -> 版本说明 -> 分发控制 -> 后台同步"
+                : "Site browse -> release notes -> distribution control -> admin sync"
+            : isCn ? "官网浏览 -> 价格对比 -> 下载/转化 -> 后台分发" : "Site browse -> pricing compare -> download/convert -> admin distribution",
+        integrationTargets:
+          /docs|documentation|guide|faq|文档|指南|faq/.test(text)
+            ? isCn
+              ? ["下载分发", "FAQ/文档", "运营后台", "版本说明"]
+              : ["Downloads", "docs", "admin distribution", "release notes"]
+            : isCn
+              ? ["下载分发", "FAQ/文档", "运营后台"]
+              : ["Downloads", "docs", "admin distribution"],
+        automationScopes:
+          /device|distribution|rollout|release|admin|设备|分发|灰度|发布|后台/.test(text)
+            ? isCn
+              ? uniqueStrings(["版本发布", "设备分发", "内容更新", "后台分发同步", /pricing|plan|subscription|套餐|定价|价格/.test(text) ? "套餐文案更新" : "下载统计"].filter(Boolean))
+              : uniqueStrings(["release publishing", "device distribution", "content updates", "admin distribution sync", /pricing|plan|subscription|套餐|定价|价格/.test(text) ? "pricing copy refresh" : "download analytics"].filter(Boolean))
+            : /pricing|plan|subscription|套餐|定价|价格/.test(text)
+              ? isCn
+                ? ["版本发布", "下载统计", "内容更新", "套餐文案更新"]
+                : ["release publishing", "download analytics", "content updates", "pricing copy refresh"]
+            : isCn
+              ? ["版本发布", "下载统计", "内容更新"]
+              : ["release publishing", "download analytics", "content updates"],
+        differentiationNotes: isCn
+          ? ["需要官网与后台联动", "不能变成统一控制台首页"]
+          : ["Needs website-to-admin linkage", "Cannot turn into a single console homepage"],
+      }
+    default:
+      if (shouldPreferAdminOpsOverCrm(text)) {
+        return {
+          targetAudience: isCn ? ["运营负责人", "安全管理员", "内部团队"] : ["Ops leads", "security admins", "internal teams"],
+          primaryJobs:
+            isCn
+              ? ["管理审批与访问策略", "跟踪审计与事件响应", "协调团队席位与自动化规则"]
+              : ["Manage approvals and access policy", "Track audit and incident response", "Coordinate team seats and automation rules"],
+          primaryWorkflow:
+            isCn ? "接收事项 -> 审批/策略调整 -> 审计留痕 -> 事件响应 -> 治理收口" : "Intake -> approve or adjust policy -> audit trail -> incident response -> governance closeout",
+          integrationTargets: isCn ? ["身份目录", "告警渠道", "审计导出"] : ["Identity directory", "alert channels", "audit exports"],
+          automationScopes: isCn ? ["审批", "权限同步", "审计导出", "事件编排"] : ["approvals", "policy sync", "audit export", "incident orchestration"],
+          differentiationNotes: isCn
+            ? ["需要像内部 control plane，而不是普通任务板"]
+            : ["Needs to feel like an internal control plane, not a generic task board"],
+        }
+      }
+      return {
+        targetAudience: isCn ? ["内部团队", "项目负责人"] : ["Internal teams", "project leads"],
+        primaryJobs: isCn ? ["管理任务", "跟踪状态", "协调审批"] : ["Manage work", "Track status", "Coordinate approvals"],
+        primaryWorkflow: isCn ? "创建 -> 跟进 -> 审批 -> 完成" : "Create -> track -> approve -> complete",
+        integrationTargets: isCn ? ["表单", "提醒", "导出"] : ["Forms", "reminders", "exports"],
+        automationScopes: isCn ? ["审批", "提醒", "报表"] : ["approvals", "reminders", "reporting"],
+        differentiationNotes: isCn
+          ? ["需要内部控制平面而不是营销页"]
+          : ["Needs a control-plane workspace rather than a marketing site"],
+      }
+  }
+}
+
+function getArchetypeEntityBlueprints(spec: AppSpec): EntityBlueprint[] {
+  const isCn = spec.region === "cn"
+  const archetype = getScaffoldArchetype(spec)
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  if (archetype === "code_platform") {
+    const entities: EntityBlueprint[] = [
+      {
+        id: "workspace_project",
+        label: isCn ? "应用项目" : "App project",
+        summary: isCn ? "记录生成应用的元信息、状态与交付信息" : "Tracks generated app metadata, state, and delivery",
+        fields: ["name", "planTier", "buildStatus", "previewStatus", "assignedDomain"],
+        primaryViews: ["/dashboard", "/settings"],
+        workflows: isCn ? ["生成", "发布", "升级"] : ["generate", "publish", "upgrade"],
+      },
+      {
+        id: "source_file",
+        label: isCn ? "源文件" : "Source file",
+        summary: isCn ? "承接代码编辑、标签页与文件树" : "Backs editor tabs and the file tree",
+        fields: ["path", "module", "language", "dirtyState", "updatedAt"],
+        primaryViews: ["/editor"],
+        workflows: isCn ? ["打开", "编辑", "保存", "回滚"] : ["open", "edit", "save", "revert"],
+      },
+      {
+        id: "runtime_run",
+        label: isCn ? "运行记录" : "Runtime run",
+        summary: isCn ? "记录构建、预览与发布链路" : "Tracks builds, previews, and release steps",
+        fields: ["status", "mode", "logs", "startedAt", "acceptance"],
+        primaryViews: ["/runs", "/dashboard"],
+        workflows: isCn ? ["运行", "刷新", "回退"] : ["run", "refresh", "rollback"],
+      },
+      {
+        id: "ai_session",
+        label: isCn ? "AI 会话" : "AI session",
+        summary: isCn ? "记录 Discuss / Generate / Fix / Refactor 的上下文。" : "Tracks Discuss / Generate / Fix / Refactor context.",
+        fields: ["mode", "prompt", "currentFile", "routeId", "status"],
+        primaryViews: ["/editor", "/dashboard"],
+        workflows: isCn ? ["讨论", "生成", "修复", "重构"] : ["discuss", "generate", "fix", "refactor"],
+      },
+      {
+        id: "template_asset",
+        label: isCn ? "模板资产" : "Template asset",
+        summary: isCn ? "用于模板切换与生成起点" : "Supports template selection and generation starting points",
+        fields: ["templateId", "category", "previewStyle", "recommendedPlan"],
+        primaryViews: ["/templates"],
+        workflows: isCn ? ["切换模板", "预览模板", "按模板生成"] : ["switch", "preview", "generate from template"],
+      },
+    ]
+    if (/assistant|chat|conversation|copilot|agent|助手|对话|智能体/.test(text)) {
+      entities.push({
+        id: "assistant_thread",
+        label: isCn ? "助手线程" : "Assistant thread",
+        summary: isCn ? "记录 AI 对话、上下文与操作分支" : "Tracks AI conversations, context, and action branches",
+        fields: ["title", "mode", "route", "file", "status"],
+        primaryViews: ["/assistant", "/editor"],
+        workflows: isCn ? ["发起对话", "跟进修改", "回看历史"] : ["start chat", "apply change", "review history"],
+      })
+    }
+    if (/publish|deploy|delivery|release|上线|发布|交付/.test(text)) {
+      entities.push({
+        id: "release_deployment",
+        label: isCn ? "发布批次" : "Release deployment",
+        summary: isCn ? "记录发布、预览、回滚和交付状态" : "Tracks releases, previews, rollbacks, and delivery state",
+        fields: ["version", "channel", "status", "previewUrl", "releasedAt"],
+        primaryViews: ["/publish", "/runs", "/dashboard"],
+        workflows: isCn ? ["发布", "回滚", "确认交付"] : ["release", "rollback", "confirm handoff"],
+      })
+    }
+    return entities
+  }
+  if (archetype === "crm") {
+    const entities: EntityBlueprint[] = [
+      { id: "lead", label: isCn ? "线索" : "Lead", summary: isCn ? "潜在客户与来源信息" : "Inbound prospect and source info", fields: ["name", "source", "owner", "budget", "stage"], primaryViews: ["/leads", "/pipeline"], workflows: isCn ? ["认领", "跟进", "转商机"] : ["assign", "follow up", "qualify"] },
+      { id: "opportunity", label: isCn ? "商机" : "Opportunity", summary: isCn ? "成交推进与风险判断" : "Deal progression and risk tracking", fields: ["account", "stage", "amount", "owner", "risk"], primaryViews: ["/pipeline", "/dashboard"], workflows: isCn ? ["推进阶段", "审批报价", "成交"] : ["advance stage", "approve quote", "close"] },
+      { id: "customer_account", label: isCn ? "客户账户" : "Customer account", summary: isCn ? "续约、扩容与交付健康度" : "Renewal, expansion, and account health", fields: ["name", "plan", "renewalDate", "health", "owner"], primaryViews: ["/customers", "/reports"], workflows: isCn ? ["续约", "扩容", "交付同步"] : ["renew", "expand", "handoff"] },
+      { id: "automation_rule", label: isCn ? "自动化规则" : "Automation rule", summary: isCn ? "自动推进线索、提醒和审批动作" : "Automates pipeline movement, reminders, and approvals", fields: ["name", "trigger", "owner", "status"], primaryViews: ["/automations", "/settings"], workflows: isCn ? ["启用", "停用", "调整范围"] : ["enable", "disable", "retune"] },
+    ]
+    if (/order|invoice|billing|quote|报价|订单|发票|账单/.test(text)) {
+      entities.push({
+        id: "sales_order",
+        label: isCn ? "销售订单" : "Sales order",
+        summary: isCn ? "承接报价、订单、回款和交付节点" : "Tracks quote, order, payment, and handoff milestones",
+        fields: ["customer", "amount", "status", "owner", "dueDate"],
+        primaryViews: ["/orders", "/dashboard"],
+        workflows: isCn ? ["生成报价", "确认订单", "同步回款"] : ["create quote", "confirm order", "sync payment"],
+      })
+    }
+    if (/team|rep|leaderboard|quota|manager|团队|销售代表|排行榜|配额/.test(text)) {
+      entities.push({
+        id: "sales_rep",
+        label: isCn ? "销售成员" : "Sales rep",
+        summary: isCn ? "记录配额、排行和成交节奏" : "Tracks quota, leaderboard, and close cadence",
+        fields: ["name", "territory", "quota", "closedAmount", "rank"],
+        primaryViews: ["/team", "/reports"],
+        workflows: isCn ? ["查看排行", "调整配额", "同步团队目标"] : ["review rank", "adjust quota", "sync team target"],
+      })
+    }
+    return entities
+  }
+  if (archetype === "api_platform") {
+    const entities: EntityBlueprint[] = [
+      { id: "endpoint", label: isCn ? "接口" : "Endpoint", summary: isCn ? "服务、版本和消费量入口" : "Service, version, and usage entry", fields: ["path", "method", "version", "owner", "status"], primaryViews: ["/endpoints", "/dashboard"], workflows: isCn ? ["发布", "下线", "文档同步"] : ["publish", "deprecate", "sync docs"] },
+      { id: "log_event", label: isCn ? "日志事件" : "Log event", summary: isCn ? "运行诊断与异常追踪" : "Runtime diagnostics and incident trace", fields: ["level", "service", "traceId", "latency", "createdAt"], primaryViews: ["/logs"], workflows: isCn ? ["检索", "诊断", "恢复"] : ["search", "triage", "recover"] },
+      { id: "api_key", label: isCn ? "访问密钥" : "API key", summary: isCn ? "作用域与访问权限控制" : "Scope and access control", fields: ["label", "scope", "environment", "lastUsedAt", "status"], primaryViews: ["/auth"], workflows: isCn ? ["创建", "轮换", "停用"] : ["create", "rotate", "revoke"] },
+      { id: "environment", label: isCn ? "运行环境" : "Environment", summary: isCn ? "记录发布环境、版本和回滚状态" : "Tracks deploy environments, versions, and rollback state", fields: ["name", "release", "region", "health", "status"], primaryViews: ["/environments", "/dashboard"], workflows: isCn ? ["发布", "回滚", "校验"] : ["promote", "rollback", "verify"] },
+      { id: "webhook_subscription", label: isCn ? "Webhook 订阅" : "Webhook subscription", summary: isCn ? "管理事件回调、重试和状态" : "Manages event callbacks, retries, and delivery state", fields: ["target", "event", "status", "lastDelivery"], primaryViews: ["/webhooks", "/logs"], workflows: isCn ? ["创建", "重试", "禁用"] : ["create", "retry", "disable"] },
+    ]
+    if (/docs|documentation|guide|reference|文档|指南|参考/.test(text)) {
+      entities.push({
+        id: "developer_doc",
+        label: isCn ? "开发者文档" : "Developer doc",
+        summary: isCn ? "接口说明、SDK 引导与错误码参考" : "API reference, SDK guides, and error-code documentation",
+        fields: ["title", "section", "version", "status", "updatedAt"],
+        primaryViews: ["/docs", "/endpoints"],
+        workflows: isCn ? ["更新说明", "发布文档", "同步 SDK"] : ["update docs", "publish docs", "sync SDK"],
+      })
+    }
+    if (/usage|metering|analytics|billing|用量|计量|分析|计费/.test(text)) {
+      entities.push({
+        id: "usage_meter",
+        label: isCn ? "调用计量" : "Usage meter",
+        summary: isCn ? "统计调用量、计费和限流状态" : "Tracks request volume, billing, and rate-limit state",
+        fields: ["environment", "requestCount", "billableUnits", "window", "status"],
+        primaryViews: ["/usage", "/dashboard"],
+        workflows: isCn ? ["查看用量", "校验账单", "调整限流"] : ["review usage", "verify billing", "adjust rate limits"],
+      })
+    }
+    return entities
+  }
+  if (archetype === "community") {
+    const entities: EntityBlueprint[] = [
+      { id: "post", label: isCn ? "帖子" : "Post", summary: isCn ? "社区内容与讨论流" : "Community content and discussion", fields: ["title", "author", "channel", "status", "engagement"], primaryViews: ["/dashboard"], workflows: isCn ? ["发布", "置顶", "归档"] : ["publish", "pin", "archive"] },
+      { id: "feedback_item", label: isCn ? "反馈" : "Feedback item", summary: isCn ? "用户建议与问题收集" : "User requests and issue intake", fields: ["title", "type", "priority", "owner", "state"], primaryViews: ["/feedback", "/dashboard"], workflows: isCn ? ["受理", "归档路线图", "回复"] : ["triage", "roadmap", "reply"] },
+      { id: "member", label: isCn ? "成员" : "Member", summary: isCn ? "成员分层与权限" : "Member segmentation and access", fields: ["name", "segment", "role", "status"], primaryViews: ["/members"], workflows: isCn ? ["邀请", "分组", "审核"] : ["invite", "segment", "moderate"] },
+      { id: "community_event", label: isCn ? "社区活动" : "Community event", summary: isCn ? "记录活动编排、报名和提醒" : "Tracks event scheduling, attendance, and reminders", fields: ["title", "format", "date", "status", "host"], primaryViews: ["/events"], workflows: isCn ? ["创建活动", "管理报名", "发送提醒"] : ["create", "manage attendance", "remind"] },
+      { id: "roadmap_item", label: isCn ? "路线图事项" : "Roadmap item", summary: isCn ? "把反馈转成公开路线图动作" : "Turns feedback into visible roadmap work", fields: ["title", "status", "owner", "eta"], primaryViews: ["/feedback", "/roadmap", "/dashboard"], workflows: isCn ? ["纳入路线图", "更新状态", "公开说明"] : ["add to roadmap", "update status", "publish note"] },
+    ]
+    if (/moderation|review|report abuse|safety|审核|举报|治理|安全/.test(text)) {
+      entities.push({
+        id: "moderation_case",
+        label: isCn ? "审核案件" : "Moderation case",
+        summary: isCn ? "记录审核队列、举报与社区治理动作" : "Tracks moderation queues, abuse reports, and safety actions",
+        fields: ["target", "reporter", "severity", "status", "owner"],
+        primaryViews: ["/moderation", "/feedback"],
+        workflows: isCn ? ["受理举报", "审核处理", "同步规则"] : ["intake report", "moderate", "sync policy"],
+      })
+    }
+    return entities
+  }
+  if (archetype === "marketing_admin" || archetype === "content") {
+    const entities: EntityBlueprint[] = [
+      { id: "site_page", label: isCn ? "站点页面" : "Site page", summary: isCn ? "官网、下载页与说明页内容" : "Site, download, and docs content", fields: ["slug", "title", "status", "owner"], primaryViews: ["/website", "/docs"], workflows: isCn ? ["发布", "改版", "排期"] : ["publish", "revise", "schedule"] },
+      { id: "download_asset", label: isCn ? "下载资产" : "Download asset", summary: isCn ? "客户端或分发包信息" : "Client build or distribution asset", fields: ["name", "platform", "version", "channel"], primaryViews: ["/downloads"], workflows: isCn ? ["上传", "分发", "下架"] : ["upload", "distribute", "retire"] },
+      { id: "release_note", label: isCn ? "版本说明" : "Release note", summary: isCn ? "更新记录与变更说明" : "Changelog and release narrative", fields: ["version", "headline", "publishedAt"], primaryViews: ["/docs", "/changelog", "/admin"], workflows: isCn ? ["发布说明", "同步下载页"] : ["publish note", "sync downloads"] },
+      { id: "distribution_channel", label: isCn ? "分发渠道" : "Distribution channel", summary: isCn ? "承接平台下载、版本可见性和分发规则" : "Controls store visibility, device distribution, and rollout rules", fields: ["name", "platform", "visibility", "status"], primaryViews: ["/downloads", "/pricing", "/admin"], workflows: isCn ? ["更新渠道", "灰度发布", "下架渠道"] : ["update channel", "roll out", "retire channel"] },
+    ]
+    if (/device|ios|android|apk|mac|windows|desktop|设备|安卓|苹果|桌面端/.test(text)) {
+      entities.push({
+        id: "device_build",
+        label: isCn ? "设备构建包" : "Device build",
+        summary: isCn ? "记录不同端的安装包、版本和签名状态" : "Tracks per-device builds, versions, and signing state",
+        fields: ["platform", "version", "channel", "signatureStatus", "releasedAt"],
+        primaryViews: ["/devices", "/downloads"],
+        workflows: isCn ? ["上传构建", "更新版本", "检查签名"] : ["upload build", "update version", "check signing"],
+      })
+    }
+    return entities
+  }
+  const domainFlavor = inferDomainFlavor(text)
+  if (archetype === "task" && domainFlavor === "healthcare" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "patient", label: isCn ? "患者" : "Patient", summary: isCn ? "患者档案、风险分层和护理状态" : "Patient profile, risk tier, and care status", fields: ["name", "riskTier", "careOwner", "nextVisit", "status"], primaryViews: ["/patients", "/dashboard"], workflows: isCn ? ["建档", "分诊", "随访"] : ["intake", "triage", "follow up"] },
+      { id: "appointment", label: isCn ? "预约" : "Appointment", summary: isCn ? "医生排班、预约和提醒" : "Doctor schedule, appointment, and reminder", fields: ["patient", "clinician", "time", "room", "state"], primaryViews: ["/appointments", "/dashboard"], workflows: isCn ? ["排班", "确认", "提醒"] : ["schedule", "confirm", "remind"] },
+      { id: "care_plan", label: isCn ? "护理计划" : "Care plan", summary: isCn ? "护理任务、复诊节点和用药提醒" : "Care tasks, revisit milestones, and medication reminders", fields: ["patient", "goal", "task", "dueAt", "owner"], primaryViews: ["/care", "/tasks"], workflows: isCn ? ["制定计划", "执行护理", "复查"] : ["plan care", "complete task", "review"] },
+    ]
+  }
+  if (archetype === "task" && domainFlavor === "education" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "course", label: isCn ? "课程" : "Course", summary: isCn ? "课程、章节和学习路径" : "Course, modules, and learning path", fields: ["title", "level", "teacher", "progress", "status"], primaryViews: ["/courses", "/dashboard"], workflows: isCn ? ["创建课程", "发布章节", "跟踪进度"] : ["create course", "publish lesson", "track progress"] },
+      { id: "student", label: isCn ? "学生" : "Student", summary: isCn ? "学生画像、班级和掌握情况" : "Student profile, cohort, and mastery", fields: ["name", "cohort", "score", "risk", "mentor"], primaryViews: ["/students", "/dashboard"], workflows: isCn ? ["分班", "辅导", "反馈"] : ["assign cohort", "coach", "feedback"] },
+      { id: "assignment", label: isCn ? "作业" : "Assignment", summary: isCn ? "作业、提交和批改流" : "Assignment, submission, and grading flow", fields: ["title", "course", "dueAt", "submitted", "grade"], primaryViews: ["/assignments", "/tasks"], workflows: isCn ? ["布置", "提交", "批改"] : ["assign", "submit", "grade"] },
+    ]
+  }
+  if (archetype === "task" && domainFlavor === "finance" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "ledger_account", label: isCn ? "账本账户" : "Ledger account", summary: isCn ? "账户余额、归属和风险状态" : "Account balance, ownership, and risk state", fields: ["name", "balance", "owner", "risk", "updatedAt"], primaryViews: ["/accounts", "/dashboard"], workflows: isCn ? ["查看账户", "标记风险", "同步余额"] : ["review account", "flag risk", "sync balance"] },
+      { id: "transaction", label: isCn ? "交易流水" : "Transaction", summary: isCn ? "交易、状态和对账信息" : "Transaction, state, and reconciliation data", fields: ["merchant", "amount", "status", "category", "postedAt"], primaryViews: ["/transactions", "/dashboard"], workflows: isCn ? ["导入流水", "匹配凭证", "确认状态"] : ["import", "match receipt", "confirm status"] },
+      { id: "reconciliation", label: isCn ? "对账批次" : "Reconciliation batch", summary: isCn ? "批次差异、审批和导出" : "Batch variance, approvals, and export", fields: ["period", "variance", "owner", "state", "closedAt"], primaryViews: ["/reconciliation", "/approvals"], workflows: isCn ? ["对账", "审批", "关账"] : ["reconcile", "approve", "close"] },
+    ]
+  }
+  if (archetype === "task" && domainFlavor === "recruiting" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "candidate", label: isCn ? "候选人" : "Candidate", summary: isCn ? "候选人阶段、评分和来源" : "Candidate stage, score, and source", fields: ["name", "role", "stage", "score", "owner"], primaryViews: ["/candidates", "/pipeline"], workflows: isCn ? ["筛选", "安排面试", "发 offer"] : ["screen", "schedule interview", "offer"] },
+      { id: "job_role", label: isCn ? "岗位" : "Job role", summary: isCn ? "岗位需求、HC 和招聘进度" : "Role requirements, headcount, and hiring progress", fields: ["title", "team", "headcount", "status", "priority"], primaryViews: ["/jobs", "/dashboard"], workflows: isCn ? ["发布岗位", "匹配候选人", "关闭岗位"] : ["publish role", "match candidates", "close role"] },
+      { id: "interview", label: isCn ? "面试" : "Interview", summary: isCn ? "面试安排、反馈和下一步" : "Interview schedule, feedback, and next step", fields: ["candidate", "panel", "time", "feedback", "decision"], primaryViews: ["/interviews", "/tasks"], workflows: isCn ? ["安排", "收集反馈", "推进决策"] : ["schedule", "collect feedback", "decide"] },
+    ]
+  }
+  if (archetype === "task" && domainFlavor === "support" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "support_ticket", label: isCn ? "客服工单" : "Support ticket", summary: isCn ? "问题、优先级、SLA 与负责人" : "Issue, priority, SLA, and owner", fields: ["subject", "priority", "sla", "owner", "state"], primaryViews: ["/tickets", "/dashboard"], workflows: isCn ? ["受理", "升级", "解决"] : ["intake", "escalate", "resolve"] },
+      { id: "customer_case", label: isCn ? "客户案例" : "Customer case", summary: isCn ? "客户上下文、历史和影响范围" : "Customer context, history, and impact scope", fields: ["account", "impact", "history", "segment", "status"], primaryViews: ["/cases", "/tickets"], workflows: isCn ? ["查看上下文", "同步客户", "关闭案例"] : ["review context", "sync customer", "close case"] },
+      { id: "knowledge_article", label: isCn ? "知识库文章" : "Knowledge article", summary: isCn ? "解决方案、标签和发布状态" : "Resolution content, tags, and publish state", fields: ["title", "topic", "status", "owner", "updatedAt"], primaryViews: ["/knowledge", "/docs"], workflows: isCn ? ["撰写", "审核", "发布"] : ["draft", "review", "publish"] },
+    ]
+  }
+  if (archetype === "task" && domainFlavor === "commerce_ops" && !shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      { id: "product_sku", label: isCn ? "商品 SKU" : "Product SKU", summary: isCn ? "商品、库存和上架状态" : "Product, inventory, and listing state", fields: ["sku", "name", "stock", "price", "status"], primaryViews: ["/products", "/inventory"], workflows: isCn ? ["上架", "补货", "调价"] : ["list", "restock", "price"] },
+      { id: "fulfillment_order", label: isCn ? "履约订单" : "Fulfillment order", summary: isCn ? "订单、仓库和配送节点" : "Order, warehouse, and shipping milestones", fields: ["orderNo", "customer", "warehouse", "carrier", "state"], primaryViews: ["/orders", "/dashboard"], workflows: isCn ? ["确认订单", "分配仓库", "发货"] : ["confirm", "allocate", "ship"] },
+      { id: "inventory_alert", label: isCn ? "库存预警" : "Inventory alert", summary: isCn ? "库存阈值、补货和异常" : "Stock thresholds, restock, and exception handling", fields: ["sku", "threshold", "currentStock", "owner", "severity"], primaryViews: ["/inventory", "/analytics"], workflows: isCn ? ["识别预警", "创建补货", "关闭异常"] : ["flag alert", "create restock", "close exception"] },
+    ]
+  }
+  if (shouldPreferAdminOpsOverCrm(text)) {
+    return [
+      {
+        id: "approval_request",
+        label: isCn ? "审批请求" : "Approval request",
+        summary: isCn ? "记录待审批事项、责任人和截止时间" : "Tracks pending approvals, owners, and due dates",
+        fields: ["title", "requestor", "owner", "state", "dueAt"],
+        primaryViews: ["/approvals", "/dashboard"],
+        workflows: isCn ? ["提交", "审批", "驳回"] : ["submit", "approve", "reject"],
+      },
+      {
+        id: "access_policy",
+        label: isCn ? "访问策略" : "Access policy",
+        summary: isCn ? "管理角色、权限边界和生效范围" : "Manages roles, permission boundaries, and scope",
+        fields: ["name", "scope", "role", "status", "updatedAt"],
+        primaryViews: ["/security", "/dashboard"],
+        workflows: isCn ? ["创建策略", "调整角色", "发布变更"] : ["create policy", "adjust role", "publish change"],
+      },
+      {
+        id: "audit_event",
+        label: isCn ? "审计事件" : "Audit event",
+        summary: isCn ? "承接审计留痕、合规记录和关键操作历史" : "Captures audit trails, compliance records, and critical actions",
+        fields: ["actor", "action", "target", "severity", "createdAt"],
+        primaryViews: ["/audit", "/dashboard", "/security"],
+        workflows: isCn ? ["查看记录", "导出审计", "核对异常"] : ["review log", "export audit", "verify anomaly"],
+      },
+      {
+        id: "incident_case",
+        label: isCn ? "事件工单" : "Incident case",
+        summary: isCn ? "记录告警、故障与响应编排" : "Tracks alerts, incidents, and response orchestration",
+        fields: ["title", "severity", "owner", "status", "startedAt"],
+        primaryViews: ["/incidents", "/dashboard"],
+        workflows: isCn ? ["升级告警", "分派负责人", "恢复关闭"] : ["escalate alert", "assign owner", "resolve"],
+      },
+      {
+        id: "team_seat",
+        label: isCn ? "团队席位" : "Team seat",
+        summary: isCn ? "管理成员席位、角色与工作区权限" : "Manages member seats, roles, and workspace access",
+        fields: ["name", "role", "seatType", "status", "workspace"],
+        primaryViews: ["/team", "/security"],
+        workflows: isCn ? ["分配席位", "调整角色", "停用访问"] : ["assign seat", "adjust role", "disable access"],
+      },
+      {
+        id: "ops_rule",
+        label: isCn ? "治理规则" : "Ops rule",
+        summary: isCn ? "连接审批、告警和权限同步自动化" : "Connects approval, alerting, and policy-sync automation",
+        fields: ["name", "trigger", "scope", "owner", "status"],
+        primaryViews: ["/automations", "/dashboard"],
+        workflows: isCn ? ["启用规则", "调整范围", "暂停规则"] : ["enable rule", "retune scope", "pause rule"],
+      },
+    ]
+  }
+  return [
+    { id: "task", label: isCn ? "任务" : "Task", summary: isCn ? "工作项与状态流转" : "Work item and status flow", fields: ["title", "status", "assignee", "priority"], primaryViews: ["/tasks", "/dashboard"], workflows: isCn ? ["创建", "分配", "完成"] : ["create", "assign", "complete"] },
+    { id: "approval", label: isCn ? "审批" : "Approval", summary: isCn ? "审批与权限边界" : "Approval and access boundary", fields: ["title", "owner", "state", "dueAt"], primaryViews: ["/approvals"], workflows: isCn ? ["提交", "审批", "驳回"] : ["submit", "approve", "reject"] },
+  ]
+}
+
+function getRoutePrimaryActions(route: string, archetype: ScaffoldArchetype, region: Region) {
+  const isCn = region === "cn"
+  if (route === "dashboard") {
+    if (isCn) {
+      if (archetype === "code_platform") return ["查看状态", "检查运行", "切换模块"]
+      if (archetype === "crm") return ["查看预测", "识别风险", "推进交付"]
+      if (archetype === "api_platform") return ["查看平台状态", "排查告警", "检查用量"]
+      if (archetype === "community") return ["查看社区节奏", "跟进反馈", "同步活动"]
+      if (archetype === "marketing_admin" || archetype === "content") return ["查看转化", "检查分发", "同步版本说明"]
+      if (archetype === "task") return ["查看治理状态", "推进任务", "同步规则"]
+    } else {
+      if (archetype === "code_platform") return ["review status", "inspect runtime", "switch modules"]
+      if (archetype === "crm") return ["review forecast", "flag risk", "advance handoff"]
+      if (archetype === "api_platform") return ["review platform health", "triage alerts", "inspect usage"]
+      if (archetype === "community") return ["review community rhythm", "triage feedback", "sync events"]
+      if (archetype === "marketing_admin" || archetype === "content") return ["review conversion", "inspect distribution", "sync releases"]
+      if (archetype === "task") return ["review approvals", "check access", "track incidents"]
+    }
+  }
+  const cnActions: Record<string, string[]> = {
+    dashboard: ["查看状态", "检查运行", "切换模块"],
+    editor: ["打开文件", "编辑代码", "保存变更", "切换预览"],
+    assistant: ["继续对话", "应用修改", "查看上下文"],
+    publish: ["检查发布", "确认预览", "提升通道"],
+    runs: ["查看日志", "刷新状态", "检查构建"],
+    templates: ["筛选模板", "切换模板", "按模板生成"],
+    pricing: ["查看套餐", "比较权限", "升级套餐"],
+    settings: ["修改配置", "检查权限", "管理环境"],
+    leads: ["录入线索", "分配负责人", "推进跟进"],
+    pipeline: ["推进阶段", "识别风险", "成交转交付"],
+    customers: ["查看账户", "准备续约", "同步交付"],
+    automations: ["查看规则", "启停规则", "新建自动化"],
+    reports: ["查看预测", "分析阶段", "导出摘要"],
+    orders: ["查看订单", "确认报价", "同步回款"],
+    team: ["查看排行", "调整配额", "同步团队目标"],
+    endpoints: ["查看接口", "发布版本", "同步文档"],
+    logs: ["筛选日志", "查看 trace", "确认恢复"],
+    auth: ["查看 scopes", "创建密钥", "轮换密钥"],
+    environments: ["检查环境", "发布", "回滚"],
+    webhooks: ["查看回调", "重试投递", "确认订阅"],
+    usage: ["查看用量", "校验账单", "调整限流"],
+    website: ["浏览官网", "编辑板块", "检查转化"],
+    pricing: ["查看套餐", "比较版本", "调整权益"],
+    downloads: ["查看资产", "上传包", "复制下载链路"],
+    docs: ["浏览文档", "编辑说明", "发布更新"],
+    changelog: ["查看版本说明", "发布更新", "同步下载页"],
+    admin: ["查看分发", "修改后台", "同步状态"],
+    devices: ["查看构建包", "上传安装包", "检查签名"],
+    feedback: ["查看反馈", "归类优先级", "进入路线图"],
+    roadmap: ["查看路线图", "推进事项", "公开说明"],
+    posts: ["查看帖子", "发布公告", "整理讨论"],
+    members: ["查看成员", "调整分层", "发起邀请"],
+    events: ["查看活动", "管理报名", "发送提醒"],
+    moderation: ["查看举报", "处理审核", "同步规则"],
+    tasks: ["查看待办", "分配负责人", "推进治理"],
+    approvals: ["查看审批", "批量处理", "同步状态"],
+    security: ["查看策略", "调整角色", "发布权限"],
+    audit: ["查看审计", "导出留痕", "核对异常"],
+    incidents: ["查看告警", "分派负责人", "推动恢复"],
+    analytics: ["查看指标", "对比趋势", "导出治理摘要"],
+    patients: ["查看患者", "安排随访", "更新护理计划"],
+    appointments: ["查看预约", "确认排班", "发送提醒"],
+    care: ["查看护理计划", "分派任务", "完成复查"],
+    courses: ["查看课程", "发布章节", "跟踪学习"],
+    students: ["查看学生", "调整分组", "同步反馈"],
+    assignments: ["查看作业", "批改提交", "发布反馈"],
+    accounts: ["查看账户", "标记风险", "同步余额"],
+    transactions: ["查看流水", "匹配凭证", "确认状态"],
+    reconciliation: ["查看对账", "处理差异", "关账"],
+    candidates: ["查看候选人", "推进阶段", "安排面试"],
+    jobs: ["查看岗位", "匹配候选人", "关闭岗位"],
+    interviews: ["查看面试", "收集反馈", "推进决策"],
+    tickets: ["查看工单", "升级处理", "关闭问题"],
+    cases: ["查看案例", "同步客户", "更新影响"],
+    knowledge: ["查看知识库", "编辑方案", "发布文章"],
+    products: ["查看商品", "调整库存", "更新价格"],
+    inventory: ["查看库存", "创建补货", "关闭预警"],
+  }
+  const fallback = isCn ? ["查看页面", "执行主操作", "继续迭代"] : ["view surface", "run primary action", "continue iterating"]
+  const raw = cnActions[route] ?? fallback
+  if (isCn) return raw
+  const translation: Record<string, string[]> = {
+    dashboard: ["review status", "inspect runtime", "switch modules"],
+    editor: ["open file", "edit code", "save changes", "switch preview"],
+    assistant: ["continue thread", "apply change", "inspect context"],
+    publish: ["review release", "verify preview", "promote channel"],
+    runs: ["inspect logs", "refresh status", "check build"],
+    templates: ["filter templates", "switch template", "generate from template"],
+    pricing: ["review plans", "compare permissions", "upgrade"],
+    settings: ["update config", "check access", "manage environments"],
+    leads: ["add lead", "assign owner", "advance follow-up"],
+    pipeline: ["move stage", "flag risk", "handoff closed deal"],
+    customers: ["review account", "prepare renewal", "sync handoff"],
+    automations: ["review rules", "toggle rules", "create automation"],
+    reports: ["review forecast", "analyze stages", "export summary"],
+    orders: ["review order", "confirm quote", "sync payment"],
+    team: ["review leaderboard", "adjust quota", "sync team goals"],
+    endpoints: ["review endpoint", "publish version", "sync docs"],
+    logs: ["filter logs", "inspect trace", "confirm recovery"],
+    auth: ["review scopes", "create key", "rotate key"],
+    environments: ["inspect environment", "promote release", "rollback"],
+    webhooks: ["review callbacks", "retry delivery", "confirm subscription"],
+    usage: ["review usage", "verify billing", "adjust rate limits"],
+    website: ["browse site", "edit sections", "check conversion"],
+    pricing: ["review plans", "compare tiers", "adjust entitlements"],
+    downloads: ["review asset", "upload build", "copy distribution link"],
+    docs: ["browse docs", "edit notes", "publish update"],
+    changelog: ["review release notes", "publish update", "sync downloads"],
+    admin: ["review distribution", "edit backend", "sync status"],
+    devices: ["review builds", "upload installer", "check signing"],
+    feedback: ["review feedback", "set priority", "move to roadmap"],
+    roadmap: ["review roadmap", "move items", "publish notes"],
+    posts: ["review posts", "publish announcement", "shape discussion"],
+    members: ["review members", "update segment", "invite member"],
+    events: ["review events", "manage attendance", "send reminders"],
+    moderation: ["review reports", "moderate content", "sync policy"],
+    tasks: ["review queue", "assign owner", "advance governance"],
+    approvals: ["review approvals", "batch decision", "sync status"],
+    security: ["review policy", "adjust role", "publish access"],
+    audit: ["review audit", "export trail", "verify anomaly"],
+    incidents: ["review incidents", "assign responder", "drive recovery"],
+    analytics: ["review metrics", "compare trends", "export governance summary"],
+    patients: ["review patients", "schedule follow-up", "update care plan"],
+    appointments: ["review appointments", "confirm schedule", "send reminders"],
+    care: ["review care plan", "assign task", "complete review"],
+    courses: ["review courses", "publish lesson", "track learning"],
+    students: ["review students", "update cohort", "sync feedback"],
+    assignments: ["review assignments", "grade submissions", "publish feedback"],
+    accounts: ["review accounts", "flag risk", "sync balance"],
+    transactions: ["review transactions", "match receipts", "confirm status"],
+    reconciliation: ["review reconciliation", "resolve variance", "close books"],
+    candidates: ["review candidates", "advance stage", "schedule interview"],
+    jobs: ["review roles", "match candidates", "close role"],
+    interviews: ["review interviews", "collect feedback", "advance decision"],
+    tickets: ["review tickets", "escalate issue", "close resolution"],
+    cases: ["review cases", "sync customer", "update impact"],
+    knowledge: ["review knowledge", "edit resolution", "publish article"],
+    products: ["review products", "adjust inventory", "update pricing"],
+    inventory: ["review inventory", "create restock", "close alert"],
+  }
+  return translation[route] ?? fallback
+}
+
+function getRouteSurface(route: string, archetype: ScaffoldArchetype): RouteBlueprint["surface"] {
+  if (route === "editor") return "code"
+  if (route === "assistant" && archetype === "code_platform") return "code"
+  if (route === "settings") return "settings"
+  if (archetype === "api_platform" && (route === "docs" || route === "usage")) {
+    return "data"
+  }
+  if (route === "pricing" || route === "website" || route === "downloads" || route === "docs" || route === "changelog" || route === "admin" || route === "devices") {
+    return "marketing"
+  }
+  if (
+    archetype === "crm" ||
+    archetype === "api_platform" ||
+    [
+      "customers",
+      "reports",
+      "orders",
+      "team",
+      "endpoints",
+      "logs",
+      "auth",
+      "environments",
+      "webhooks",
+      "usage",
+      "feedback",
+      "members",
+      "events",
+      "roadmap",
+      "moderation",
+      "patients",
+      "appointments",
+      "care",
+      "courses",
+      "students",
+      "assignments",
+      "accounts",
+      "transactions",
+      "reconciliation",
+      "candidates",
+      "jobs",
+      "interviews",
+      "tickets",
+      "cases",
+      "knowledge",
+      "products",
+      "inventory",
+    ].includes(route)
+  ) {
+    return "data"
+  }
+  return "dashboard"
+}
+
+function getRoutePagePrototype(route: string, archetype: ScaffoldArchetype): RoutePagePrototype {
+  if (route === "dashboard" || route === "home") return archetype === "marketing_admin" || archetype === "content" ? "hero" : "dashboard"
+  if (route === "settings") return "settings"
+
+  if (archetype === "code_platform") {
+    const mapping: Record<string, RoutePagePrototype> = {
+      editor: "editor",
+      assistant: "workflow",
+      publish: "workflow",
+      runs: "timeline",
+      templates: "list",
+      pricing: "analytics",
+    }
+    return mapping[route] ?? "dashboard"
+  }
+
+  if (archetype === "crm") {
+    const mapping: Record<string, RoutePagePrototype> = {
+      leads: "list",
+      pipeline: "kanban",
+      customers: "detail",
+      accounts: "detail",
+      orders: "workflow",
+      quotes: "admin_queue",
+      reports: "analytics",
+      team: "analytics",
+      automations: "workflow",
+      onboarding: "workflow",
+      renewals: "timeline",
+    }
+    return mapping[route] ?? "dashboard"
+  }
+
+  if (archetype === "api_platform") {
+    const mapping: Record<string, RoutePagePrototype> = {
+      endpoints: "list",
+      logs: "timeline",
+      auth: "settings",
+      environments: "workflow",
+      webhooks: "timeline",
+      usage: "analytics",
+      docs: "docs",
+      keys: "settings",
+    }
+    return mapping[route] ?? "dashboard"
+  }
+
+  if (archetype === "marketing_admin" || archetype === "content") {
+    const mapping: Record<string, RoutePagePrototype> = {
+      website: "hero",
+      pricing: "analytics",
+      downloads: "distribution",
+      devices: "distribution",
+      docs: "docs",
+      changelog: "timeline",
+      admin: "admin_queue",
+      faq: "docs",
+      home: "hero",
+    }
+    return mapping[route] ?? "hero"
+  }
+
+  if (archetype === "community") {
+    const mapping: Record<string, RoutePagePrototype> = {
+      feedback: "feed",
+      roadmap: "kanban",
+      posts: "feed",
+      members: "list",
+      events: "timeline",
+      moderation: "admin_queue",
+      analytics: "analytics",
+    }
+    return mapping[route] ?? "feed"
+  }
+
+  const adminMapping: Record<string, RoutePagePrototype> = {
+    tasks: "list",
+    approvals: "admin_queue",
+    security: "settings",
+    audit: "timeline",
+    incidents: "workflow",
+    team: "list",
+    automations: "workflow",
+    reports: "analytics",
+    analytics: "analytics",
+    patients: "list",
+    appointments: "timeline",
+    care: "workflow",
+    courses: "docs",
+    students: "list",
+    assignments: "workflow",
+    accounts: "detail",
+    transactions: "timeline",
+    reconciliation: "admin_queue",
+    candidates: "list",
+    jobs: "detail",
+    interviews: "timeline",
+    tickets: "admin_queue",
+    cases: "detail",
+    knowledge: "docs",
+    products: "list",
+    inventory: "analytics",
+    orders: "workflow",
+  }
+  return adminMapping[route] ?? "dashboard"
+}
+
+function pickEntityIds(entityIds: string[], available: Set<string>) {
+  return entityIds.filter((item) => available.has(item))
+}
+
+function getDefaultEntityIdsForRoute(route: string, archetype: ScaffoldArchetype, entities: EntityBlueprint[]) {
+  const available = new Set(entities.map((item) => item.id))
+  if (archetype === "code_platform") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["workspace_project", "runtime_run"],
+      editor: ["source_file", "ai_session"],
+      assistant: ["assistant_thread", "ai_session"],
+      publish: ["release_deployment", "runtime_run", "workspace_project"],
+      runs: ["runtime_run"],
+      templates: ["template_asset"],
+      pricing: ["workspace_project"],
+      settings: ["workspace_project", "runtime_run"],
+    }
+    return pickEntityIds(mapping[route] ?? ["workspace_project"], available)
+  }
+  if (archetype === "crm") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["opportunity", "customer_account", "sales_order"],
+      leads: ["lead"],
+      pipeline: ["lead", "opportunity"],
+      customers: ["customer_account"],
+      automations: ["automation_rule", "opportunity"],
+      reports: ["opportunity", "customer_account"],
+      orders: ["sales_order", "customer_account"],
+      team: ["sales_rep", "opportunity"],
+    }
+    return pickEntityIds(mapping[route] ?? ["opportunity"], available)
+  }
+  if (archetype === "api_platform") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["endpoint", "log_event", "usage_meter"],
+      endpoints: ["endpoint"],
+      logs: ["log_event"],
+      auth: ["api_key"],
+      environments: ["environment"],
+      webhooks: ["webhook_subscription"],
+      docs: ["developer_doc", "endpoint"],
+      usage: ["usage_meter", "api_key"],
+    }
+    return pickEntityIds(mapping[route] ?? ["endpoint"], available)
+  }
+  if (archetype === "community") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["feedback_item", "post"],
+      feedback: ["feedback_item", "roadmap_item"],
+      members: ["member"],
+      events: ["community_event"],
+      posts: ["post"],
+      settings: ["member", "feedback_item"],
+      roadmap: ["roadmap_item"],
+      moderation: ["moderation_case", "post", "feedback_item"],
+    }
+    return pickEntityIds(mapping[route] ?? ["feedback_item"], available)
+  }
+  if (archetype === "marketing_admin" || archetype === "content") {
+    const mapping: Record<string, string[]> = {
+      dashboard: ["site_page", "download_asset"],
+      website: ["site_page"],
+      downloads: ["download_asset", "distribution_channel"],
+      docs: ["release_note", "site_page"],
+      admin: ["distribution_channel", "release_note"],
+      changelog: ["release_note"],
+      devices: ["device_build", "download_asset"],
+      pricing: ["distribution_channel", "download_asset"],
+    }
+    return pickEntityIds(mapping[route] ?? ["site_page"], available)
+  }
+  const adminOpsMapping: Record<string, string[]> = {
+    dashboard: ["approval_request", "audit_event", "incident_case"],
+    tasks: ["approval_request", "incident_case", "ops_rule"],
+    approvals: ["approval_request"],
+    security: ["access_policy", "team_seat", "audit_event"],
+    audit: ["audit_event"],
+    incidents: ["incident_case"],
+    team: ["team_seat"],
+    automations: ["ops_rule"],
+    reports: ["audit_event", "approval_request", "incident_case"],
+    patients: ["patient", "care_plan"],
+    appointments: ["appointment", "patient"],
+    care: ["care_plan", "patient"],
+    courses: ["course", "assignment"],
+    students: ["student", "course"],
+    assignments: ["assignment", "student"],
+    accounts: ["ledger_account", "transaction"],
+    transactions: ["transaction", "ledger_account"],
+    reconciliation: ["reconciliation", "transaction"],
+    candidates: ["candidate", "interview"],
+    jobs: ["job_role", "candidate"],
+    interviews: ["interview", "candidate"],
+    tickets: ["support_ticket", "customer_case"],
+    cases: ["customer_case", "support_ticket"],
+    knowledge: ["knowledge_article", "support_ticket"],
+    products: ["product_sku", "inventory_alert"],
+    inventory: ["inventory_alert", "product_sku"],
+    orders: ["fulfillment_order", "product_sku"],
+  }
+  const mappedAdminOps = pickEntityIds(adminOpsMapping[route] ?? [], available)
+  if (mappedAdminOps.length) return mappedAdminOps
+  const fallback = route === "approvals" ? ["approval"] : ["task"]
+  return pickEntityIds(fallback, available)
+}
+
+function getArchetypeModuleBlueprintSeeds(spec: AppSpec, routeBlueprint: RouteBlueprint[]) {
+  const isCn = spec.region === "cn"
+  const availableRouteIds = new Set(routeBlueprint.map((item) => item.id))
+  const includeRoutes = (ids: string[]) => ids.filter((item) => availableRouteIds.has(item))
+  const seeds: ModuleBlueprint[] =
+    getScaffoldArchetype(spec) === "code_platform"
+      ? [
+          {
+            id: "ai_orchestrator",
+            label: isCn ? "AI 编排器" : "AI orchestrator",
+            summary: isCn ? "承接 Discuss / Generate / Fix / Refactor 的上下文执行。" : "Runs Discuss / Generate / Fix / Refactor with shared context.",
+            routeIds: includeRoutes(["dashboard", "editor", "assistant", "runs"]),
+            capabilityIds: isCn ? ["讨论需求", "生成修改", "解释差异"] : ["discuss", "generate", "explain"],
+          },
+          {
+            id: "file_tree",
+            label: isCn ? "文件树与标签页" : "File tree and tabs",
+            summary: isCn ? "维护当前文件、相关路径和多标签切换。" : "Tracks current files, related paths, and multi-tab switching.",
+            routeIds: includeRoutes(["editor"]),
+            capabilityIds: isCn ? ["打开文件", "切换标签", "定位模块"] : ["open file", "switch tab", "focus module"],
+          },
+          {
+            id: "live_preview",
+            label: isCn ? "实时预览面板" : "Live preview panel",
+            summary: isCn ? "让代码编辑、运行结果和实时预览联动。" : "Keeps code editing, runtime feedback, and live preview in sync.",
+            routeIds: includeRoutes(["dashboard", "editor", "runs"]),
+            capabilityIds: isCn ? ["切换预览", "刷新运行时", "查看状态"] : ["toggle preview", "refresh runtime", "review status"],
+          },
+          {
+            id: "template_gallery",
+            label: isCn ? "模板与脚手架库" : "Template and scaffold gallery",
+            summary: isCn ? "管理模板、起始点和推荐套餐。" : "Manages templates, starting points, and recommended plans.",
+            routeIds: includeRoutes(["templates", "dashboard"]),
+            capabilityIds: isCn ? ["筛选模板", "切换模板", "按模板生成"] : ["filter", "switch", "generate"],
+          },
+          {
+            id: "release_control",
+            label: isCn ? "运行与发布控制" : "Run and release control",
+            summary: isCn ? "展示 build、preview、publish 和回退链路。" : "Surfaces build, preview, publish, and rollback state.",
+            routeIds: includeRoutes(["runs", "publish", "settings", "dashboard"]),
+            capabilityIds: isCn ? ["查看构建", "回滚发布", "确认验收"] : ["review builds", "rollback", "accept"],
+          },
+          {
+            id: "assistant_context",
+            label: isCn ? "助手上下文轨道" : "Assistant context rail",
+            summary: isCn ? "把线程历史、当前文件和页面上下文绑定到 AI 助手页。" : "Binds thread history, current files, and page context into the assistant surface.",
+            routeIds: includeRoutes(["assistant", "editor"]),
+            capabilityIds: isCn ? ["查看线程", "应用修改", "对齐上下文"] : ["review thread", "apply change", "align context"],
+          },
+          {
+            id: "publish_lane",
+            label: isCn ? "发布通道" : "Publish lane",
+            summary: isCn ? "承接预览验收、发布通道和交付状态。" : "Owns preview acceptance, release channels, and delivery state.",
+            routeIds: includeRoutes(["publish", "runs", "dashboard"]),
+            capabilityIds: isCn ? ["确认发布", "切换通道", "回看交付"] : ["confirm release", "switch channel", "review handoff"],
+          },
+        ]
+      : getScaffoldArchetype(spec) === "crm"
+        ? [
+            {
+              id: "lead_pipeline",
+              label: isCn ? "线索与商机漏斗" : "Lead and opportunity pipeline",
+              summary: isCn ? "串联线索收集、阶段推进和成交预测。" : "Connects lead intake, stage progression, and close forecasting.",
+              routeIds: includeRoutes(["leads", "pipeline", "dashboard"]),
+              capabilityIds: isCn ? ["认领线索", "推进阶段", "预测成交"] : ["assign lead", "move stage", "forecast close"],
+            },
+            {
+              id: "account_portfolio",
+              label: isCn ? "客户账户视图" : "Customer account portfolio",
+              summary: isCn ? "跟踪续约、健康度和交付同步。" : "Tracks renewals, account health, and handoff readiness.",
+              routeIds: includeRoutes(["customers", "dashboard"]),
+              capabilityIds: isCn ? ["查看账户", "推进续约", "同步交付"] : ["review account", "renew", "sync handoff"],
+            },
+            {
+              id: "automation_rules",
+              label: isCn ? "销售自动化规则" : "Sales automation rules",
+              summary: isCn ? "处理提醒、审批和阶段自动推进。" : "Handles reminders, approvals, and automatic stage progression.",
+              routeIds: includeRoutes(["automations", "settings"]),
+              capabilityIds: isCn ? ["启停规则", "审批报价", "同步团队"] : ["toggle rules", "approve quote", "sync team"],
+            },
+            {
+              id: "forecast_reporting",
+              label: isCn ? "成交预测与报表" : "Forecast and reporting",
+              summary: isCn ? "汇总成交概率、阶段分布和负责人节奏。" : "Summarizes close probability, stage distribution, and owner cadence.",
+              routeIds: includeRoutes(["reports", "dashboard", "pipeline"]),
+              capabilityIds: isCn ? ["查看预测", "导出摘要", "识别风险"] : ["review forecast", "export summary", "flag risk"],
+            },
+          ]
+        : getScaffoldArchetype(spec) === "api_platform"
+          ? [
+              {
+                id: "endpoint_catalog",
+                label: isCn ? "接口目录" : "Endpoint catalog",
+                summary: isCn ? "承接服务、路径、版本和文档联动。" : "Owns services, paths, versions, and docs sync.",
+                routeIds: includeRoutes(["endpoints", "dashboard"]),
+                capabilityIds: isCn ? ["发布版本", "复制路径", "同步文档"] : ["publish version", "copy path", "sync docs"],
+              },
+              {
+                id: "runtime_observability",
+                label: isCn ? "运行观测台" : "Runtime observability",
+                summary: isCn ? "聚合日志、trace、告警和恢复动作。" : "Aggregates logs, traces, alerts, and recovery actions.",
+                routeIds: includeRoutes(["logs", "dashboard"]),
+                capabilityIds: isCn ? ["筛选日志", "查看 trace", "确认恢复"] : ["filter logs", "inspect trace", "recover"],
+              },
+              {
+                id: "access_policy",
+                label: isCn ? "访问与密钥策略" : "Access and key policy",
+                summary: isCn ? "管理 scopes、密钥轮换和环境授权。" : "Manages scopes, key rotation, and environment access.",
+                routeIds: includeRoutes(["auth", "environments"]),
+                capabilityIds: isCn ? ["创建密钥", "轮换密钥", "授权环境"] : ["create key", "rotate", "grant environment"],
+              },
+              {
+                id: "webhook_delivery",
+                label: isCn ? "Webhook 交付链路" : "Webhook delivery rail",
+                summary: isCn ? "展示回调、失败重试和环境切换。" : "Shows callbacks, retries, and environment switching.",
+                routeIds: includeRoutes(["webhooks", "environments", "logs"]),
+                capabilityIds: isCn ? ["查看回调", "重试投递", "切换环境"] : ["review callbacks", "retry delivery", "switch environment"],
+              },
+              {
+                id: "developer_docs_center",
+                label: isCn ? "开发者文档中心" : "Developer docs center",
+                summary: isCn ? "把 API 参考、SDK 指南和接入文档收进一套开发者内容面板。" : "Collects API reference, SDK guides, and onboarding docs into one developer surface.",
+                routeIds: includeRoutes(["docs", "endpoints"]),
+                capabilityIds: isCn ? ["浏览文档", "发布说明", "同步 SDK"] : ["browse docs", "publish docs", "sync SDK"],
+              },
+              {
+                id: "usage_metering",
+                label: isCn ? "用量与计量轨道" : "Usage and metering rail",
+                summary: isCn ? "跟踪请求量、账单窗口和限流状态。" : "Tracks request volume, billing windows, and rate-limit posture.",
+                routeIds: includeRoutes(["usage", "dashboard", "auth"]),
+                capabilityIds: isCn ? ["查看用量", "校验账单", "调整限流"] : ["review usage", "verify billing", "adjust rate limits"],
+              },
+            ]
+          : getScaffoldArchetype(spec) === "community"
+            ? [
+                {
+                  id: "feedback_triage",
+                  label: isCn ? "反馈分流台" : "Feedback triage desk",
+                  summary: isCn ? "把建议、问题和需求转成路线图动作。" : "Turns requests, issues, and ideas into roadmap actions.",
+                  routeIds: includeRoutes(["feedback", "dashboard"]),
+                  capabilityIds: isCn ? ["归类优先级", "移入路线图", "回复成员"] : ["prioritize", "move to roadmap", "reply"],
+                },
+                {
+                  id: "member_segments",
+                  label: isCn ? "成员分层系统" : "Member segmentation system",
+                  summary: isCn ? "维护成员角色、信任等级和邀请流程。" : "Maintains member roles, trust levels, and invites.",
+                  routeIds: includeRoutes(["members", "settings", "dashboard"]),
+                  capabilityIds: isCn ? ["邀请成员", "调整角色", "审核权限"] : ["invite", "adjust role", "moderate access"],
+                },
+                {
+                  id: "event_programs",
+                  label: isCn ? "活动与运营编排" : "Event and campaign orchestration",
+                  summary: isCn ? "统一活动日历、报名和运营提醒。" : "Unifies event calendar, attendance, and reminder flows.",
+                  routeIds: includeRoutes(["events", "dashboard"]),
+                  capabilityIds: isCn ? ["创建活动", "管理报名", "发送提醒"] : ["create event", "manage attendance", "send reminders"],
+                },
+                {
+                  id: "moderation_policy",
+                  label: isCn ? "审核与规则策略" : "Moderation and policy rail",
+                  summary: isCn ? "定义敏感词、审核队列和社区边界。" : "Defines moderation queues, keyword rules, and community boundaries.",
+                  routeIds: includeRoutes(["settings", "feedback"]),
+                  capabilityIds: isCn ? ["查看规则", "处理审核", "同步通知"] : ["review rules", "moderate", "sync notifications"],
+                },
+                {
+                  id: "roadmap_planning",
+                  label: isCn ? "路线图编排" : "Roadmap planning",
+                  summary: isCn ? "把反馈优先级转成公开路线图与版本说明。" : "Turns feedback priorities into a public roadmap and release plan.",
+                  routeIds: includeRoutes(["feedback", "roadmap", "dashboard"]),
+                  capabilityIds: isCn ? ["纳入路线图", "更新状态", "公开说明"] : ["move to roadmap", "update status", "publish note"],
+                },
+                {
+                  id: "community_content",
+                  label: isCn ? "内容与公告流" : "Content and announcement flow",
+                  summary: isCn ? "管理帖子、公告和社区讨论节奏。" : "Runs posts, announcements, and community discussion rhythm.",
+                  routeIds: includeRoutes(["posts", "dashboard"]),
+                  capabilityIds: isCn ? ["发布公告", "整理帖子", "推动互动"] : ["publish announcement", "curate posts", "drive engagement"],
+                },
+              ]
+            : getScaffoldArchetype(spec) === "marketing_admin" || getScaffoldArchetype(spec) === "content"
+              ? [
+                  {
+                    id: "website_story",
+                    label: isCn ? "官网叙事系统" : "Website narrative system",
+                    summary: isCn ? "管理 hero、卖点、背书和 CTA。" : "Manages hero, proof, feature narrative, and CTA blocks.",
+                    routeIds: includeRoutes(["website", "dashboard"]),
+                    capabilityIds: isCn ? ["编辑首页", "检查转化", "更新卖点"] : ["edit site", "check conversion", "update narrative"],
+                  },
+                  {
+                    id: "download_distribution",
+                    label: isCn ? "下载与分发中心" : "Download and distribution hub",
+                    summary: isCn ? "统一客户端包、设备矩阵和分发渠道。" : "Unifies client builds, device coverage, and distribution channels.",
+                    routeIds: includeRoutes(["downloads", "dashboard"]),
+                    capabilityIds: isCn ? ["上传安装包", "复制下载链路", "同步设备说明"] : ["upload build", "copy link", "sync device guide"],
+                  },
+                  {
+                    id: "docs_release_center",
+                    label: isCn ? "文档与版本中心" : "Docs and release center",
+                    summary: isCn ? "承接 changelog、安装说明和版本叙事。" : "Carries changelog, install guides, and release storytelling.",
+                    routeIds: includeRoutes(["docs", "changelog", "admin"]),
+                    capabilityIds: isCn ? ["发布说明", "同步下载页", "更新文档"] : ["publish note", "sync downloads", "update docs"],
+                  },
+                  {
+                    id: "growth_ops",
+                    label: isCn ? "增长与后台控制" : "Growth and admin controls",
+                    summary: isCn ? "连接价格、分发规则和后台配置。" : "Connects pricing, distribution rules, and admin settings.",
+                    routeIds: includeRoutes(["admin", "dashboard", "pricing"]),
+                    capabilityIds: isCn ? ["修改套餐", "检查后台", "同步状态"] : ["update plans", "check admin", "sync status"],
+                  },
+                ]
+              : shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? "").toLowerCase())
+                ? [
+                    {
+                      id: "approval_control",
+                      label: isCn ? "审批控制台" : "Approval control center",
+                      summary: isCn ? "承接待办审批、责任人和批量决策。" : "Handles pending approvals, owners, and batch decisions.",
+                      routeIds: includeRoutes(["dashboard", "approvals", "tasks"]),
+                      capabilityIds: isCn ? ["查看审批", "批量处理", "同步状态"] : ["review approvals", "batch decision", "sync status"],
+                    },
+                    {
+                      id: "policy_governance",
+                      label: isCn ? "权限治理轨道" : "Policy governance rail",
+                      summary: isCn ? "连接角色、访问策略和工作区边界。" : "Connects roles, access policy, and workspace boundaries.",
+                      routeIds: includeRoutes(["security", "dashboard"]),
+                      capabilityIds: isCn ? ["查看策略", "调整角色", "发布权限"] : ["review policy", "adjust role", "publish access"],
+                    },
+                    {
+                      id: "audit_response",
+                      label: isCn ? "审计与响应轨道" : "Audit and response rail",
+                      summary: isCn ? "统一审计事件、告警和恢复动作。" : "Unifies audit events, alerts, and recovery actions.",
+                      routeIds: includeRoutes(["dashboard", "security", "tasks"]),
+                      capabilityIds: isCn ? ["查看审计", "跟进告警", "导出记录"] : ["review audit", "triage alert", "export log"],
+                    },
+                    {
+                      id: "team_governance",
+                      label: isCn ? "团队席位治理" : "Team seat governance",
+                      summary: isCn ? "管理成员席位、负责人和规则生效范围。" : "Manages team seats, ownership, and rollout scope.",
+                      routeIds: includeRoutes(["security", "tasks"]),
+                      capabilityIds: isCn ? ["分配席位", "调整负责人", "同步规则"] : ["assign seat", "adjust owner", "sync rule"],
+                    },
+                  ]
+                : [
+                  {
+                    id: "task_ops",
+                    label: isCn ? "任务控制平面" : "Task operations plane",
+                    summary: isCn ? "聚合工作项、审批与状态推进。" : "Aggregates work items, approvals, and status progression.",
+                    routeIds: includeRoutes(["dashboard", "tasks", "approvals"]),
+                    capabilityIds: isCn ? ["创建任务", "推进状态", "审批"] : ["create task", "move state", "approve"],
+                  },
+                ]
+
+  return seeds
+}
+
+function buildCapabilityFlags(spec: AppSpec): CapabilityFlags {
+  const archetype = getScaffoldArchetype(spec)
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  return {
+    hasAiChat: archetype === "code_platform" || spec.kind === "code_platform",
+    hasVisualEdit: archetype === "code_platform",
+    hasCodeEditor: archetype === "code_platform",
+    hasLivePreview: archetype === "code_platform",
+    hasControlPlane: true,
+    hasDataConsole: archetype === "crm" || archetype === "api_platform" || archetype === "task",
+    hasAutomations: archetype === "crm" || archetype === "community" || isAdminOps || spec.planTier === "pro" || spec.planTier === "elite",
+    hasIntegrations: archetype === "api_platform" || archetype === "marketing_admin" || archetype === "code_platform" || isAdminOps,
+    hasApiSurface: archetype === "api_platform",
+    hasPricing: archetype === "code_platform" || archetype === "marketing_admin" || spec.kind === "blog",
+    hasPermissions: spec.planTier !== "free" || archetype === "crm" || archetype === "api_platform" || isAdminOps,
+    hasPublishing: archetype === "marketing_admin" || archetype === "content" || archetype === "code_platform",
+  }
+}
+
+function inferVisualSeed(spec: AppSpec): VisualSeed {
+  const archetype = getScaffoldArchetype(spec)
+  const icon = getArchetypeIconSeed(archetype, spec.title, spec.prompt)
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(text)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  return {
+    theme:
+      archetype === "marketing_admin" || archetype === "content" || domainFlavor === "healthcare" || domainFlavor === "education"
+        ? "light"
+        : "dark",
+    tone:
+      archetype === "code_platform"
+        ? /system|ops|control|admin|系统|控制台/.test(text)
+          ? spec.region === "cn" ? "运维型 IDE 工作台" : "Operator IDE workspace"
+          : spec.region === "cn" ? "生成式 IDE 工作台" : "Generative IDE workspace"
+        : archetype === "crm"
+          ? /renewal|success|account|续约|成功团队|账户/.test(text)
+            ? spec.region === "cn" ? "客户成功控制台" : "Customer success control plane"
+            : spec.region === "cn" ? "销售成交控制台" : "Revenue control plane"
+          : archetype === "api_platform"
+            ? /security|auth|token|oauth|安全|鉴权|令牌/.test(text)
+              ? spec.region === "cn" ? "安全开发者网关" : "Secure developer gateway"
+              : spec.region === "cn" ? "开发者平台" : "Developer platform"
+            : archetype === "community"
+              ? /feedback|roadmap|vote|反馈|路线图|投票/.test(text)
+                ? spec.region === "cn" ? "反馈与路线图产品" : "Feedback and roadmap product"
+                : spec.region === "cn" ? "社区与反馈产品" : "Community and feedback product"
+              : isAdminOps
+                ? spec.region === "cn"
+                  ? "内部控制平面"
+                  : "Internal control plane"
+              : isSpecializedTask
+                ? getDomainFlavorCategory(domainFlavor, spec.region)
+              : /download|device|ios|android|desktop|下载|设备/.test(text)
+                ? spec.region === "cn" ? "设备分发产品" : "Device distribution product"
+                : spec.region === "cn"
+                  ? "品牌与分发产品"
+                  : "Brand and distribution product",
+    density: archetype === "code_platform" || archetype === "api_platform" || isAdminOps || domainFlavor === "finance" ? "compact" : "comfortable",
+    navStyle:
+      archetype === "code_platform"
+        ? "editor_shell"
+        : archetype === "marketing_admin" || archetype === "content"
+          ? "marketing_shell"
+          : archetype === "community"
+            ? "community_shell"
+            : domainFlavor === "support" || domainFlavor === "recruiting"
+              ? "community_shell"
+              : "control_plane",
+    layoutVariant:
+      archetype === "code_platform"
+        ? /run|terminal|publish|preview|deploy|运行|发布|预览/.test(text)
+          ? "docs_console"
+          : "split_command"
+        : archetype === "crm"
+          ? /renewal|success|account|续约|成功团队|账户/.test(text)
+            ? "split_command"
+            : "sidebar_board"
+          : archetype === "api_platform"
+            ? /docs|sdk|onboarding|guide|文档|开发者|接入/.test(text)
+              ? "docs_console"
+              : "split_command"
+            : archetype === "community"
+              ? /event|events|meetup|webinar|registration|活动|直播|报名/.test(text)
+                ? "story_stack"
+                : "split_command"
+              : archetype === "marketing_admin" || archetype === "content"
+                ? /download|device|ios|android|desktop|distribution|release|下载|设备|分发|发布/.test(text)
+                  ? "marketing_split"
+                  : "story_stack"
+                : domainFlavor === "healthcare" || domainFlavor === "education"
+                  ? "story_stack"
+                : domainFlavor === "support" || domainFlavor === "recruiting"
+                  ? "split_command"
+                : domainFlavor === "finance" || domainFlavor === "commerce_ops" || /incident|alert|outage|recovery|告警|故障|恢复|异常/.test(text)
+                  ? "split_command"
+                  : "sidebar_board",
+    heroVariant:
+      archetype === "crm"
+        ? "pipeline"
+        : archetype === "api_platform" || isAdminOps || domainFlavor === "finance" || domainFlavor === "support"
+          ? "operations"
+          : archetype === "marketing_admin" || archetype === "content"
+            ? "distribution"
+            : archetype === "community"
+              ? "community"
+              : "statement",
+    surfaceVariant:
+      archetype === "marketing_admin" || archetype === "community" || domainFlavor === "healthcare" || domainFlavor === "education"
+        ? "glass"
+        : archetype === "crm"
+          ? "solid"
+          : archetype === "api_platform" || isAdminOps
+            ? "soft"
+            : "solid",
+    ctaVariant:
+      archetype === "marketing_admin" || archetype === "community" || domainFlavor === "healthcare" || domainFlavor === "education"
+        ? "pill"
+        : archetype === "api_platform" || isAdminOps
+          ? "outline"
+          : "block",
+    icon,
+  }
+}
+
+function buildAppIdentity(spec: AppSpec): AppIdentity {
+  const archetype = getScaffoldArchetype(spec)
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  const icon = spec.visualSeed?.icon ?? getArchetypeIconSeed(archetype, spec.title, spec.prompt)
+  const pageDefinitions = getArchetypePageDefinitions(spec)
+  const shortDescription =
+    (isAdminOps
+      ? spec.region === "cn"
+        ? "生成了内部 admin/control plane，承接审批、权限、审计、事件响应和团队治理。"
+        : "Generated an internal admin control plane for approvals, access, audit, incident response, and team governance."
+      : isSpecializedTask
+        ? spec.region === "cn"
+          ? `生成了${getDomainFlavorCategory(domainFlavor, spec.region)}，承接 ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")} 等核心业务入口。`
+          : `Generated a ${getDomainFlavorCategory(domainFlavor, spec.region)} with core surfaces such as ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")}.`
+      : pageDefinitions[0]?.summary) ||
+    (spec.region === "cn"
+      ? `已生成 ${getArchetypeCategoryLabel(archetype, spec.region)}，包含 ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")} 等核心入口。`
+      : `Generated ${getArchetypeCategoryLabel(archetype, spec.region)} with core routes such as ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")}.`)
+  return {
+    displayName: spec.title,
+    shortDescription,
+    archetypeLabel: isAdminOps
+      ? spec.region === "cn"
+        ? "内部管理与控制平面"
+        : "Internal admin and control plane"
+      : isSpecializedTask
+        ? getDomainFlavorCategory(domainFlavor, spec.region)
+      : getArchetypeCategoryLabel(archetype, spec.region),
+    category: isAdminOps ? "admin_ops_internal_tool" : isSpecializedTask ? domainFlavor : archetype,
+    icon,
+  }
+}
+
+function sortPageDefinitionsByPlannedRoutes(pageDefinitions: ArchetypePageDefinition[], spec: AppSpec) {
+  const plannedRoutes = extractPlannedRouteNames(spec)
+  if (!plannedRoutes.length) return pageDefinitions
+  const plannedOrder = new Map(plannedRoutes.map((route, index) => [route, index]))
+  const originalOrder = new Map(pageDefinitions.map((page, index) => [page.route, index]))
+  return [...pageDefinitions].sort((left, right) => {
+    const leftRank = plannedOrder.has(left.route) ? plannedOrder.get(left.route)! : Number.MAX_SAFE_INTEGER
+    const rightRank = plannedOrder.has(right.route) ? plannedOrder.get(right.route)! : Number.MAX_SAFE_INTEGER
+    if (leftRank !== rightRank) return leftRank - rightRank
+    return (originalOrder.get(left.route) ?? 0) - (originalOrder.get(right.route) ?? 0)
+  })
+}
+
+function buildAppIntent(spec: AppSpec, intentSeed: ReturnType<typeof getArchetypeIntentSeed>, archetype: ScaffoldArchetype): AppIntent {
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  const domainIntent = isSpecializedTask ? getDomainFlavorIntent(domainFlavor, spec.region) : null
+  return {
+    archetype: isAdminOps ? "admin_ops_internal_tool" : archetype,
+    productCategory: isAdminOps
+      ? spec.region === "cn"
+        ? "内部管理与控制平面"
+        : "Internal admin and control plane"
+      : isSpecializedTask
+        ? getDomainFlavorCategory(domainFlavor, spec.region)
+      : getArchetypeCategoryLabel(archetype, spec.region),
+    targetAudience: domainIntent?.targetAudience ?? intentSeed.targetAudience,
+    primaryJobs: domainIntent?.primaryJobs ?? intentSeed.primaryJobs,
+    primaryWorkflow: domainIntent?.primaryWorkflow ?? intentSeed.primaryWorkflow,
+    integrationTargets: intentSeed.integrationTargets,
+    automationScopes: domainIntent?.automationScopes ?? intentSeed.automationScopes,
+    differentiationNotes: intentSeed.differentiationNotes,
+  }
+}
+
+function buildBlueprintRouteNote(routeBlueprint: RouteBlueprint[], region: Region) {
+  const routeLabels = routeBlueprint
+    .slice(0, 4)
+    .map((route) => {
+      const routeKey = String(route.path || route.id || "")
+        .replace(/^\/+/, "")
+        .trim()
+      return getGeneratedRouteLabel(routeKey, region === "cn")
+    })
+  if (!routeLabels.length) return null
+  return region === "cn"
+    ? `当前关键路由：${routeLabels.join(" / ")}`
+    : `Current key routes: ${routeLabels.join(", ")}`
+}
+
+function buildBlueprintEntityNote(entityBlueprint: EntityBlueprint[], region: Region) {
+  const entityLabels = entityBlueprint.slice(0, 4).map((entity) => entity.label)
+  if (!entityLabels.length) return null
+  return region === "cn"
+    ? `核心数据对象：${entityLabels.join(" / ")}`
+    : `Core data objects: ${entityLabels.join(", ")}`
+}
+
+function getPromptRoutePriority(spec: AppSpec, routeId: string) {
+  const archetype = getScaffoldArchetype(spec)
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  if (routeId === "dashboard") return 1000
+
+  const score = (matched: boolean, weight: number) => (matched ? weight : 0)
+
+  if (archetype === "crm") {
+    return (
+      score(/lead|leads|pipeline|deal|deals|客户线索|线索|商机/.test(text) && routeId === "leads", 150) +
+      score(/pipeline|deal|deals|stage|阶段|商机/.test(text) && routeId === "pipeline", 145) +
+      score(/order|orders|quote|quotes|billing|invoice|renewal|handoff|订单|报价|账单|发票|续约|交付/.test(text) && routeId === "orders", 155) +
+      score(/quote approval|quote approvals|approval queue|payment sync|handoff|审批|报价审批|回款同步|交付/.test(text) && routeId === "orders", 8) +
+      score(/report|reports|forecast|quota|health|renewal|报表|分析|预测|配额|健康度|续约/.test(text) && routeId === "reports", 152) +
+      score(/customer|customers|account|accounts|客户|账户/.test(text) && routeId === "customers", 140) +
+      score(/team|owner|quota|leaderboard|团队|负责人|配额|排行/.test(text) && routeId === "team", 135) +
+      score(/account executive|account executives|seat|leaderboard|territory|团队目标|席位|领地/.test(text) && routeId === "team", 6) +
+      score(/automation|automations|rule|rules|自动化|规则/.test(text) && routeId === "automations", 138)
+    )
+  }
+
+  if (archetype === "community") {
+    const eventDrivenCommunity = /event|events|meetup|webinar|registration|registrations|schedule|scheduling|session|sessions|ambassador|invite|segment|segments|活动|直播|聚会|报名|日程|议程|邀请|大使|分层/.test(
+      text
+    )
+    return (
+      score(/feedback|feedback intake|request|requests|反馈/.test(text) && routeId === "feedback", 150) +
+      score(/moderation|moderate|report abuse|safety|审核|治理|举报|安全/.test(text) && routeId === "moderation", eventDrivenCommunity ? 146 : 154) +
+      score(/queue|queues|policy|policies|trust|safety|队列|策略|信任与安全/.test(text) && routeId === "moderation", 8) +
+      score(/roadmap|vote|wishlist|ambassador|路线图|投票|愿望单|大使/.test(text) && routeId === "roadmap", eventDrivenCommunity ? 144 : 152) +
+      score(/member|members|segment|segments|invite|ambassador|成员|分层|邀请|大使/.test(text) && routeId === "members", eventDrivenCommunity ? 157 : 145) +
+      score(/segment|segments|cohort|invite|cohorts|分层|分群|邀请/.test(text) && routeId === "members", eventDrivenCommunity ? 12 : 6) +
+      score(/event|events|meetup|webinar|registration|registrations|schedule|scheduling|活动|直播|聚会|报名|日程|排期/.test(text) && routeId === "events", eventDrivenCommunity ? 168 : 158) +
+      score(/registration|registrations|ambassador|invite|member segment|member segments|报名|大使|邀请|成员分层/.test(text) && routeId === "members", eventDrivenCommunity ? 14 : 10) +
+      score(/post|posts|announcement|announcements|content|帖子|公告|内容/.test(text) && routeId === "posts", 140)
+    )
+  }
+
+  if (archetype === "marketing_admin" || archetype === "content") {
+    return (
+      score(/website|site|story|marketing|brand|官网|站点|品牌/.test(text) && routeId === "website", 148) +
+      score(/download|downloads|distribution|installer|apk|ipa|mac|windows|desktop|ios|android|下载|分发|安装/.test(text) && routeId === "downloads", 155) +
+      score(/release distribution|distribution control|installer|desktop app|mobile app|发布分发|分发控制|安装包|桌面端|移动端/.test(text) && routeId === "downloads", 8) +
+      score(/docs|documentation|guide|faq|release notes|文档|指南|faq|说明|发布说明/.test(text) && routeId === "docs", 150) +
+      score(/onboarding|release notes|setup guide|developer guide|上手|发布说明|安装指南/.test(text) && routeId === "docs", 6) +
+      score(/device|devices|ios|android|mac|windows|desktop|设备|安装包/.test(text) && routeId === "devices", 149) +
+      score(/device builds|desktop and mobile|windows|mac|ios|android|设备构建|桌面和移动|安装包/.test(text) && routeId === "devices", 8) +
+      score(/pricing|plan|plans|subscription|price|定价|套餐|价格/.test(text) && routeId === "pricing", 146) +
+      score(/changelog|release|releases|version|versions|变更|版本|发布/.test(text) && routeId === "changelog", 144) +
+      score(/admin|distribution control|backend|ops|后台|分发控制|后台管理/.test(text) && routeId === "admin", 143) +
+      score(/admin distribution|release console|ops desk|后台分发|版本后台|分发后台/.test(text) && routeId === "admin", 7)
+    )
+  }
+
+  if (archetype === "api_platform") {
+    return (
+      score(/endpoint|endpoints|api|apis|接口|端点/.test(text) && routeId === "endpoints", 150) +
+      score(/log|logs|trace|observability|日志|追踪|观测/.test(text) && routeId === "logs", 146) +
+      score(/auth|oauth|token|key|keys|scope|鉴权|令牌|密钥|权限/.test(text) && routeId === "auth", 149) +
+      score(/environment|environments|release|deploy|发布|环境|部署/.test(text) && routeId === "environments", 145) +
+      score(/webhook|webhooks|callback|callbacks|回调|订阅/.test(text) && routeId === "webhooks", 151) +
+      score(/delivery|retry|subscription|event callback|交付|重试|订阅|事件回调/.test(text) && routeId === "webhooks", 6) +
+      score(/docs|sdk|guide|reference|developer onboarding|文档|sdk|指南|参考|上手/.test(text) && routeId === "docs", 152) +
+      score(/developer onboarding|sdk docs|reference|quickstart|上手|sdk 文档|参考|快速开始/.test(text) && routeId === "docs", 6) +
+      score(/usage|metering|billing|rate limit|用量|计量|计费|限流/.test(text) && routeId === "usage", 150) +
+      score(/billing visibility|quota|quota review|cost|计费可见性|配额|成本/.test(text) && routeId === "usage", 8)
+    )
+  }
+
+  if (archetype === "code_platform") {
+    return (
+      score(/editor|code|file|files|tree|编辑器|代码|文件/.test(text) && routeId === "editor", 150) +
+      score(/assistant|chat|copilot|agent|助手|对话|智能体/.test(text) && routeId === "assistant", 152) +
+      score(/command palette|agentic|inline edit|visual edit|命令面板|行内改动|可视化编辑/.test(text) && routeId === "assistant", 7) +
+      score(/run|runs|runtime|log|logs|运行|日志/.test(text) && routeId === "runs", 146) +
+      score(/template|templates|starter|scaffold|模板|起始点|脚手架/.test(text) && routeId === "templates", 144) +
+      score(/publish|release|deploy|delivery|发布|交付|上线/.test(text) && routeId === "publish", 148) +
+      score(/handoff|share|production push|交接|分享|生产发布/.test(text) && routeId === "publish", 6) +
+      score(/price|pricing|plan|plans|套餐|价格|定价/.test(text) && routeId === "pricing", 142)
+    )
+  }
+
+  if (isAdminOpsTaskSpec(spec)) {
+    return (
+      score(/approval|approvals|signoff|审批|签批/.test(text) && routeId === "approvals", 154) +
+      score(/queue|queues|backlog|审批队列|处理队列|积压/.test(text) && routeId === "approvals", 7) +
+      score(/security|access|permission|role|policy|安全|权限|角色|策略/.test(text) && routeId === "security", 152) +
+      score(/rbac|role-based|access review|policy sync|基于角色|访问审查|策略同步/.test(text) && routeId === "security", 7) +
+      score(/audit|history|trace|compliance|审计|留痕|合规/.test(text) && routeId === "audit", 150) +
+      score(/incident|incidents|alert|outage|告警|故障|异常|应急/.test(text) && routeId === "incidents", 149) +
+      score(/incident response|triage|postmortem|应急响应|排障|复盘/.test(text) && routeId === "incidents", 7) +
+      score(/team|seat|owner|member|workspace admin|团队|席位|负责人|成员/.test(text) && routeId === "team", 142) +
+      score(/automation|automations|rule|rules|自动化|规则/.test(text) && routeId === "automations", 144) +
+      score(/task|tasks|queue|queues|事项|队列|任务/.test(text) && routeId === "tasks", 146)
+    )
+  }
+
+  return 0
+}
+
+function sortRouteBlueprintByPromptPriority(spec: AppSpec, routeBlueprint: RouteBlueprint[]) {
+  const originalOrder = new Map(routeBlueprint.map((route, index) => [route.id, index]))
+  return [...routeBlueprint].sort((left, right) => {
+    const scoreDelta = getPromptRoutePriority(spec, right.id) - getPromptRoutePriority(spec, left.id)
+    if (scoreDelta !== 0) return scoreDelta
+    return (originalOrder.get(left.id) ?? 0) - (originalOrder.get(right.id) ?? 0)
+  })
+}
+
+function buildBlueprintAwarePrimaryWorkflow(
+  spec: AppSpec,
+  appIntent: AppIntent,
+  routeBlueprint: RouteBlueprint[],
+  entityBlueprint: EntityBlueprint[]
+) {
+  const archetype = getScaffoldArchetype(spec)
+  const isCn = spec.region === "cn"
+  const routeIds = new Set(routeBlueprint.map((route) => route.id))
+  const entityIds = new Set(entityBlueprint.map((entity) => entity.id))
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+
+  if (archetype === "crm") {
+    if (entityIds.has("sales_order") && routeIds.has("reports")) {
+      return isCn ? "线索 -> 商机 -> 报价/订单 -> 交付" : "Lead -> opportunity -> quote/order -> handoff"
+    }
+    if (routeIds.has("reports")) {
+      return isCn ? "线索 -> 商机 -> 汇报 -> 交付" : "Lead -> opportunity -> reporting -> handoff"
+    }
+  }
+
+  if (archetype === "community") {
+    if (
+      /event planning|organize events|event registration|event reminders|events|活动策划|组织活动|活动报名|活动提醒|直播|聚会/.test(
+        `${appIntent.primaryWorkflow} ${appIntent.primaryJobs.join(" ")} ${appIntent.automationScopes.join(" ")}`.toLowerCase()
+      )
+    ) {
+      return isCn ? "活动策划 -> 邀请触达 -> 反馈归档 -> 社区运营" : "Event planning -> invite outreach -> feedback intake -> community ops"
+    }
+    if (entityIds.has("moderation_case") || routeIds.has("moderation")) {
+      return isCn ? "发帖/反馈 -> 审核 -> 路线图 -> 成员运营" : "Post/feedback -> moderation -> roadmap -> member ops"
+    }
+    if (routeIds.has("roadmap")) {
+      return isCn ? "反馈 -> 路线图 -> 公告 -> 成员运营" : "Feedback -> roadmap -> announcements -> member ops"
+    }
+  }
+
+  if (archetype === "api_platform") {
+    if (routeIds.has("docs") && routeIds.has("usage")) {
+      return isCn ? "文档上手 -> 接口接入 -> 用量计量 -> 发布" : "Docs onboarding -> endpoint access -> usage metering -> release"
+    }
+    if (routeIds.has("webhooks") && routeIds.has("environments")) {
+      return isCn ? "接口接入 -> 回调验证 -> 环境发布" : "Endpoint access -> webhook validation -> environment release"
+    }
+  }
+
+  if (archetype === "marketing_admin" || archetype === "content") {
+    if (entityIds.has("device_build")) {
+      return isCn ? "官网浏览 -> 下载对比 -> 设备分发 -> 后台同步" : "Website browse -> download compare -> device distribution -> admin sync"
+    }
+    if (routeIds.has("downloads") && routeIds.has("docs")) {
+      return isCn ? "官网浏览 -> 文档教育 -> 下载分发 -> 后台联动" : "Website browse -> docs education -> download distribution -> admin linkage"
+    }
+  }
+
+  if (isAdminOps) {
+    if (routeIds.has("approvals") && routeIds.has("security") && routeIds.has("audit")) {
+      return isCn ? "审批 intake -> 策略调整 -> 审计留痕 -> 事件响应" : "Approval intake -> policy change -> audit trail -> incident response"
+    }
+  }
+
+  if (archetype === "code_platform" && routeIds.has("assistant") && routeIds.has("publish")) {
+    return isCn ? "生成 -> 改码 -> 预览 -> 发布" : "Generate -> edit -> preview -> publish"
+  }
+
+  return appIntent.primaryWorkflow
+}
+
+function finalizeAppIntentWithBlueprint(
+  spec: AppSpec,
+  appIntent: AppIntent,
+  routeBlueprint: RouteBlueprint[],
+  entityBlueprint: EntityBlueprint[]
+) {
+  const firstNote = appIntent.differentiationNotes[0]
+  return {
+    ...appIntent,
+    primaryWorkflow: buildBlueprintAwarePrimaryWorkflow(spec, appIntent, routeBlueprint, entityBlueprint),
+    differentiationNotes: uniqueStrings(
+      [
+        firstNote,
+        buildBlueprintRouteNote(routeBlueprint, spec.region),
+        buildBlueprintEntityNote(entityBlueprint, spec.region),
+      ].filter((item): item is string => Boolean(item))
+    ),
+  }
+}
+
+function buildBlueprintsForSpec(spec: AppSpec) {
+  const archetype = getScaffoldArchetype(spec)
+  const categoryLabel = isAdminOpsTaskSpec(spec)
+    ? spec.region === "cn"
+      ? "内部管理与控制平面"
+      : "Internal admin and control plane"
+    : getArchetypeCategoryLabel(archetype, spec.region)
+  const pageDefinitions = sortPageDefinitionsByPlannedRoutes(getArchetypePageDefinitions(spec), spec)
+  const routes = pageDefinitions.length
+    ? pageDefinitions.map((page) => page.route)
+    : extractPlannedRouteNames(spec)
+  const entities = getArchetypeEntityBlueprints(spec)
+  const entityIds = new Set(entities.map((item) => item.id))
+  const baseRouteBlueprint: RouteBlueprint[] = (archetype === "code_platform"
+    ? getCodePlatformBlueprintRouteDefinitions(spec, entities)
+    : pageDefinitions.length
+    ? pageDefinitions.map((page) => ({
+        id: toBlueprintId(page.route),
+        path: page.route === "dashboard" ? "/dashboard" : page.route === "home" ? "/" : `/${page.route}`,
+        label: page.label,
+        purpose: page.summary,
+        moduleIds: [],
+        entityIds: getDefaultEntityIdsForRoute(page.route, archetype, entities),
+        primaryActions: getRoutePrimaryActions(page.route, archetype, spec.region),
+        surface: getRouteSurface(page.route, archetype),
+        pagePrototype: getRoutePagePrototype(page.route, archetype),
+      }))
+    : routes.map((route) => ({
+        id: toBlueprintId(route),
+        path: route === "home" ? "/" : `/${route}`,
+        label: getGeneratedRouteLabel(route, spec.region === "cn"),
+        purpose:
+          spec.region === "cn"
+            ? `${getGeneratedRouteLabel(route, true)} 是 ${categoryLabel} 的关键入口。`
+            : `${getGeneratedRouteLabel(route, false)} is a key surface in this ${categoryLabel}.`,
+        moduleIds: [],
+        entityIds: getDefaultEntityIdsForRoute(route, archetype, entities),
+        primaryActions: getRoutePrimaryActions(route, archetype, spec.region),
+        surface: getRouteSurface(route, archetype),
+        pagePrototype: getRoutePagePrototype(route, archetype),
+      }))) as RouteBlueprint[]
+
+  const routeBlueprintSeedIds = new Set(baseRouteBlueprint.map((route) => route.id))
+  const routeSurfaceModules: ModuleBlueprint[] = baseRouteBlueprint.map((route) => ({
+    id: `${route.id}_surface`,
+    label: spec.region === "cn" ? `${route.label} 工作区` : `${route.label} workspace`,
+    summary:
+      archetype === "code_platform"
+        ? buildCodePlatformSurfaceSummary(pageDefinitions.find((page) => page.route === route.id), spec.region, route.label)
+        : spec.region === "cn"
+          ? `${route.label} 页面承接 ${route.purpose}`
+          : `${route.label} is the workspace surface responsible for ${route.purpose.toLowerCase()}`,
+    routeIds: [route.id],
+    capabilityIds: route.primaryActions.slice(0, 3),
+  }))
+
+  const seededModules = getArchetypeModuleBlueprintSeeds(spec, baseRouteBlueprint)
+  const reservedModuleIds = new Set([
+    ...routeSurfaceModules.map((item) => item.id),
+    ...seededModules.map((item) => item.id),
+    ...baseRouteBlueprint.map((route) => route.id),
+  ])
+  const genericModuleTokens = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "first",
+    "quick",
+    "dark",
+    "light",
+    "workspace",
+    "surface",
+    "system",
+    "center",
+    "centre",
+    "rail",
+    "flow",
+    "workflow",
+    "ops",
+    "page",
+    "control",
+    "plane",
+    "hub",
+    "desk",
+    "view",
+    "entry",
+  ])
+  const tokenizeBlueprintText = (value: string) =>
+    String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, " ")
+      .split(/\s+/)
+      .filter((token) => token && !genericModuleTokens.has(token))
+  const inferFallbackRouteIds = (moduleLabel: string) => {
+    const text = String(moduleLabel ?? "").toLowerCase()
+    const matches = new Set<string>()
+    const push = (...routeIds: string[]) => {
+      for (const routeId of routeIds) {
+        if (routeBlueprintSeedIds.has(routeId)) {
+          matches.add(routeId)
+        }
+      }
+    }
+
+    if (archetype === "api_platform") {
+      if (/doc|sdk|guide|reference|onboard|developer/.test(text)) push("docs", "endpoints")
+      if (/usage|meter|billing|bill|rate|quota/.test(text)) push("usage", "dashboard")
+      if (/webhook|callback|event/.test(text)) push("webhooks", "logs")
+      if (/auth|scope|key|security|policy|oauth/.test(text)) push("auth", "environments")
+      if (/environment|deploy|release|version/.test(text)) push("environments", "dashboard")
+      if (/log|trace|observ/.test(text)) push("logs", "dashboard")
+      if (/endpoint|catalog/.test(text)) push("endpoints", "dashboard")
+      if (/console|dashboard|platform/.test(text)) push("dashboard")
+    } else if (archetype === "community") {
+      if (/moderation|report|safety|policy|queue/.test(text)) push("moderation", "feedback", "settings")
+      if (/roadmap|vote/.test(text)) push("roadmap", "feedback")
+      if (/member|trust|segment|invite/.test(text)) push("members", "settings")
+      if (/event|attendance|reminder|orchestration|program/.test(text)) push("events", "dashboard")
+      if (/announcement|post|content|discussion/.test(text)) push("posts", "dashboard")
+      if (/feedback|triage/.test(text)) push("feedback", "dashboard")
+    } else if (archetype === "crm") {
+      if (/lead|qualification/.test(text)) push("leads", "pipeline")
+      if (/pipeline|stage|deal|opportunity/.test(text)) push("pipeline", "dashboard")
+      if (/customer|account|handoff|renewal/.test(text)) push("customers", "dashboard")
+      if (/automation|reminder/.test(text)) push("automations", "dashboard")
+      if (/report|forecast|summary/.test(text)) push("reports", "dashboard")
+      if (/order|quote|approval|payment/.test(text)) push("orders", "pipeline")
+      if (/quota|owner|team|leaderboard|cadence/.test(text)) push("team", "reports")
+    } else if (archetype === "marketing_admin" || archetype === "content") {
+      if (/website|homepage|narrative|proof|story|hero/.test(text)) push("website", "dashboard")
+      if (/download|distribution|asset|channel/.test(text)) push("downloads", "admin")
+      if (/device|build|sign|installer|matrix/.test(text)) push("devices", "downloads")
+      if (/doc|release|changelog|note|faq|guide/.test(text)) push("docs", "changelog", "admin")
+      if (/pricing|plan|compare/.test(text)) push("pricing", "dashboard")
+      if (/admin|console|ops|growth|control/.test(text)) push("admin", "dashboard")
+    } else if (archetype === "task") {
+      if (/approval/.test(text)) push("approvals", "tasks")
+      if (/security|access|role|policy/.test(text)) push("security", "dashboard")
+      if (/audit|trail|compliance/.test(text)) push("audit", "dashboard")
+      if (/incident|alert|recovery/.test(text)) push("incidents", "dashboard")
+      if (/team|seat|owner/.test(text)) push("team", "security")
+      if (/automation|rule/.test(text)) push("automations", "tasks")
+      if (/report|analytics|summary/.test(text)) push("reports", "dashboard")
+      if (/task|queue|control/.test(text)) push("tasks", "dashboard")
+    }
+
+    if (matches.size) {
+      return Array.from(matches)
+    }
+
+    const moduleTokens = tokenizeBlueprintText(moduleLabel)
+    if (!moduleTokens.length) return []
+    return baseRouteBlueprint
+      .filter((route) => {
+        const routeTokens = new Set([
+          ...tokenizeBlueprintText(route.id),
+          ...tokenizeBlueprintText(route.label),
+          ...tokenizeBlueprintText(route.purpose),
+          ...route.primaryActions.flatMap((action) => tokenizeBlueprintText(action)),
+        ])
+        return moduleTokens.some((token) => routeTokens.has(token))
+      })
+      .map((route) => route.id)
+  }
+  const buildFallbackSummary = (moduleLabel: string, linkedRoutes: RouteBlueprint[]) =>
+    archetype === "code_platform"
+      ? buildCodePlatformModuleSummary(
+          {
+            id: toBlueprintId(moduleLabel),
+            label: moduleLabel,
+            summary: "",
+            routeIds: linkedRoutes.map((item) => item.id),
+            capabilityIds: linkedRoutes.flatMap((item) => item.primaryActions).slice(0, 3),
+          },
+          spec.region
+        )
+      : spec.region === "cn"
+        ? `${moduleLabel} 负责承接 ${linkedRoutes.map((item) => item.label).join(" / ")} 的关键动作。`
+        : `${moduleLabel} powers ${linkedRoutes.map((item) => item.label).join(" / ")} workflows.`
+
+  const allModuleLabels = uniqueStrings([
+    ...spec.modules,
+    ...pageDefinitions.flatMap((page) => page.focusAreas),
+  ])
+  const fallbackModules: ModuleBlueprint[] = allModuleLabels.slice(0, 24).map((moduleLabel) => {
+    const moduleId = toBlueprintId(moduleLabel)
+    if (reservedModuleIds.has(moduleId)) {
+      return null
+    }
+    const linkedRouteIds = uniqueStrings(inferFallbackRouteIds(moduleLabel))
+    const linkedRoutes = linkedRouteIds
+      .map((routeId) => baseRouteBlueprint.find((route) => route.id === routeId))
+      .filter(Boolean) as RouteBlueprint[]
+    if (!linkedRoutes.length) {
+      return null
+    }
+    return {
+      id: moduleId,
+      label: moduleLabel,
+      summary: buildFallbackSummary(moduleLabel, linkedRoutes),
+      routeIds: linkedRoutes.map((route) => route.id),
+      capabilityIds: linkedRoutes[0]?.primaryActions.slice(0, 3) ?? [],
+    }
+  }).filter(Boolean) as ModuleBlueprint[]
+
+  const moduleBlueprint = uniqueStrings([
+    ...routeSurfaceModules.map((item) => item.id),
+    ...seededModules.map((item) => item.id),
+    ...fallbackModules.map((item) => item.id),
+  ]).map((id) => {
+    return (
+      routeSurfaceModules.find((item) => item.id === id) ||
+      seededModules.find((item) => item.id === id) ||
+      fallbackModules.find((item) => item.id === id)
+    )!
+  })
+  const boundModuleBlueprint = moduleBlueprint.map((module) => {
+    const routeIds = new Set(module.routeIds ?? [])
+    if (archetype === "crm" && module.id === "quote_approvals" && routeBlueprintSeedIds.has("orders")) {
+      routeIds.add("orders")
+    }
+    if (archetype === "community" && routeBlueprintSeedIds.has("moderation")) {
+      if (module.id === "moderation_queue" || module.id === "moderation_policy" || module.id === "moderation") {
+        routeIds.add("moderation")
+      }
+    }
+    return routeIds.size === (module.routeIds ?? []).length ? module : { ...module, routeIds: Array.from(routeIds) }
+  })
+
+  const routeBlueprint = baseRouteBlueprint.map((route) => {
+    const linkedModuleIds = boundModuleBlueprint
+      .filter((module) => module.routeIds.includes(route.id))
+      .map((module) => module.id)
+    return {
+      ...route,
+      moduleIds: linkedModuleIds.length ? linkedModuleIds : [`${route.id}_surface`],
+      entityIds: route.entityIds.length ? route.entityIds : Array.from(entityIds).slice(0, 2),
+    }
+  })
+
+  return {
+    entityBlueprint: entities,
+    routeBlueprint,
+    moduleBlueprint: boundModuleBlueprint,
+  }
+}
+
+function isGenericSeedItemSet(seedItems: SeedItem[] | undefined) {
+  const titles = (seedItems ?? []).map((item) => item.title)
+  if (!titles.length) return true
+  return titles.some((title) =>
+    [
+      "Reach out to inbound lead",
+      "Prepare demo deck",
+      "Contract handoff",
+      "Refine mobile layout",
+      "设计移动端适配",
+      "梳理自动化规则",
+      "发布首轮演示版",
+    ].includes(title)
+  )
+}
+
+function isGenericTaskEntityBlueprintSet(entityBlueprint: EntityBlueprint[] | undefined) {
+  const ids = (entityBlueprint ?? []).map((item) => item.id)
+  if (!ids.length) return true
+  return ids.every((id) => id === "task" || id === "approval")
+}
+
+function isGenericTaskModuleBlueprintSet(moduleBlueprint: ModuleBlueprint[] | undefined) {
+  const ids = (moduleBlueprint ?? []).map((item) => item.id)
+  if (!ids.length) return true
+  return ids.includes("task_ops") || ids.every((id) => id.endsWith("_surface"))
+}
+
+function sanitizeModulesForArchetype(modules: string[], archetype: ScaffoldArchetype, region: Region) {
+  const normalizedModules = modules.filter((item) => {
+    const text = String(item ?? "").trim()
+    if (!text) return false
+    if (/^[a-z0-9_-]+\s+page$/i.test(text)) return false
+    if (/[^\s]+页面$/.test(text)) return false
+    return true
+  })
+  if (archetype === "code_platform") {
+    const blocked = new Set(region === "cn" ? ["官网与下载站", "销售后台"] : ["Website and downloads", "Sales admin"])
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  if (archetype === "crm") {
+    const blocked = new Set(
+      region === "cn"
+        ? ["浅色运营后台", "快捷操作", "项目总览", "多彩指标卡"]
+        : ["Light ops admin", "Quick actions", "Project overview", "Colorful metrics"]
+    )
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  if (archetype === "api_platform") {
+    const blocked = new Set(
+      region === "cn"
+        ? ["任务看板", "优先级管理", "负责人协同", "深色指挥台", "近期动态", "优先级分布", "数据概览"]
+        : [
+            "Task board",
+            "Priority management",
+            "Assignee collaboration",
+            "Dark command center",
+            "Recent activity",
+            "Priority distribution",
+            "Data overview",
+          ]
+    )
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  if (archetype === "community") {
+    const blocked = new Set(
+      region === "cn"
+        ? ["未来感英雄区", "功能亮点", "价格方案", "强视觉主屏"]
+        : ["Futuristic hero", "Feature blocks", "Pricing plans", "Immersive surface"]
+    )
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  if (archetype === "marketing_admin") {
+    const blocked = new Set(region === "cn" ? ["内容排期", "文章状态", "作者协作"] : ["Content planning", "Post status", "Author workflow"])
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  if (archetype === "task") {
+    const blocked = new Set(
+      region === "cn"
+        ? ["首版销售驾驶舱", "线索快速录入", "成交状态流转", "浅色运营后台", "快捷操作", "项目总览", "多彩指标卡"]
+        : [
+            "First sales cockpit",
+            "Quick lead capture",
+            "Deal status workflow",
+            "Light ops admin",
+            "Quick actions",
+            "Project overview",
+            "Colorful metrics",
+          ]
+    )
+    return normalizedModules.filter((item) => !blocked.has(item))
+  }
+  return normalizedModules
+}
+
+function isGenericPrimaryActionSet(actions: string[] | undefined) {
+  if (!actions?.length) return true
+  const joined = actions.map((item) => String(item ?? "").trim().toLowerCase()).join("|")
+  return (
+    joined === "view page|run action|continue generation" ||
+    joined === "查看页面|执行主操作|继续生成" ||
+    joined === "view surface|run primary action|continue iterating" ||
+    joined === "查看页面|执行主操作|继续迭代"
+  )
+}
+
+function isWeakModuleBlueprint(module: ModuleBlueprint | undefined) {
+  if (!module) return true
+  const summary = String(module.summary ?? "").trim()
+  const label = String(module.label ?? "").trim()
+  const routeIds = module.routeIds ?? []
+  const hasGenericSummary =
+    /supports the core workflow/i.test(summary) ||
+    /负责支撑\s*主工作流/.test(summary) ||
+    (!!label && new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} supports`, "i").test(summary))
+  const hasGenericCapabilities = isGenericPrimaryActionSet(module.capabilityIds)
+  const looksLikeRouteEcho = !routeIds.length ? false : routeIds.includes(module.id)
+  return (!routeIds.length && (hasGenericSummary || hasGenericCapabilities)) || (looksLikeRouteEcho && hasGenericSummary)
+}
+
+function shouldRefreshRouteEntityIds(routeKey: string, archetype: ScaffoldArchetype, entityIds: string[] | undefined) {
+  if (!entityIds?.length) return true
+  if (archetype === "code_platform" && routeKey === "assistant") {
+    return !entityIds.includes("assistant_thread") || !entityIds.includes("ai_session")
+  }
+  if (archetype === "code_platform" && routeKey === "publish") {
+    return !entityIds.includes("release_deployment") || !entityIds.includes("runtime_run")
+  }
+  return false
+}
+
+function shouldRefreshRouteModuleIds(routeKey: string, archetype: ScaffoldArchetype, moduleIds: string[] | undefined) {
+  if (!moduleIds?.length) return true
+  if (archetype === "code_platform" && routeKey === "assistant") {
+    return !moduleIds.includes("assistant_context")
+  }
+  if (archetype === "code_platform" && routeKey === "publish") {
+    return !moduleIds.includes("publish_lane")
+  }
+  return false
+}
+
+function shouldRefreshModuleBlueprint(
+  moduleId: string,
+  archetype: ScaffoldArchetype,
+  routeIds: string[] | undefined,
+  capabilityIds: string[] | undefined
+) {
+  if (!routeIds?.length) return true
+  if (archetype !== "code_platform") {
+    return isGenericPrimaryActionSet(capabilityIds)
+  }
+  if (moduleId === "assistant_context") {
+    return !routeIds.includes("assistant") || !routeIds.includes("editor")
+  }
+  if (moduleId === "publish_lane") {
+    return !routeIds.includes("publish") || !routeIds.includes("runs")
+  }
+  if (moduleId === "ai_orchestrator") {
+    return !routeIds.includes("assistant") || !capabilityIds?.includes("discuss")
+  }
+  if (moduleId === "release_control") {
+    return !routeIds.includes("publish") || !capabilityIds?.includes("review builds")
+  }
+  return isGenericPrimaryActionSet(capabilityIds)
+}
+
+function getFinalCodePlatformModuleRouteIds(moduleId: string, routeIds: Set<string>) {
+  const include = (ids: string[]) => ids.filter((item) => routeIds.has(item))
+  switch (moduleId) {
+    case "assistant_context":
+      return include(["assistant", "editor"])
+    case "publish_lane":
+      return include(["publish", "runs", "dashboard"])
+    case "ai_orchestrator":
+      return include(["dashboard", "editor", "assistant", "runs"])
+    case "release_control":
+      return include(["runs", "publish", "settings", "dashboard"])
+    default:
+      return []
+  }
+}
+
+function syncCodePlatformModuleBlueprintRoutes(modules: ModuleBlueprint[], routeIds: Set<string>) {
+  return modules.map((module) => {
+    const preferredRouteIds = getFinalCodePlatformModuleRouteIds(module.id, routeIds)
+    return preferredRouteIds.length ? { ...module, routeIds: preferredRouteIds } : module
+  })
+}
+
+function buildCodePlatformSurfaceSummary(
+  page: ArchetypePageDefinition | undefined,
+  region: Region,
+  routeLabel: string
+) {
+  if (!page) {
+    return region === "cn"
+      ? `${routeLabel} 工作区承接当前工程上下文与关键操作。`
+      : `${routeLabel} owns the current engineering context and primary actions.`
+  }
+  const focusSummary = page.focusAreas.slice(0, 4).join(region === "cn" ? " / " : " / ")
+  return region === "cn"
+    ? `${page.label} 工作区围绕 ${focusSummary} 组织当前工程上下文。`
+    : `${page.label} organizes the current engineering context around ${focusSummary}.`
+}
+
+function buildCodePlatformModuleSummary(module: ModuleBlueprint, region: Region) {
+  const routeLabels = module.routeIds.length
+    ? module.routeIds.map((routeId) => getGeneratedRouteLabel(routeId, region === "cn")).join(region === "cn" ? " / " : " / ")
+    : region === "cn"
+      ? "当前工作区"
+      : "the current workspace"
+  const capabilitySummary = module.capabilityIds.slice(0, 3).join(region === "cn" ? " / " : " / ")
+  const summaries: Record<string, { cn: string; en: string }> = {
+    ai_command_center: {
+      cn: "把 AI 线程、当前路由和工程状态收进同一条指挥轨道。",
+      en: "Brings AI threads, active routes, and engineering status into one command rail.",
+    },
+    runs_and_logs: {
+      cn: "承接构建验收、运行日志和恢复检查。",
+      en: "Owns build acceptance, runtime logs, and recovery checks.",
+    },
+    template_workshop: {
+      cn: "管理模板、脚手架变体和推荐起始点。",
+      en: "Manages templates, scaffold variants, and recommended starters.",
+    },
+    ai_chat_lane: {
+      cn: "把 Discuss / Generate / Fix / Refactor 绑到当前页面和文件上下文。",
+      en: "Binds Discuss / Generate / Fix / Refactor to the current page and file context.",
+    },
+    share_and_publish: {
+      cn: "连接预览验收、分享链接和发布确认。",
+      en: "Connects preview acceptance, share links, and release confirmation.",
+    },
+    ai_coding_panel: {
+      cn: "把代码编辑、预览、运行和 AI 修改汇到同一工程工作区。",
+      en: "Unifies editing, preview, runtime, and AI edits in one engineering workspace.",
+    },
+    project_file_tree: {
+      cn: "维护文件树、相关路径和多标签切换。",
+      en: "Tracks the file tree, related paths, and multi-tab navigation.",
+    },
+  }
+  const exact = summaries[module.id]
+  if (exact) return region === "cn" ? exact.cn : exact.en
+  return region === "cn"
+    ? `${module.label} 负责串联 ${routeLabels}，重点动作包括 ${capabilitySummary || "当前工程操作"}。`
+    : `${module.label} connects ${routeLabels}, with primary actions such as ${capabilitySummary || "the current engineering workflow"}.`
+}
+
+function getCodePlatformBlueprintRouteDefinitions(spec: AppSpec, entities: EntityBlueprint[]) {
+  const isCn = spec.region === "cn"
+  const pageDefinitions = getArchetypePageDefinitions(spec)
+  const pageDefinitionMap = new Map(pageDefinitions.map((page) => [page.route, page]))
+  const routeIds = Array.from(new Set(extractPlannedRouteNames(spec)))
+  const defaults: Record<
+    string,
+    {
+      label: string
+      purpose: string
+      primaryActions: string[]
+      surface: RouteBlueprint["surface"]
+    }
+  > = isCn
+    ? {
+        dashboard: {
+          label: "Dashboard",
+          purpose: "这页应该像代码平台的控制平面，而不是普通概览卡片页。",
+          primaryActions: ["查看状态", "检查运行", "切换模块"],
+          surface: "dashboard",
+        },
+        editor: {
+          label: "Editor",
+          purpose: "这页是代码平台的主工作区，不该退化成静态代码展示。",
+          primaryActions: ["打开文件", "编辑代码", "切换标签", "运行预览"],
+          surface: "code",
+        },
+        runs: {
+          label: "Runs",
+          purpose: "这页体现代码平台的运行与验收能力，不只是日志列表。",
+          primaryActions: ["查看日志", "刷新状态", "检查构建"],
+          surface: "dashboard",
+        },
+        templates: {
+          label: "Templates",
+          purpose: "这页承接生成起点与路线差异。",
+          primaryActions: ["筛选模板", "切换模板", "按模板生成"],
+          surface: "dashboard",
+        },
+        assistant: {
+          label: "Assistant",
+          purpose: "这页体现 discuss / generate / fix / refactor 的真实工作流。",
+          primaryActions: ["继续对话", "应用修改", "查看上下文"],
+          surface: "code",
+        },
+        publish: {
+          label: "Publish",
+          purpose: "这页是代码平台的发布控制面，不是普通分享卡片。",
+          primaryActions: ["检查发布", "确认预览", "提升通道"],
+          surface: "dashboard",
+        },
+        settings: {
+          label: "Settings",
+          purpose: "这页承接配置与访问控制，而不是普通表单集合。",
+          primaryActions: ["修改配置", "检查权限", "管理环境"],
+          surface: "settings",
+        },
+        pricing: {
+          label: "Pricing",
+          purpose: "这页承接套餐差异，不只是价格卡片。",
+          primaryActions: ["查看套餐", "比较权限", "升级套餐"],
+          surface: "dashboard",
+        },
+      }
+    : {
+        dashboard: {
+          label: "Dashboard",
+          purpose: "This should feel like the control plane of an AI code platform, not a generic overview grid.",
+          primaryActions: ["review status", "inspect runtime", "switch modules"],
+          surface: "dashboard",
+        },
+        editor: {
+          label: "Editor",
+          purpose: "This is the primary workspace of the code product, not a static code dump.",
+          primaryActions: ["open file", "edit code", "switch tabs", "run preview"],
+          surface: "code",
+        },
+        runs: {
+          label: "Runs",
+          purpose: "This route expresses runtime acceptance, not just a log table.",
+          primaryActions: ["inspect logs", "refresh status", "check build"],
+          surface: "dashboard",
+        },
+        templates: {
+          label: "Templates",
+          purpose: "This route carries starting points and generation variants.",
+          primaryActions: ["filter templates", "switch template", "generate from template"],
+          surface: "dashboard",
+        },
+        assistant: {
+          label: "Assistant",
+          purpose: "This route expresses Discuss / Generate / Fix / Refactor as a real product workflow.",
+          primaryActions: ["continue thread", "apply change", "inspect context"],
+          surface: "code",
+        },
+        publish: {
+          label: "Publish",
+          purpose: "This route is the release control surface of the code product, not a generic share card.",
+          primaryActions: ["review release", "verify preview", "promote channel"],
+          surface: "dashboard",
+        },
+        settings: {
+          label: "Settings",
+          purpose: "This route carries configuration and governance, not a random form stack.",
+          primaryActions: ["update config", "check access", "manage environments"],
+          surface: "settings",
+        },
+        pricing: {
+          label: "Pricing",
+          purpose: "This route should explain plan entitlements, not just show price cards.",
+          primaryActions: ["review plans", "compare permissions", "upgrade"],
+          surface: "dashboard",
+        },
+      }
+
+  return routeIds
+    .map((routeId) => {
+      const page = pageDefinitionMap.get(routeId)
+      const fallback = defaults[routeId]
+      if (!page && !fallback) return null
+      return {
+        id: routeId,
+        path: routeId === "home" ? "/" : `/${routeId}`,
+        label: page?.label ?? fallback?.label ?? getGeneratedRouteLabel(routeId, isCn),
+        purpose: page?.summary ?? fallback?.purpose ?? (isCn ? `${routeId} 页面承接代码平台关键工作流。` : `${routeId} carries a key code-platform workflow.`),
+        moduleIds: [],
+        entityIds: getDefaultEntityIdsForRoute(routeId, "code_platform", entities),
+        primaryActions: page ? getRoutePrimaryActions(routeId, "code_platform", spec.region) : fallback?.primaryActions ?? getRoutePrimaryActions(routeId, "code_platform", spec.region),
+        surface: fallback?.surface ?? getRouteSurface(routeId, "code_platform"),
+        pagePrototype: getRoutePagePrototype(routeId, "code_platform"),
+      } satisfies RouteBlueprint
+    })
+    .filter((route): route is RouteBlueprint => Boolean(route))
+}
+
+function finalizeCodePlatformBlueprintNarrative(
+  spec: AppSpec,
+  routeBlueprint: RouteBlueprint[],
+  moduleBlueprint: ModuleBlueprint[]
+) {
+  const entityBlueprint = getArchetypeEntityBlueprints(spec)
+  const routeDefinitionMap = new Map(
+    getCodePlatformBlueprintRouteDefinitions(spec, entityBlueprint).map((route) => [route.id, route])
+  )
+  const pageDefinitions = getArchetypePageDefinitions(spec)
+  const pageDefinitionMap = new Map(pageDefinitions.map((page) => [page.route, page]))
+  const resolvedRouteBlueprint = routeBlueprint.map((route) => {
+    const routeKey = String(route.id || route.path || "")
+      .replace(/^\/+/, "")
+      .trim()
+    const routeDefinition = routeDefinitionMap.get(routeKey)
+    const page = pageDefinitionMap.get(routeKey)
+    return routeDefinition || page
+      ? {
+          ...route,
+          label: routeDefinition?.label ?? page?.label ?? route.label,
+          purpose: routeDefinition?.purpose ?? page?.summary ?? route.purpose,
+          primaryActions: routeDefinition?.primaryActions?.length ? routeDefinition.primaryActions : route.primaryActions,
+          surface: routeDefinition?.surface ?? route.surface,
+          pagePrototype: routeDefinition?.pagePrototype ?? route.pagePrototype,
+          entityIds: route.entityIds?.length ? route.entityIds : routeDefinition?.entityIds ?? route.entityIds,
+        }
+      : route
+  })
+  const routeLabelMap = new Map(resolvedRouteBlueprint.map((route) => [route.id, route.label]))
+  const resolvedModuleBlueprint = moduleBlueprint.map((module) => {
+    if (module.id.endsWith("_surface")) {
+      const primaryRouteId = module.routeIds[0]
+      const page = primaryRouteId ? pageDefinitionMap.get(primaryRouteId) : undefined
+      const routeLabel = routeLabelMap.get(primaryRouteId) || module.label.replace(/\s+workspace$/i, "")
+      return {
+        ...module,
+        label: routeLabel ? `${routeLabel} workspace` : module.label,
+        summary: buildCodePlatformSurfaceSummary(page, spec.region, routeLabel || module.label),
+      }
+    }
+    return {
+      ...module,
+      summary: buildCodePlatformModuleSummary(module, spec.region),
+    }
+  })
+  return {
+    routeBlueprint: resolvedRouteBlueprint,
+    moduleBlueprint: resolvedModuleBlueprint,
+  }
+}
+
+export function refreshCodePlatformBlueprintNarrative(spec: AppSpec): AppSpec {
+  if (getScaffoldArchetype(spec) !== "code_platform" || !spec.routeBlueprint?.length || !spec.moduleBlueprint?.length) {
+    return spec
+  }
+  const resolved = finalizeCodePlatformBlueprintNarrative(spec, spec.routeBlueprint, spec.moduleBlueprint)
+  return {
+    ...spec,
+    routeBlueprint: resolved.routeBlueprint,
+    moduleBlueprint: resolved.moduleBlueprint,
+  }
+}
+
+export function finalizeAppSpec(spec: AppSpec): AppSpec {
+  const archetype = getScaffoldArchetype(spec)
+  const isAdminOps = isAdminOpsTaskSpec(spec)
+  const visualSeed = shouldRefreshVisualSeed(spec, spec.visualSeed, archetype) ? inferVisualSeed(spec) : (spec.visualSeed ?? inferVisualSeed(spec))
+  const normalizedModules = sanitizeModulesForArchetype(spec.modules, archetype, spec.region)
+  const normalizedSeedItems =
+    isGenericSeedItemSet(spec.seedItems) && ["api_platform", "community", "marketing_admin"].includes(archetype)
+      ? getSeedItems(spec.kind, spec.region, spec.features, spec.planTier, archetype)
+      : spec.seedItems
+  const appIdentity = shouldRefreshAppIdentity(spec, spec.appIdentity, archetype)
+    ? buildAppIdentity({ ...spec, modules: normalizedModules, seedItems: normalizedSeedItems, visualSeed })
+    : spec.appIdentity ?? buildAppIdentity({ ...spec, modules: normalizedModules, seedItems: normalizedSeedItems, visualSeed })
+  const capabilityFlags = spec.capabilityFlags ?? buildCapabilityFlags(spec)
+  const blueprintBundle = buildBlueprintsForSpec({ ...spec, modules: normalizedModules, seedItems: normalizedSeedItems, visualSeed, appIdentity, capabilityFlags })
+  const intentSeed = getArchetypeIntentSeed(archetype, spec.region, spec.prompt, spec.title)
+  const availableModuleIds = new Set(blueprintBundle.moduleBlueprint.map((item) => item.id))
+  const availableEntityIds = new Set(blueprintBundle.entityBlueprint.map((item) => item.id))
+  const shouldRefreshAdminBlueprint =
+    archetype === "task" &&
+    shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? "").toLowerCase()) &&
+    (isGenericTaskEntityBlueprintSet(spec.entityBlueprint) || isGenericTaskModuleBlueprintSet(spec.moduleBlueprint))
+  const shouldRefreshCommunityBlueprint =
+    archetype === "community" &&
+    /event|events|meetup|webinar|registration|registrations|session|sessions|agenda|ambassador|invite|segment|segments|活动|直播|聚会|报名|议程|大使|邀请|分层/.test(
+      String(spec.prompt ?? spec.title ?? "").toLowerCase()
+    ) &&
+    (!spec.routeBlueprint?.some((route) => route.id === "events") || !spec.routeBlueprint?.some((route) => route.id === "members"))
+  const shouldRefreshCodePlatformBlueprint =
+    archetype === "code_platform" &&
+    Boolean(
+      spec.routeBlueprint?.some((route) => /key surface in this ai code platform/i.test(String(route.purpose ?? ""))) ||
+        spec.moduleBlueprint?.some(
+          (module) =>
+            /workspace surface responsible for .*key surface in this ai code platform/i.test(String(module.summary ?? "")) ||
+            /workspace surface responsible for .*ai code platform/i.test(String(module.summary ?? ""))
+        )
+    )
+  const resolvedRouteBlueprint =
+    !shouldRefreshAdminBlueprint && !shouldRefreshCommunityBlueprint && !shouldRefreshCodePlatformBlueprint && spec.routeBlueprint?.length
+      ? sortRouteBlueprintByPromptPriority(
+          spec,
+          uniqueStrings([
+            ...spec.routeBlueprint.map((route) => route.id),
+            ...blueprintBundle.routeBlueprint.map((route) => route.id),
+          ])
+            .map((routeId) => {
+              const route = spec.routeBlueprint?.find((item) => item.id === routeId)
+              const fallback =
+                blueprintBundle.routeBlueprint.find((item) => item.id === routeId) ||
+                blueprintBundle.routeBlueprint.find((item) => item.path === route?.path)
+              if (!route && fallback) {
+                return fallback
+              }
+              if (!route) {
+                return null
+              }
+              const routeKey = String(route.id || route.path || "")
+                .replace(/^\/+/, "")
+                .trim()
+              const fallbackModuleIds = blueprintBundle.moduleBlueprint
+                .filter((item) => item.routeIds.includes(route.id))
+                .map((item) => item.id)
+              const fallbackEntityIds = getDefaultEntityIdsForRoute(routeKey, archetype, blueprintBundle.entityBlueprint)
+              const fallbackSurface = getRouteSurface(routeKey, archetype)
+              const validModuleIds = (route.moduleIds ?? []).filter((item) => availableModuleIds.has(item))
+              const validEntityIds = (route.entityIds ?? []).filter((item) => availableEntityIds.has(item))
+              const shouldRefreshModules = shouldRefreshRouteModuleIds(routeKey, archetype, validModuleIds)
+              const shouldRefreshEntities = shouldRefreshRouteEntityIds(routeKey, archetype, validEntityIds)
+              const looksGenericPurpose =
+                /core surface in .*used to support/i.test(route.purpose || "") ||
+                /key surface in this/i.test(route.purpose || "")
+              const shouldRefreshSurface =
+                !route.surface ||
+                ((route.id === "docs" || route.id === "usage") && archetype === "api_platform" && route.surface === "marketing")
+              const preferredActions =
+                !isGenericPrimaryActionSet(route.primaryActions) && route.primaryActions?.length
+                  ? route.primaryActions
+                  : fallback?.primaryActions?.length
+                    ? fallback.primaryActions
+                    : getRoutePrimaryActions(routeKey, archetype, spec.region)
+              return {
+                ...fallback,
+                ...route,
+                purpose: route.purpose && !looksGenericPurpose ? route.purpose : fallback?.purpose ?? route.purpose,
+                moduleIds:
+                  validModuleIds.length && !shouldRefreshModules
+                    ? validModuleIds
+                    : fallback?.moduleIds?.length
+                      ? fallback.moduleIds
+                      : fallbackModuleIds,
+                entityIds:
+                  validEntityIds.length && !shouldRefreshEntities
+                    ? validEntityIds
+                    : fallback?.entityIds?.length
+                      ? fallback.entityIds
+                      : fallbackEntityIds,
+                primaryActions: preferredActions,
+                surface: shouldRefreshSurface
+                  ? fallback?.surface || fallbackSurface
+                  : route.surface || fallback?.surface || fallbackSurface,
+              }
+            })
+            .filter((route): route is RouteBlueprint => Boolean(route))
+        )
+      : sortRouteBlueprintByPromptPriority(spec, blueprintBundle.routeBlueprint)
+  const resolvedRouteIds = new Set(resolvedRouteBlueprint.map((route) => route.id))
+  const resolvedModuleBlueprint =
+    !shouldRefreshAdminBlueprint && !shouldRefreshCommunityBlueprint && !shouldRefreshCodePlatformBlueprint && spec.moduleBlueprint?.length
+      ? syncCodePlatformModuleBlueprintRoutes(
+          uniqueStrings([
+            ...spec.moduleBlueprint.map((module) => module.id),
+            ...blueprintBundle.moduleBlueprint.map((module) => module.id),
+          ])
+            .map((moduleId) => {
+              const module = spec.moduleBlueprint?.find((item) => item.id === moduleId)
+              const fallback = blueprintBundle.moduleBlueprint.find((item) => item.id === moduleId)
+              const shouldRefreshModule =
+                shouldRefreshModuleBlueprint(moduleId, archetype, module?.routeIds, module?.capabilityIds) && Boolean(fallback)
+              const preferredCodePlatformRouteIds =
+                archetype === "code_platform" ? getFinalCodePlatformModuleRouteIds(moduleId, resolvedRouteIds) : []
+              const merged = {
+                ...fallback,
+                ...module,
+                routeIds:
+                  preferredCodePlatformRouteIds.length
+                    ? preferredCodePlatformRouteIds
+                    : module?.routeIds?.length && !shouldRefreshModule
+                      ? module.routeIds
+                      : fallback?.routeIds ?? module?.routeIds ?? [],
+                capabilityIds:
+                  module?.capabilityIds?.length && !shouldRefreshModule
+                    ? module.capabilityIds
+                    : fallback?.capabilityIds ?? module?.capabilityIds ?? [],
+                summary:
+                  module?.summary && !isWeakModuleBlueprint(module) && !shouldRefreshModule
+                    ? module.summary
+                    : fallback?.summary ?? module?.summary ?? "",
+              } satisfies ModuleBlueprint
+              if (!fallback && isWeakModuleBlueprint(merged)) {
+                return null
+              }
+              return merged
+            })
+            .filter((module): module is ModuleBlueprint => Boolean(module)),
+          resolvedRouteIds
+        )
+      : archetype === "code_platform"
+        ? syncCodePlatformModuleBlueprintRoutes(blueprintBundle.moduleBlueprint, resolvedRouteIds)
+        : blueprintBundle.moduleBlueprint
+  const finalizedCodePlatformNarrative =
+    archetype === "code_platform"
+      ? finalizeCodePlatformBlueprintNarrative(spec, resolvedRouteBlueprint, resolvedModuleBlueprint)
+      : null
+  const finalRouteBlueprint = finalizedCodePlatformNarrative?.routeBlueprint ?? resolvedRouteBlueprint
+  const resolvedEntityBlueprint =
+    !shouldRefreshAdminBlueprint && !shouldRefreshCommunityBlueprint && spec.entityBlueprint?.length
+      ? spec.entityBlueprint.map((entity) => {
+          const fallback = blueprintBundle.entityBlueprint.find((item) => item.id === entity.id)
+          return {
+            ...fallback,
+            ...entity,
+            fields: entity.fields?.length ? entity.fields : fallback?.fields ?? [],
+            primaryViews: entity.primaryViews?.length ? entity.primaryViews : fallback?.primaryViews ?? [],
+            workflows: entity.workflows?.length ? entity.workflows : fallback?.workflows ?? [],
+          }
+        })
+      : blueprintBundle.entityBlueprint
+  const nextAppIntent = finalizeAppIntentWithBlueprint(
+    spec,
+    buildAppIntent(spec, intentSeed, archetype),
+    finalRouteBlueprint,
+    resolvedEntityBlueprint
+  )
+
+  return {
+    ...spec,
+    modules: normalizedModules,
+    seedItems: normalizedSeedItems,
+    visualSeed,
+    appIdentity,
+    capabilityFlags,
+    appIntent: nextAppIntent,
+    routeBlueprint: finalRouteBlueprint,
+    moduleBlueprint: finalizedCodePlatformNarrative?.moduleBlueprint ?? resolvedModuleBlueprint,
+    entityBlueprint: resolvedEntityBlueprint,
+  }
+}
+
+function getSeedItems(kind: AppKind, region: Region, features: SpecFeature[], planTier: PlanTier, archetype?: ScaffoldArchetype): SeedItem[] {
   const blockedEnabled = features.includes("blocked_status")
   const extraCount = planTier === "elite" ? 3 : planTier === "pro" ? 2 : planTier === "builder" ? 1 : 0
+  if (archetype === "api_platform") {
+    const items: SeedItem[] = region === "cn"
+      ? [
+          { title: "核对生产环境接口目录", description: "确认公开与内部接口的分层", assignee: "张伟", priority: "high", status: "todo" },
+          { title: "排查最新异常日志", description: "聚焦 500 错误与 webhook 重试", assignee: "王芳", priority: "high", status: "in_progress" },
+          { title: "轮换测试密钥", description: blockedEnabled ? "等待安全窗口开放" : "同步沙盒与正式环境", assignee: "陈晨", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "补充环境发布说明", description: "把 staging 到 production 的差异写清楚", assignee: "赵敏", priority: "medium", status: "todo" },
+          { title: "整理 webhook 回放", description: "确认失败事件的恢复策略", assignee: "刘洋", priority: "medium", status: "in_progress" },
+          { title: "更新 API 使用文档", description: "补充认证、限流和错误码", assignee: "李雷", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+      : [
+          { title: "Review production endpoint catalog", description: "Confirm public versus internal API boundaries", assignee: "Liam", priority: "high", status: "todo" },
+          { title: "Triage latest runtime errors", description: "Focus on 500s and webhook retries", assignee: "Emma", priority: "high", status: "in_progress" },
+          { title: "Rotate test credentials", description: blockedEnabled ? "Waiting on the approved security window" : "Sync sandbox and production keys", assignee: "Mason", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "Document environment promotion", description: "Clarify staging-to-production checks", assignee: "Sophia", priority: "medium", status: "todo" },
+          { title: "Replay failed webhooks", description: "Validate recovery behavior across retries", assignee: "Noah", priority: "medium", status: "in_progress" },
+          { title: "Refresh API usage docs", description: "Add auth, rate limit, and error-code details", assignee: "Olivia", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+    return items.slice(0, 3 + extraCount + 1)
+  }
+  if (archetype === "community") {
+    const items: SeedItem[] = region === "cn"
+      ? [
+          { title: "整理本周高频反馈", description: "把功能建议归类到路线图", assignee: "张伟", priority: "high", status: "todo" },
+          { title: "确认活动报名名单", description: "检查成员分层与提醒状态", assignee: "王芳", priority: "high", status: "in_progress" },
+          { title: "审核敏感内容队列", description: blockedEnabled ? "等待管理员复核" : "完成自动审核规则调优", assignee: "陈晨", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "更新社区公告", description: "同步本月路线图与活动安排", assignee: "赵敏", priority: "medium", status: "todo" },
+          { title: "处理成员标签迁移", description: "确认新成员欢迎流是否生效", assignee: "刘洋", priority: "medium", status: "in_progress" },
+          { title: "复盘反馈转路线图链路", description: "看哪些需求需要进入下一版本", assignee: "李雷", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+      : [
+          { title: "Review this week's top feedback", description: "Sort high-signal requests into the roadmap", assignee: "Liam", priority: "high", status: "todo" },
+          { title: "Confirm the next event roster", description: "Check member segments and reminder status", assignee: "Emma", priority: "high", status: "in_progress" },
+          { title: "Moderate the flagged queue", description: blockedEnabled ? "Waiting on admin review" : "Tune the auto-moderation rules", assignee: "Mason", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "Publish the latest community update", description: "Sync roadmap and event messaging", assignee: "Sophia", priority: "medium", status: "todo" },
+          { title: "Refresh member segments", description: "Validate the welcome and retention flow", assignee: "Noah", priority: "medium", status: "in_progress" },
+          { title: "Close the roadmap feedback loop", description: "Decide what moves into the next release", assignee: "Olivia", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+    return items.slice(0, 3 + extraCount + 1)
+  }
+  if (archetype === "marketing_admin") {
+    const items: SeedItem[] = region === "cn"
+      ? [
+          { title: "更新首页转化叙事", description: "突出下载入口和核心价值", assignee: "张伟", priority: "high", status: "todo" },
+          { title: "检查下载分发链路", description: "确认各端包体与按钮都可用", assignee: "王芳", priority: "high", status: "in_progress" },
+          { title: "发布本周更新日志", description: blockedEnabled ? "等待版本说明确认" : "同步 changelog 与文档中心", assignee: "陈晨", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "整理定价与权限对比", description: "让各套餐升级路径更清晰", assignee: "赵敏", priority: "medium", status: "todo" },
+          { title: "核对官网后台分发数据", description: "确认下载统计与渠道状态", assignee: "刘洋", priority: "medium", status: "in_progress" },
+          { title: "补齐设备安装说明", description: "覆盖桌面端与移动端入口", assignee: "李雷", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+      : [
+          { title: "Refresh the homepage conversion story", description: "Highlight downloads and product value", assignee: "Liam", priority: "high", status: "todo" },
+          { title: "Check download distribution links", description: "Validate packages and CTA routing across devices", assignee: "Emma", priority: "high", status: "in_progress" },
+          { title: "Publish this week's changelog", description: blockedEnabled ? "Waiting on release-note signoff" : "Sync the changelog and docs center", assignee: "Mason", priority: "medium", status: blockedEnabled ? "blocked" : "done" },
+          { title: "Tighten pricing comparisons", description: "Make the upgrade path and entitlement tiers clearer", assignee: "Sophia", priority: "medium", status: "todo" },
+          { title: "Verify admin distribution status", description: "Review channel analytics and package health", assignee: "Noah", priority: "medium", status: "in_progress" },
+          { title: "Finish device install guides", description: "Cover desktop and mobile distribution entry points", assignee: "Olivia", priority: "low", status: "done" },
+        ] satisfies SeedItem[]
+    return items.slice(0, 3 + extraCount + 1)
+  }
   if (kind === "code_platform") {
     const items: SeedItem[] = region === "cn"
       ? [
@@ -581,8 +3774,12 @@ function getSeedItems(kind: AppKind, region: Region, features: SpecFeature[], pl
 export function createAppSpec(prompt: string, region: Region, existing?: AppSpecSeed): AppSpec {
   const defaults = getRegionDefaults(region)
   const now = new Date().toISOString()
+  const intentArchetype = existing?.appIntent?.archetype
   const inferredKind = inferAppKind(prompt)
-  const inferredTemplateId = existing?.templateId ?? inferTemplateIdFromPrompt(prompt)
+  const inferredTemplateId =
+    existing?.templateId ??
+    (intentArchetype ? getDefaultTemplateIdForArchetype(intentArchetype) : undefined) ??
+    inferTemplateIdFromPrompt(prompt)
   const explicitName = extractProductNameFromPrompt(prompt)
   const template = getTemplateById(inferredTemplateId)
   const templateKind =
@@ -598,11 +3795,12 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
               ? "task"
         : undefined
   const kind =
-    inferredKind !== "task"
-      ? inferredKind
-      : existing?.kind && existing.kind !== "task"
-        ? existing.kind
-        : templateKind ?? "task"
+    existing?.kind ??
+    (intentArchetype
+      ? scaffoldArchetypeToKind(intentArchetype)
+      : inferredKind !== "task"
+        ? inferredKind
+        : templateKind ?? "task")
   const archetype = getScaffoldArchetype({ kind, templateId: inferredTemplateId, prompt })
   const planTier = existing?.planTier ?? "free"
   const features = uniqueStrings([
@@ -615,12 +3813,12 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
   ]).filter((item): item is SpecFeature => FEATURE_SET.has(item as SpecFeature))
   const modules = uniqueStrings([
     ...(existing?.modules ?? []),
-    ...getKindModules(kind, region),
-    ...getArchetypeModules(archetype, region),
-    ...getPlanModules(planTier, region),
+    ...getKindModules(kind, region, archetype, prompt),
+    ...getArchetypeModules(archetype, region, prompt),
+    ...getPlanModules(planTier, region, archetype, prompt),
     ...getTemplateModules(inferredTemplateId, region),
   ])
-  return {
+  return finalizeAppSpec({
     title:
       existing?.title ??
       explicitName ??
@@ -641,8 +3839,15 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
     updatedAt: now,
     features,
     modules,
-    seedItems: existing?.seedItems ?? getSeedItems(kind, region, features, planTier),
-  }
+    seedItems: existing?.seedItems ?? getSeedItems(kind, region, features, planTier, archetype),
+    appIntent: existing?.appIntent,
+    appIdentity: existing?.appIdentity,
+    routeBlueprint: existing?.routeBlueprint,
+    moduleBlueprint: existing?.moduleBlueprint,
+    entityBlueprint: existing?.entityBlueprint,
+    capabilityFlags: existing?.capabilityFlags,
+    visualSeed: existing?.visualSeed,
+  })
 }
 
 export async function readProjectSpec(projectDir: string) {
@@ -799,13 +4004,27 @@ function applyIterationContextToSpec(spec: AppSpec, modules: string[], features:
 
 export function applyPromptToSpec(spec: AppSpec, prompt: string, context?: SpecIterationContext) {
   const next = { ...spec, prompt, updatedAt: new Date().toISOString() }
-  const inferredTemplateId = spec.templateId ?? inferTemplateIdFromPrompt(prompt)
+  const lockedArchetype = spec.appIntent?.archetype
+  const inferredTemplateId =
+    spec.templateId ??
+    (lockedArchetype ? getDefaultTemplateIdForArchetype(lockedArchetype) : undefined) ??
+    inferTemplateIdFromPrompt(prompt)
   next.templateId = inferredTemplateId
   next.templateStyle = next.templateStyle ?? getTemplateById(inferredTemplateId)?.previewStyle
   const features = [...spec.features, ...getTemplateFeatures(inferredTemplateId, spec.planTier)]
-  const nextKind = spec.kind === "task" ? inferAppKind(prompt) : spec.kind
+  const nextKind =
+    lockedArchetype
+      ? scaffoldArchetypeToKind(lockedArchetype)
+      : spec.kind === "task"
+        ? inferAppKind(prompt)
+        : spec.kind
   const nextArchetype = getScaffoldArchetype({ kind: nextKind, templateId: inferredTemplateId, prompt })
-  const modules = [...spec.modules, ...getTemplateModules(inferredTemplateId, spec.region), ...getArchetypeModules(nextArchetype, spec.region)]
+  const modules = [
+    ...spec.modules,
+    ...getTemplateModules(inferredTemplateId, spec.region),
+    ...getArchetypeModules(nextArchetype, spec.region, prompt),
+    ...getPlanModules(spec.planTier, spec.region, nextArchetype, prompt),
+  ]
   const promptSafe = sanitizeUiText(prompt)
   const lower = prompt.toLowerCase()
   const title = extractTitleFromPrompt(prompt)
@@ -849,8 +4068,8 @@ export function applyPromptToSpec(spec: AppSpec, prompt: string, context?: SpecI
 
   next.features = uniqueStrings(features).filter((item): item is SpecFeature => FEATURE_SET.has(item as SpecFeature))
   next.modules = uniqueStrings(modules)
-  next.seedItems = getSeedItems(next.kind, next.region, next.features, next.planTier)
-  return next
+  next.seedItems = getSeedItems(next.kind, next.region, next.features, next.planTier, nextArchetype)
+  return finalizeAppSpec(next)
 }
 
 function mergeEnv(
@@ -901,23 +4120,28 @@ function mergeEnv(
 
 function getCopy(spec: AppSpec) {
   const cn = spec.region === "cn"
+  const archetype = getScaffoldArchetype(spec)
   const itemSingular =
-    spec.kind === "crm"
+    archetype === "crm"
       ? cn
         ? "线索"
         : "Lead"
-      : spec.kind === "code_platform"
+      : archetype === "code_platform"
         ? cn
           ? "开发任务"
           : "Dev task"
-      : spec.kind === "blog"
+      : archetype === "marketing_admin" || archetype === "content"
         ? cn
           ? "文章"
           : "Post"
-        : spec.kind === "community"
+        : archetype === "community"
           ? cn
             ? "事项"
             : "Item"
+          : archetype === "api_platform"
+            ? cn
+              ? "端点"
+              : "Endpoint"
           : cn
             ? "任务"
             : "Task"
@@ -955,10 +4179,14 @@ function getCopy(spec: AppSpec) {
     blocked: cn ? "阻塞" : "Blocked",
     owners: cn ? "负责人" : "Owners",
     quickSummary:
-      spec.kind === "code_platform"
+      archetype === "code_platform"
         ? cn
           ? "开发驾驶舱"
           : "Engineering cockpit"
+        : archetype === "api_platform"
+          ? cn
+            ? "接口控制台"
+            : "API console"
         : cn
           ? "运营概览"
           : "Workspace summary",
@@ -1090,6 +4318,7 @@ function getTemplateSkin(spec: AppSpec) {
 }
 
 function getTemplateHero(spec: AppSpec) {
+  const archetype = getScaffoldArchetype(spec)
   if (spec.templateStyle === "dark-dashboard") {
     return {
       badge: spec.region === "cn" ? "营销看板模板" : "Marketing dashboard template",
@@ -1171,19 +4400,31 @@ function getTemplateHero(spec: AppSpec) {
   return {
     badge: spec.region === "cn" ? "精美任务工作台" : "Polished task workspace",
     title:
-      spec.kind === "crm"
+      archetype === "crm"
         ? spec.region === "cn"
           ? "跟进线索、推进阶段、掌握负责人节奏"
           : "Track leads, stages, and owner momentum in one place"
-        : spec.kind === "code_platform"
+        : archetype === "code_platform"
           ? spec.region === "cn"
             ? "更像中国版 Cursor 的 AI 代码工作台"
             : "An AI coding workspace shaped more like a modern Cursor-style product"
+        : archetype === "api_platform"
+          ? spec.region === "cn"
+            ? "围绕端点、日志、鉴权与环境的接口控制台"
+            : "An API control plane focused on endpoints, logs, auth, and environments"
+          : archetype === "community"
+            ? spec.region === "cn"
+              ? "把反馈、成员、路线图和公告收进同一社区工作台"
+              : "Bring feedback, members, roadmap, and announcements into one community workspace"
+            : archetype === "marketing_admin" || archetype === "content"
+              ? spec.region === "cn"
+                ? "围绕官网、下载、文档与分发的增长工作区"
+                : "A growth workspace centered on website, downloads, docs, and distribution"
         : spec.region === "cn"
           ? "一个看起来像成品的任务管理工作区"
           : "A task management workspace that already feels like a product",
     description:
-      spec.kind === "code_platform"
+      archetype === "code_platform"
         ? spec.region === "cn"
           ? "把项目导航、标签编辑器、终端运行反馈、AI 解释与生成链路放进同一体验里，让首版就更像可演示的代码平台。"
           : "Bring project navigation, tabbed editing, terminal feedback, and AI-assisted generation into a single surface so the first pass already feels like a code platform."
@@ -1208,6 +4449,621 @@ type ArchetypePageDefinition = {
 function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
   const isCn = spec.region === "cn"
   const archetype = getScaffoldArchetype(spec)
+  const promptText = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  const routeSet = new Set(extractPlannedRouteNames(spec))
+
+  if (archetype === "code_platform") {
+    const pages: ArchetypePageDefinition[] = isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "AI 代码工作台总览",
+            subheadline: "把生成、运行、预览、发布和助手上下文收进同一条工程工作流。",
+            summary: "这页应该像代码平台的控制平面，而不是普通概览卡片页。",
+            metricLabel: "活跃工作区",
+            metricValue: "12",
+            insightLabel: "最近发布",
+            insightValue: "9m ago",
+            records: [
+              { title: "预览运行链路", meta: "最近一次构建已通过并同步到预览", status: "Healthy" },
+              { title: "AI 改码线程", meta: "3 条上下文修改等待应用", status: "Ready" },
+              { title: "发布通道", meta: "当前分支等待最后验收", status: "Queued" },
+            ],
+            focusAreas: ["AI", "Preview", "Runs", "Publish"],
+          },
+          {
+            route: "editor",
+            label: "Editor",
+            headline: "多文件编辑与预览工作区",
+            subheadline: "保留文件树、标签页、代码区和预览联动，让它更像真实 IDE。",
+            summary: "这页是代码平台的主工作区，不该退化成静态代码展示。",
+            metricLabel: "打开文件",
+            metricValue: "8",
+            insightLabel: "脏文件",
+            insightValue: "2",
+            records: [
+              { title: "app/editor/page.tsx", meta: "当前聚焦在编辑体验和上下文联动", status: "Focused" },
+              { title: "components/generated/workspace-shell.tsx", meta: "承接主工作区外壳与 split preview", status: "Open" },
+              { title: "最近 AI 变更", meta: "已把 assistant / publish 路由并回代码上下文", status: "Synced" },
+            ],
+            focusAreas: ["Files", "Tabs", "Preview", "Context"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "AI coding control plane",
+            subheadline: "Bring generation, runtime, preview, publish, and assistant context into one engineering workflow.",
+            summary: "This should feel like the control plane of an AI code platform, not a generic overview grid.",
+            metricLabel: "Active workspaces",
+            metricValue: "12",
+            insightLabel: "Latest release",
+            insightValue: "9m ago",
+            records: [
+              { title: "Preview runtime", meta: "Latest build passed and synced to preview", status: "Healthy" },
+              { title: "AI edit threads", meta: "3 context-aware changes are ready to apply", status: "Ready" },
+              { title: "Release channel", meta: "Current branch is waiting on final acceptance", status: "Queued" },
+            ],
+            focusAreas: ["AI", "Preview", "Runs", "Publish"],
+          },
+          {
+            route: "editor",
+            label: "Editor",
+            headline: "Multi-file editing workspace",
+            subheadline: "Keep file tree, tabs, code, and preview in one IDE-like surface.",
+            summary: "This is the primary workspace of the code product, not a static code dump.",
+            metricLabel: "Open files",
+            metricValue: "8",
+            insightLabel: "Dirty tabs",
+            insightValue: "2",
+            records: [
+              { title: "app/editor/page.tsx", meta: "Focused on editor experience and context binding", status: "Focused" },
+              { title: "components/generated/workspace-shell.tsx", meta: "Owns the workspace shell and split preview", status: "Open" },
+              { title: "Recent AI edits", meta: "Assistant and publish routes are now linked back into code context", status: "Synced" },
+            ],
+            focusAreas: ["Files", "Tabs", "Preview", "Context"],
+          },
+        ]
+    if (routeSet.has("runs")) {
+      pages.push(
+        isCn
+          ? {
+              route: "runs",
+              label: "Runs",
+              headline: "运行与构建验收面板",
+              subheadline: "让构建、预览、日志和错误恢复变成同一条运行轨道。",
+              summary: "这页体现代码平台的运行与验收能力，不只是日志列表。",
+              metricLabel: "最近构建",
+              metricValue: "14",
+              insightLabel: "成功率",
+              insightValue: "93%",
+              records: [
+                { title: "preview build", meta: "最近一次生成后 build 已通过", status: "Passed" },
+                { title: "assistant patch run", meta: "上下文改写进入构建校验", status: "Running" },
+                { title: "runtime retry", meta: "1 条失败任务已自动恢复", status: "Recovered" },
+              ],
+              focusAreas: ["Builds", "Preview", "Logs", "Recovery"],
+            }
+          : {
+              route: "runs",
+              label: "Runs",
+              headline: "Runtime and build rail",
+              subheadline: "Keep builds, preview verification, logs, and recovery in one execution surface.",
+              summary: "This route expresses runtime acceptance, not just a log table.",
+              metricLabel: "Recent builds",
+              metricValue: "14",
+              insightLabel: "Pass rate",
+              insightValue: "93%",
+              records: [
+                { title: "preview build", meta: "Latest post-generation build has passed", status: "Passed" },
+                { title: "assistant patch run", meta: "Context edit is moving through build validation", status: "Running" },
+                { title: "runtime retry", meta: "1 failed task recovered automatically", status: "Recovered" },
+              ],
+              focusAreas: ["Builds", "Preview", "Logs", "Recovery"],
+            }
+      )
+    }
+    if (routeSet.has("templates")) {
+      pages.push(
+        isCn
+          ? {
+              route: "templates",
+              label: "Templates",
+              headline: "模板与起始点画廊",
+              subheadline: "用模板库、脚手架和推荐起始点组织生成入口，而不是只放一组卡片。",
+              summary: "这页承接生成起点与路线差异。",
+              metricLabel: "模板库",
+              metricValue: "16",
+              insightLabel: "推荐起点",
+              insightValue: "4",
+              records: [
+                { title: "代码平台基线", meta: "适合 AI IDE 与工作区生成", status: "Pinned" },
+                { title: "下载站起点", meta: "适合官网与分发型产品", status: "Suggested" },
+                { title: "API 控制台", meta: "适合日志、文档和 webhook 产品", status: "Ready" },
+              ],
+              focusAreas: ["Starters", "Scaffolds", "Plans", "Variants"],
+            }
+          : {
+              route: "templates",
+              label: "Templates",
+              headline: "Template and starter gallery",
+              subheadline: "Organize scaffold entry points as a real template library instead of a loose card wall.",
+              summary: "This route carries starting points and generation variants.",
+              metricLabel: "Template library",
+              metricValue: "16",
+              insightLabel: "Recommended starters",
+              insightValue: "4",
+              records: [
+                { title: "Code platform baseline", meta: "Best for AI IDE and workspace generation", status: "Pinned" },
+                { title: "Download-site starter", meta: "Best for marketing + distribution products", status: "Suggested" },
+                { title: "API console starter", meta: "Best for logs, docs, and webhooks", status: "Ready" },
+              ],
+              focusAreas: ["Starters", "Scaffolds", "Plans", "Variants"],
+            }
+      )
+    }
+    if (routeSet.has("assistant")) {
+      pages.push(
+        isCn
+          ? {
+              route: "assistant",
+              label: "Assistant",
+              headline: "AI 助手上下文轨道",
+              subheadline: "把线程历史、当前文件、当前页面和 apply change 都绑到同一条助手链路里。",
+              summary: "这页体现 discuss / generate / fix / refactor 的真实工作流。",
+              metricLabel: "活跃线程",
+              metricValue: "3",
+              insightLabel: "待应用",
+              insightValue: "5",
+              records: [
+                { title: "Discuss 模式", meta: "围绕 editor 上下文梳理需求", status: "Live" },
+                { title: "Generate 模式", meta: "准备写入 2 个新页面模块", status: "Queued" },
+                { title: "Refactor 模式", meta: "正在整理文件树与共享组件", status: "Running" },
+              ],
+              focusAreas: ["Discuss", "Generate", "Fix", "Refactor"],
+            }
+          : {
+              route: "assistant",
+              label: "Assistant",
+              headline: "AI assistant context rail",
+              subheadline: "Bind thread history, current file, current page, and apply-change into one assistant workflow.",
+              summary: "This route expresses Discuss / Generate / Fix / Refactor as a real product workflow.",
+              metricLabel: "Active threads",
+              metricValue: "3",
+              insightLabel: "Pending applies",
+              insightValue: "5",
+              records: [
+                { title: "Discuss mode", meta: "Grounding requirements in the editor context", status: "Live" },
+                { title: "Generate mode", meta: "Preparing writes for 2 new route modules", status: "Queued" },
+                { title: "Refactor mode", meta: "Reshaping file tree and shared components", status: "Running" },
+              ],
+              focusAreas: ["Discuss", "Generate", "Fix", "Refactor"],
+            }
+      )
+    }
+    if (routeSet.has("publish")) {
+      pages.push(
+        isCn
+          ? {
+              route: "publish",
+              label: "Publish",
+              headline: "发布与交付通道",
+              subheadline: "把验收、发布、分享和回退变成同一个交付轨道。",
+              summary: "这页是代码平台的发布控制面，不是普通分享卡片。",
+              metricLabel: "发布通道",
+              metricValue: "3",
+              insightLabel: "待确认",
+              insightValue: "1",
+              records: [
+                { title: "Preview 验收", meta: "当前分支等待最后 UI 与运行确认", status: "Review" },
+                { title: "分享链接", meta: "已生成 canonical preview 可供团队验收", status: "Ready" },
+                { title: "发布回退", meta: "保留最近两次构建可快速回滚", status: "Protected" },
+              ],
+              focusAreas: ["Acceptance", "Release", "Share", "Rollback"],
+            }
+          : {
+              route: "publish",
+              label: "Publish",
+              headline: "Release and delivery lane",
+              subheadline: "Turn acceptance, release, sharing, and rollback into one delivery rail.",
+              summary: "This route is the release control surface of the code product, not a generic share card.",
+              metricLabel: "Release lanes",
+              metricValue: "3",
+              insightLabel: "Pending acceptance",
+              insightValue: "1",
+              records: [
+                { title: "Preview acceptance", meta: "Current branch is waiting on final UI and runtime checks", status: "Review" },
+                { title: "Share links", meta: "Canonical preview is ready for team review", status: "Ready" },
+                { title: "Release rollback", meta: "Latest two builds remain available for quick recovery", status: "Protected" },
+              ],
+              focusAreas: ["Acceptance", "Release", "Share", "Rollback"],
+            }
+      )
+    }
+    if (routeSet.has("settings")) {
+      pages.push(
+        isCn
+          ? {
+              route: "settings",
+              label: "Settings",
+              headline: "环境与权限设置",
+              subheadline: "把数据库、环境变量、访问边界和运行策略放到同一条设置轨道。",
+              summary: "这页承接配置与访问控制，而不是普通表单集合。",
+              metricLabel: "活跃环境",
+              metricValue: "3",
+              insightLabel: "受管配置",
+              insightValue: "7",
+              records: [
+                { title: "Runtime 环境", meta: "预览与生产环境变量已分层", status: "Scoped" },
+                { title: "数据库访问", meta: "套餐权限已并入数据库接入模式", status: "Synced" },
+                { title: "协作者访问", meta: "当前工作区权限边界已生效", status: "Protected" },
+              ],
+              focusAreas: ["Env", "Database", "Access", "Policies"],
+            }
+          : {
+              route: "settings",
+              label: "Settings",
+              headline: "Environment and access settings",
+              subheadline: "Keep database, environment variables, access boundaries, and runtime policy in one configuration rail.",
+              summary: "This route carries configuration and governance, not a random form stack.",
+              metricLabel: "Active environments",
+              metricValue: "3",
+              insightLabel: "Managed configs",
+              insightValue: "7",
+              records: [
+                { title: "Runtime environments", meta: "Preview and production variables are now scoped", status: "Scoped" },
+                { title: "Database access", meta: "Plan policy is reflected in database mode", status: "Synced" },
+                { title: "Collaborator access", meta: "Workspace access boundaries are enforced", status: "Protected" },
+              ],
+              focusAreas: ["Env", "Database", "Access", "Policies"],
+            }
+      )
+    }
+    if (routeSet.has("pricing")) {
+      pages.push(
+        isCn
+          ? {
+              route: "pricing",
+              label: "Pricing",
+              headline: "套餐与能力结构",
+              subheadline: "清楚区分免费、建造者、专业版与精英版的生成、导出和交付权限。",
+              summary: "这页承接套餐差异，不只是价格卡片。",
+              metricLabel: "套餐层级",
+              metricValue: "5",
+              insightLabel: "升级线索",
+              insightValue: "8",
+              records: [
+                { title: "免费版限制", meta: "仅在线、无导出、低资源预算", status: "Defined" },
+                { title: "专业版交付", meta: "支持更完整导出与交付控制", status: "Ready" },
+                { title: "精英版 handoff", meta: "预留更强交付与控制能力", status: "Planned" },
+              ],
+              focusAreas: ["Plans", "Entitlements", "Exports", "Upgrade"],
+            }
+          : {
+              route: "pricing",
+              label: "Pricing",
+              headline: "Plans and capability tiers",
+              subheadline: "Separate free, builder, pro, and elite generation, export, and delivery rights clearly.",
+              summary: "This route carries plan differentiation, not just price cards.",
+              metricLabel: "Plan tiers",
+              metricValue: "5",
+              insightLabel: "Upgrade leads",
+              insightValue: "8",
+              records: [
+                { title: "Free-tier limits", meta: "Online-only, no export, low resource budget", status: "Defined" },
+                { title: "Pro delivery", meta: "Supports stronger export and release controls", status: "Ready" },
+                { title: "Elite handoff", meta: "Keeps stronger delivery and governance headroom", status: "Planned" },
+              ],
+              focusAreas: ["Plans", "Entitlements", "Exports", "Upgrade"],
+            }
+      )
+    }
+    if (routeSet.has("about")) {
+      pages.push(
+        isCn
+          ? {
+              route: "about",
+              label: "About",
+              headline: "产品定位与体验说明",
+              subheadline: "用产品叙事解释这个代码平台的目标、工作方式和交付边界。",
+              summary: "这页用于更强的品牌与产品说明，不是默认必备页。",
+              metricLabel: "定位摘要",
+              metricValue: "1",
+              insightLabel: "品牌语气",
+              insightValue: "Aligned",
+              records: [
+                { title: "产品定位", meta: "围绕 AI 编码与全栈生成工作流", status: "Published" },
+                { title: "交付边界", meta: "说明预览、导出与套餐差异", status: "Documented" },
+                { title: "团队体验", meta: "统一 explain/fix/generate/refactor 口径", status: "Ready" },
+              ],
+              focusAreas: ["Positioning", "Story", "Boundaries", "Tone"],
+            }
+          : {
+              route: "about",
+              label: "About",
+              headline: "Product story and positioning",
+              subheadline: "Explain what this code platform is for, how it works, and where the delivery boundaries sit.",
+              summary: "This route exists for stronger product storytelling, not as a default requirement.",
+              metricLabel: "Positioning",
+              metricValue: "1",
+              insightLabel: "Brand tone",
+              insightValue: "Aligned",
+              records: [
+                { title: "Product position", meta: "Grounded in AI coding and full-stack generation", status: "Published" },
+                { title: "Delivery boundaries", meta: "Explains preview, export, and plan differences", status: "Documented" },
+                { title: "Team workflow", meta: "Unifies explain/fix/generate/refactor language", status: "Ready" },
+              ],
+              focusAreas: ["Positioning", "Story", "Boundaries", "Tone"],
+            }
+      )
+    }
+    if (routeSet.has("analytics")) {
+      pages.push(
+        isCn
+          ? {
+              route: "analytics",
+              label: "Analytics",
+              headline: "运行与协作分析",
+              subheadline: "把生成成功率、预览稳定性、改码线程和交付节奏放进同一视图。",
+              summary: "这页体现代码平台的运营与使用分析能力。",
+              metricLabel: "成功生成率",
+              metricValue: "91%",
+              insightLabel: "协作线程",
+              insightValue: "14",
+              records: [
+                { title: "生成成功率", meta: "按 archetype 统计最近 7 天表现", status: "Tracked" },
+                { title: "预览稳定性", meta: "canonical 与 runtime 准备情况已并表", status: "Healthy" },
+                { title: "AI 线程吞吐", meta: "最近 explain/fix/generate 比例平衡", status: "Observed" },
+              ],
+              focusAreas: ["Generation", "Preview", "Threads", "Delivery"],
+            }
+          : {
+              route: "analytics",
+              label: "Analytics",
+              headline: "Runtime and collaboration analytics",
+              subheadline: "Bring generation success, preview readiness, edit threads, and delivery rhythm into one surface.",
+              summary: "This route makes the operational side of the code platform visible.",
+              metricLabel: "Generation success",
+              metricValue: "91%",
+              insightLabel: "Collab threads",
+              insightValue: "14",
+              records: [
+                { title: "Generation success rate", meta: "Tracked by archetype over the last 7 days", status: "Tracked" },
+                { title: "Preview stability", meta: "Canonical and runtime readiness are now linked", status: "Healthy" },
+                { title: "AI thread throughput", meta: "Recent explain/fix/generate mix is balanced", status: "Observed" },
+              ],
+              focusAreas: ["Generation", "Preview", "Threads", "Delivery"],
+            }
+      )
+    }
+    return pages
+  }
+
+  if (isAdminOpsTaskSpec(spec)) {
+    const base = isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "内部控制平面总览",
+            subheadline: "把审批、权限、审计、告警和团队治理收进一个内部控制平面。",
+            summary: "这页应该像内部 control plane，而不是普通任务看板。",
+            metricLabel: "待处理事项",
+            metricValue: "26",
+            insightLabel: "高风险事件",
+            insightValue: "4",
+            records: [
+              { title: "访问策略变更", meta: "2 条待审批 · 涉及生产环境", status: "Review" },
+              { title: "权限审计异常", meta: "昨夜 3 条高风险留痕需复核", status: "Alert" },
+              { title: "团队席位治理", meta: "5 个席位待分配给新负责人", status: "Queued" },
+            ],
+            focusAreas: ["Approvals", "Security", "Audit", "Incidents"],
+          },
+          {
+            route: "tasks",
+            label: "Tasks",
+            headline: "治理任务与处理队列",
+            subheadline: "按责任人、状态和策略影响范围组织内部治理动作。",
+            summary: "这页承接审批前后的治理任务，而不是普通待办列表。",
+            metricLabel: "治理任务",
+            metricValue: "42",
+            insightLabel: "超时事项",
+            insightValue: "6",
+            records: [
+              { title: "生产权限收口", meta: "负责人 Lena · 今日需完成策略调整", status: "In progress" },
+              { title: "审计导出复核", meta: "负责人 Mason · 等待法务确认", status: "Review" },
+              { title: "事件演练清单", meta: "负责人 Sofia · 本周例行演练", status: "Queued" },
+            ],
+            focusAreas: ["Queues", "Owners", "Policies", "Escalations"],
+          },
+          {
+            route: "approvals",
+            label: "Approvals",
+            headline: "审批与决策中心",
+            subheadline: "集中处理访问申请、变更请求和风险确认。",
+            summary: "这页是审批控制中心，不是普通流程卡片页。",
+            metricLabel: "待审批",
+            metricValue: "13",
+            insightLabel: "批量决策",
+            insightValue: "3",
+            records: [
+              { title: "生产访问申请", meta: "申请人 Olivia · 需要主管批准", status: "Pending" },
+              { title: "策略例外请求", meta: "跨区域部署临时放行", status: "Escalated" },
+              { title: "高权限席位申请", meta: "等待安全负责人确认", status: "Review" },
+            ],
+            focusAreas: ["Approvals", "Risk review", "Owners", "SLA"],
+          },
+          {
+            route: "security",
+            label: "Security",
+            headline: "权限与策略治理",
+            subheadline: "把角色、权限边界、工作区访问和策略发布放到同一轨道。",
+            summary: "这页要像策略中心和访问治理台，不是通用设置页。",
+            metricLabel: "活跃策略",
+            metricValue: "18",
+            insightLabel: "待发布策略",
+            insightValue: "2",
+            records: [
+              { title: "Workspace admin policy", meta: "将新角色同步到 4 个环境", status: "Ready" },
+              { title: "External contractor access", meta: "周五到期 · 需回收权限", status: "Alert" },
+              { title: "Audit export rule", meta: "新增合规导出时间窗", status: "Draft" },
+            ],
+            focusAreas: ["Roles", "Policies", "Access", "Audit"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "Internal control plane overview",
+            subheadline: "Bring approvals, access policy, audit response, and team governance into one operating surface.",
+            summary: "This should read like an internal control plane, not a generic task board.",
+            metricLabel: "Queued governance items",
+            metricValue: "26",
+            insightLabel: "High-risk events",
+            insightValue: "4",
+            records: [
+              { title: "Access policy change", meta: "2 approvals pending · touches production", status: "Review" },
+              { title: "Audit anomaly review", meta: "3 overnight events need validation", status: "Alert" },
+              { title: "Team seat governance", meta: "5 seats waiting on owner assignment", status: "Queued" },
+            ],
+            focusAreas: ["Approvals", "Security", "Audit", "Incidents"],
+          },
+          {
+            route: "tasks",
+            label: "Tasks",
+            headline: "Governance queue and task rail",
+            subheadline: "Organize operational work by owner, status, and policy impact instead of dumping it into a generic todo list.",
+            summary: "This route carries governance execution before and after approvals.",
+            metricLabel: "Governance tasks",
+            metricValue: "42",
+            insightLabel: "Breached SLAs",
+            insightValue: "6",
+            records: [
+              { title: "Production access rollback", meta: "Owner Lena · policy update due today", status: "In progress" },
+              { title: "Audit export review", meta: "Owner Mason · waiting on legal confirmation", status: "Review" },
+              { title: "Incident drill checklist", meta: "Owner Sofia · scheduled for this week", status: "Queued" },
+            ],
+            focusAreas: ["Queues", "Owners", "Policies", "Escalations"],
+          },
+          {
+            route: "approvals",
+            label: "Approvals",
+            headline: "Approval and decision center",
+            subheadline: "Handle access requests, change approvals, and risk signoffs in one decision surface.",
+            summary: "This is the approval control room for the internal admin product.",
+            metricLabel: "Pending approvals",
+            metricValue: "13",
+            insightLabel: "Batch decisions",
+            insightValue: "3",
+            records: [
+              { title: "Production access request", meta: "Requester Olivia · manager signoff required", status: "Pending" },
+              { title: "Policy exception request", meta: "Temporary cross-region rollout allowance", status: "Escalated" },
+              { title: "Privileged seat request", meta: "Waiting on security lead confirmation", status: "Review" },
+            ],
+            focusAreas: ["Approvals", "Risk review", "Owners", "SLA"],
+          },
+          {
+            route: "security",
+            label: "Security",
+            headline: "Access policy and governance rail",
+            subheadline: "Keep roles, workspace boundaries, seat access, and policy publishing in one control surface.",
+            summary: "This should feel like the policy center of the control plane, not a generic settings page.",
+            metricLabel: "Active policies",
+            metricValue: "18",
+            insightLabel: "Policies pending publish",
+            insightValue: "2",
+            records: [
+              { title: "Workspace admin policy", meta: "Syncing new role scopes across 4 environments", status: "Ready" },
+              { title: "External contractor access", meta: "Expires Friday · needs revocation plan", status: "Alert" },
+              { title: "Audit export rule", meta: "Adds a compliance export window", status: "Draft" },
+            ],
+            focusAreas: ["Roles", "Policies", "Access", "Audit"],
+          },
+        ]
+    const pages = [...base]
+    if (routeSet.has("audit") || /audit|history|trace|compliance|审计|留痕|合规|记录/.test(promptText)) {
+      pages.push(
+        isCn
+          ? {
+              route: "audit",
+              label: "Audit",
+              headline: "审计留痕与合规视图",
+              subheadline: "让操作记录、合规导出和异常追踪成为同一条审计链。",
+              summary: "这页体现审计时间线和合规留痕能力。",
+              metricLabel: "审计事件",
+              metricValue: "218",
+              insightLabel: "待复核",
+              insightValue: "9",
+              records: [
+                { title: "权限提升记录", meta: "过去 24 小时内 7 次高权限变更", status: "Tracked" },
+                { title: "导出审计包", meta: "本周合规审计包待归档", status: "Queued" },
+                { title: "异常登录回放", meta: "3 条需要安全确认", status: "Review" },
+              ],
+              focusAreas: ["Audit trail", "Compliance", "Exports", "Exceptions"],
+            }
+          : {
+              route: "audit",
+              label: "Audit",
+              headline: "Audit trail and compliance view",
+              subheadline: "Keep action logs, compliance exports, and anomaly review in one audit lane.",
+              summary: "This route makes the audit trail and compliance posture visible.",
+              metricLabel: "Audit events",
+              metricValue: "218",
+              insightLabel: "Needs review",
+              insightValue: "9",
+              records: [
+                { title: "Privilege escalation log", meta: "7 high-scope changes in the last 24 hours", status: "Tracked" },
+                { title: "Compliance export package", meta: "Weekly archive bundle is pending", status: "Queued" },
+                { title: "Suspicious login replay", meta: "3 events need security review", status: "Review" },
+              ],
+              focusAreas: ["Audit trail", "Compliance", "Exports", "Exceptions"],
+            }
+      )
+    }
+    if (routeSet.has("incidents") || /incident|alert|outage|incident response|告警|故障|异常|应急/.test(promptText)) {
+      pages.push(
+        isCn
+          ? {
+              route: "incidents",
+              label: "Incidents",
+              headline: "异常与恢复指挥台",
+              subheadline: "把告警、影响面、负责人和恢复动作放到同一个响应面板里。",
+              summary: "这页体现内部控制平面的应急与恢复工作流。",
+              metricLabel: "活跃事件",
+              metricValue: "4",
+              insightLabel: "恢复中",
+              insightValue: "1",
+              records: [
+                { title: "预览运行异常", meta: "影响中国区预览 12 分钟", status: "Mitigating" },
+                { title: "权限同步延迟", meta: "已切换备用同步通道", status: "Stabilizing" },
+                { title: "审计导出队列拥堵", meta: "等待批处理窗口恢复", status: "Monitoring" },
+              ],
+              focusAreas: ["Alerts", "Impact", "Recovery", "Postmortem"],
+            }
+          : {
+              route: "incidents",
+              label: "Incidents",
+              headline: "Incident command center",
+              subheadline: "Keep alerts, impact assessment, responders, and recovery work in one response surface.",
+              summary: "This route carries the incident and recovery workflow of the control plane.",
+              metricLabel: "Active incidents",
+              metricValue: "4",
+              insightLabel: "Recovering",
+              insightValue: "1",
+              records: [
+                { title: "Preview runtime incident", meta: "CN preview affected for 12 minutes", status: "Mitigating" },
+                { title: "Permission sync lag", meta: "Fallback sync lane is active", status: "Stabilizing" },
+                { title: "Audit export congestion", meta: "Waiting on batch window recovery", status: "Monitoring" },
+              ],
+              focusAreas: ["Alerts", "Impact", "Recovery", "Postmortem"],
+            }
+      )
+    }
+    return pages
+  }
 
   if (archetype === "crm") {
     return isCn
@@ -1263,6 +5119,27 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             ],
             focusAreas: ["Stage health", "Risk flags", "Forecast", "Handoff"],
           },
+          ...(routeSet.has("orders")
+            ? [
+                {
+                  route: "orders",
+                  label: "Orders",
+                  headline: "报价审批与订单推进",
+                  subheadline: "把报价审批、订单确认、回款同步和交付移交流程放到一个订单工作台里。",
+                  summary: "这页负责把 CRM 从商机推进延伸到报价与订单执行，不该退回通用列表。",
+                  metricLabel: "待处理订单",
+                  metricValue: "11",
+                  insightLabel: "待审批报价",
+                  insightValue: "4",
+                  records: [
+                    { title: "智链云 · 企业版续约", meta: "报价待财务签批 · 金额 ¥168k", status: "Approval" },
+                    { title: "北辰科技 · 新签订单", meta: "采购单已回传 · 等待回款确认", status: "Pending payment" },
+                    { title: "远航数据 · 扩容加购", meta: "交付移交同步到 CSM", status: "Handoff" },
+                  ],
+                  focusAreas: ["Quote approvals", "Order desk", "Payment sync", "Handoff"],
+                },
+              ]
+            : []),
           {
             route: "customers",
             label: "Customers",
@@ -1296,6 +5173,23 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
               { title: "报价审批超时提醒", meta: "财务与销售主管双通知", status: "Testing" },
             ],
             focusAreas: ["Reminders", "Approval flow", "Customer handoff", "Agent tasks"],
+          },
+          {
+            route: "reports",
+            label: "Reports",
+            headline: "销售预测与阶段报表",
+            subheadline: "把 pipeline、赢单率和负责人节奏沉到一个分析视图里。",
+            summary: "这页负责把 CRM 从列表推进到经营视角。",
+            metricLabel: "季度预测",
+            metricValue: "¥3.8M",
+            insightLabel: "高风险机会",
+            insightValue: "6",
+            records: [
+              { title: "华东区域 pipeline", meta: "提案转成交率 34%", status: "Healthy" },
+              { title: "续约与扩容", meta: "11 个账户在 45 天窗口内", status: "Tracked" },
+              { title: "负责人节奏", meta: "2 位销售跟进延迟超过 3 天", status: "Alert" },
+            ],
+            focusAreas: ["Forecast", "Win rate", "Pipeline mix", "Owner cadence"],
           },
         ]
       : [
@@ -1350,6 +5244,27 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             ],
             focusAreas: ["Stage health", "Risk flags", "Forecast", "Handoff"],
           },
+          ...(routeSet.has("orders")
+            ? [
+                {
+                  route: "orders",
+                  label: "Orders",
+                  headline: "Quote approvals and order execution",
+                  subheadline: "Keep quote review, order confirmation, payment sync, and delivery handoff in one order desk.",
+                  summary: "This route extends the CRM beyond opportunity tracking into order execution.",
+                  metricLabel: "Open orders",
+                  metricValue: "11",
+                  insightLabel: "Quotes awaiting approval",
+                  insightValue: "4",
+                  records: [
+                    { title: "Zhilink Cloud · enterprise renewal", meta: "Quote pending finance sign-off · $24k", status: "Approval" },
+                    { title: "Northstar Tech · new order", meta: "PO received · waiting for payment confirmation", status: "Pending payment" },
+                    { title: "Farway Data · seat expansion", meta: "Delivery handoff synced with CSM", status: "Handoff" },
+                  ],
+                  focusAreas: ["Quote approvals", "Order desk", "Payment sync", "Handoff"],
+                },
+              ]
+            : []),
           {
             route: "customers",
             label: "Customers",
@@ -1384,10 +5299,31 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             ],
             focusAreas: ["Reminders", "Approval flow", "Customer handoff", "Agent tasks"],
           },
+          {
+            route: "reports",
+            label: "Reports",
+            headline: "Forecasting and stage reports",
+            subheadline: "Pull pipeline, win rate, and owner cadence into one operating view.",
+            summary: "This page turns the CRM into a management surface, not just a list system.",
+            metricLabel: "Quarterly forecast",
+            metricValue: "$540k",
+            insightLabel: "At-risk deals",
+            insightValue: "6",
+            records: [
+              { title: "East region pipeline", meta: "Proposal-to-close rate at 34%", status: "Healthy" },
+              { title: "Renewal and expansion lane", meta: "11 accounts in the next 45-day window", status: "Tracked" },
+              { title: "Owner cadence", meta: "2 reps are behind on follow-up", status: "Alert" },
+            ],
+            focusAreas: ["Forecast", "Win rate", "Pipeline mix", "Owner cadence"],
+          },
         ]
   }
 
   if (archetype === "api_platform") {
+    const apiText = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+    const includeUsage =
+      /usage|metering|billing|rate limit|rate-limit|quota|计量|用量|账单|限流|配额/.test(apiText) ||
+      spec.modules.some((item) => /usage|metering|billing|计量|用量|账单|限流/.test(item.toLowerCase()))
     return isCn
       ? [
           {
@@ -1475,6 +5411,61 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             ],
             focusAreas: ["Deploy targets", "Runtime", "Secrets", "Rollbacks"],
           },
+          {
+            route: "webhooks",
+            label: "Webhooks",
+            headline: "Webhook 与回调交付",
+            subheadline: "把事件订阅、重试投递和失败恢复放进同一条交付轨道。",
+            summary: "这一页体现 API 产品的事件驱动能力。",
+            metricLabel: "活跃订阅",
+            metricValue: "37",
+            insightLabel: "重试成功率",
+            insightValue: "96%",
+            records: [
+              { title: "billing.invoice.paid", meta: "目标 Slack + CRM 自动化", status: "Healthy" },
+              { title: "project.preview.ready", meta: "失败事件进入回放队列", status: "Retrying" },
+              { title: "auth.token.revoked", meta: "同步安全日志和成员通知", status: "Live" },
+            ],
+            focusAreas: ["Subscriptions", "Retries", "Delivery logs", "Environment routing"],
+          },
+          {
+            route: "docs",
+            label: "Docs",
+            headline: "开发者文档中心",
+            subheadline: "让 API 参考、SDK 指南、接入说明和认证策略在同一个开发者入口里。",
+            summary: "这页是开发者 onboarding 与文档协同中枢。",
+            metricLabel: "文档页面",
+            metricValue: "27",
+            insightLabel: "SDK 覆盖",
+            insightValue: "6",
+            records: [
+              { title: "快速开始", meta: "3 分钟完成首个请求", status: "Popular" },
+              { title: "OAuth 接入指南", meta: "覆盖 scopes、回调和环境区分", status: "Core" },
+              { title: "SDK 示例", meta: "Node / Python / Webhook 示例已同步", status: "Updated" },
+            ],
+            focusAreas: ["Quickstart", "Reference", "SDK", "Onboarding"],
+          },
+          ...(includeUsage
+            ? [
+                {
+                  route: "usage",
+                  label: "Usage",
+                  headline: "用量与计量看板",
+                  subheadline: "把请求量、账单窗口、限流状态和高消耗接口放在一起看。",
+                  summary: "这页体现 API 产品的商业化与用量控制能力。",
+                  metricLabel: "本周请求量",
+                  metricValue: "18.2M",
+                  insightLabel: "账单窗口",
+                  insightValue: "Open",
+                  records: [
+                    { title: "生成接口", meta: "本周调用 4.8M", status: "High traffic" },
+                    { title: "Webhook 重放", meta: "计费外请求已排除", status: "Validated" },
+                    { title: "高频 consumer", meta: "3 个租户接近限流阈值", status: "Watched" },
+                  ],
+                  focusAreas: ["Usage", "Billing", "Rate limits", "Tenants"],
+                },
+              ]
+            : []),
         ]
       : [
           {
@@ -1562,6 +5553,61 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             ],
             focusAreas: ["Deploy targets", "Runtime", "Secrets", "Rollbacks"],
           },
+          {
+            route: "webhooks",
+            label: "Webhooks",
+            headline: "Webhook delivery rail",
+            subheadline: "Keep event subscriptions, retry flows, and delivery recovery in one operating surface.",
+            summary: "This is the event-driven layer of the API product.",
+            metricLabel: "Active subscriptions",
+            metricValue: "37",
+            insightLabel: "Retry recovery",
+            insightValue: "96%",
+            records: [
+              { title: "billing.invoice.paid", meta: "Targets Slack + CRM automations", status: "Healthy" },
+              { title: "project.preview.ready", meta: "Failed deliveries enter replay queue", status: "Retrying" },
+              { title: "auth.token.revoked", meta: "Syncs with security logs and member notices", status: "Live" },
+            ],
+            focusAreas: ["Subscriptions", "Retries", "Delivery logs", "Environment routing"],
+          },
+          {
+            route: "docs",
+            label: "Docs",
+            headline: "Developer docs center",
+            subheadline: "Keep API reference, SDK guides, onboarding, and auth policies in one developer surface.",
+            summary: "This page should feel like the docs and onboarding hub for an API product.",
+            metricLabel: "Doc pages",
+            metricValue: "27",
+            insightLabel: "SDK coverage",
+            insightValue: "6",
+            records: [
+              { title: "Quickstart", meta: "3-minute first request path", status: "Popular" },
+              { title: "OAuth guide", meta: "Scopes, callbacks, and environment rules", status: "Core" },
+              { title: "SDK examples", meta: "Node / Python / webhook examples stay synced", status: "Updated" },
+            ],
+            focusAreas: ["Quickstart", "Reference", "SDK", "Onboarding"],
+          },
+          ...(includeUsage
+            ? [
+                {
+                  route: "usage",
+                  label: "Usage",
+                  headline: "Usage and metering board",
+                  subheadline: "Bring request volume, billing windows, rate limits, and heavy consumers into one surface.",
+                  summary: "This page should make API monetization and metering visible.",
+                  metricLabel: "Weekly requests",
+                  metricValue: "18.2M",
+                  insightLabel: "Billing window",
+                  insightValue: "Open",
+                  records: [
+                    { title: "Generate API", meta: "4.8M requests this week", status: "High traffic" },
+                    { title: "Webhook replay", meta: "Non-billable traffic excluded", status: "Validated" },
+                    { title: "Heavy consumers", meta: "3 tenants near rate thresholds", status: "Watched" },
+                  ],
+                  focusAreas: ["Usage", "Billing", "Rate limits", "Tenants"],
+                },
+              ]
+            : []),
         ]
   }
 
@@ -1603,6 +5649,23 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             focusAreas: ["Hero", "Social proof", "CTA", "SEO"],
           },
           {
+            route: "pricing",
+            label: "Pricing",
+            headline: "定价与权益结构",
+            subheadline: "把套餐、设备覆盖、分发权益和升级文案放到一个转化面里。",
+            summary: "这页承接转化和权益表达，不只是价格表。",
+            metricLabel: "套餐层级",
+            metricValue: "4",
+            insightLabel: "升级转化",
+            insightValue: "8.4%",
+            records: [
+              { title: "探索版 vs 启动版", meta: "突出生成深度和导出边界", status: "Live" },
+              { title: "专业版权益说明", meta: "增加交付与分发能力描述", status: "Updated" },
+              { title: "企业提案档", meta: "等待销售补充案例素材", status: "Queued" },
+            ],
+            focusAreas: ["Plan tiers", "Entitlements", "Upgrade copy", "Conversion"],
+          },
+          {
             route: "downloads",
             label: "Downloads",
             headline: "下载分发中心",
@@ -1635,6 +5698,23 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
               { title: "团队协作", meta: "角色、权限、分享链路", status: "Drafting" },
             ],
             focusAreas: ["Quickstart", "Reference", "Guides", "Search"],
+          },
+          {
+            route: "changelog",
+            label: "Changelog",
+            headline: "更新日志与版本节奏",
+            subheadline: "把版本说明、平台更新和发版节奏公开整理成一条线。",
+            summary: "这页负责把产品更新转成可阅读、可追踪的叙事。",
+            metricLabel: "最近版本",
+            metricValue: "v0.9.4",
+            insightLabel: "近 30 天更新",
+            insightValue: "12",
+            records: [
+              { title: "增加微信支付二维码页", meta: "支付链路现在支持自动拉起二维码", status: "Published" },
+              { title: "预览链路切 canonical", meta: "国际/国内打开预览更稳定", status: "Published" },
+              { title: "生成器 archetype 分层", meta: "不同 prompt 开始明显分化", status: "Rolling out" },
+            ],
+            focusAreas: ["Release notes", "Version history", "Platform updates", "Ship rhythm"],
           },
           {
             route: "admin",
@@ -1690,6 +5770,23 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             focusAreas: ["Hero", "Social proof", "CTA", "SEO"],
           },
           {
+            route: "pricing",
+            label: "Pricing",
+            headline: "Pricing and entitlement structure",
+            subheadline: "Bring plans, device coverage, distribution rights, and upgrade messaging into one surface.",
+            summary: "This route handles conversion and entitlement framing, not just a price list.",
+            metricLabel: "Plan tiers",
+            metricValue: "4",
+            insightLabel: "Upgrade conversion",
+            insightValue: "8.4%",
+            records: [
+              { title: "Explorer vs Starter", meta: "Highlights generation depth and export boundaries", status: "Live" },
+              { title: "Pro entitlements", meta: "Expanded delivery and distribution messaging", status: "Updated" },
+              { title: "Enterprise proposal rail", meta: "Waiting on sales proof assets", status: "Queued" },
+            ],
+            focusAreas: ["Plan tiers", "Entitlements", "Upgrade copy", "Conversion"],
+          },
+          {
             route: "downloads",
             label: "Downloads",
             headline: "Distribution hub",
@@ -1724,6 +5821,23 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
             focusAreas: ["Quickstart", "Reference", "Guides", "Search"],
           },
           {
+            route: "changelog",
+            label: "Changelog",
+            headline: "Release notes and ship rhythm",
+            subheadline: "Organize version notes, platform updates, and release cadence into one visible stream.",
+            summary: "This route turns product changes into readable release storytelling.",
+            metricLabel: "Latest version",
+            metricValue: "v0.9.4",
+            insightLabel: "Updates in 30 days",
+            insightValue: "12",
+            records: [
+              { title: "WeChat Pay QR flow", meta: "Hosted payment now renders QR directly", status: "Published" },
+              { title: "Canonical preview routing", meta: "Intl and CN open preview are more stable", status: "Published" },
+              { title: "Archetype generation split", meta: "Prompt outputs now diverge more clearly", status: "Rolling out" },
+            ],
+            focusAreas: ["Release notes", "Version history", "Platform updates", "Ship rhythm"],
+          },
+          {
             route: "admin",
             label: "Admin",
             headline: "Admin control room",
@@ -1743,15 +5857,687 @@ function getArchetypePageDefinitions(spec: AppSpec): ArchetypePageDefinition[] {
         ]
   }
 
+  if (archetype === "community") {
+    return isCn
+      ? [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "社区运营与反馈中枢",
+            subheadline: "把帖子、反馈、成员分层和活动编排整理成一个社区 control plane。",
+            summary: "这一类产品应该看起来像社区运营后台，而不是报表总览。",
+            metricLabel: "本周新增反馈",
+            metricValue: "128",
+            insightLabel: "处理完成率",
+            insightValue: "84%",
+            records: [
+              { title: "新版本下载体验建议", meta: "来源 Beta 用户群 · 高优先级", status: "Triaged" },
+              { title: "路线图投票活跃", meta: "312 位成员参与投票", status: "Live" },
+              { title: "活动报名同步", meta: "线下 meetup 已同步到社区", status: "Ready" },
+            ],
+            focusAreas: ["Feedback", "Members", "Events", "Moderation"],
+          },
+          {
+            route: "feedback",
+            label: "Feedback",
+            headline: "反馈与路线图入口",
+            subheadline: "把需求、Bug、建议按优先级和产品线整理，而不是扔进同一列表。",
+            summary: "这是社区产品最关键的产品改进入口。",
+            metricLabel: "待处理反馈",
+            metricValue: "46",
+            insightLabel: "进入路线图",
+            insightValue: "12",
+            records: [
+              { title: "MornCursor 代码补全体验", meta: "希望更快切到 Code Tab", status: "Under review" },
+              { title: "下载页设备引导", meta: "需要更明确的平台分发说明", status: "Planned" },
+              { title: "社区身份勋章", meta: "希望给核心用户更强标识", status: "New" },
+            ],
+            focusAreas: ["Intake", "Priority", "Roadmap", "Replies"],
+          },
+          ...(routeSet.has("moderation")
+            ? [
+                {
+                  route: "moderation",
+                  label: "Moderation",
+                  headline: "审核队列与社区治理",
+                  subheadline: "把举报、敏感内容、社区规则和通知联动收进一个审核工作台里。",
+                  summary: "这页是社区产品的安全与治理控制平面，不是设置页的附属面板。",
+                  metricLabel: "待审核队列",
+                  metricValue: "17",
+                  insightLabel: "高风险案件",
+                  insightValue: "3",
+                  records: [
+                    { title: "敏感词命中", meta: "帖子进入审核队列 · 需确认处理规则", status: "Queued" },
+                    { title: "成员举报", meta: "3 条反馈等待治理动作", status: "Review" },
+                    { title: "活动评论争议", meta: "需同步规则与公告说明", status: "Escalated" },
+                  ],
+                  focusAreas: ["Moderation queue", "Policy sync", "Reports", "Safety"],
+                },
+              ]
+            : []),
+          {
+            route: "roadmap",
+            label: "Roadmap",
+            headline: "公开路线图与交付节奏",
+            subheadline: "把已受理的反馈、版本计划和交付时间窗口公开整理。",
+            summary: "这页体现社区产品的透明度和承诺节奏。",
+            metricLabel: "公开事项",
+            metricValue: "18",
+            insightLabel: "本月交付",
+            insightValue: "5",
+            records: [
+              { title: "MornCursor 代码预览优化", meta: "预计本周进入验证", status: "In progress" },
+              { title: "下载站平台筛选", meta: "列入 4 月发布计划", status: "Planned" },
+              { title: "成员勋章系统", meta: "正在设计展示层", status: "Research" },
+            ],
+            focusAreas: ["Roadmap", "Release notes", "ETA", "Public updates"],
+          },
+          {
+            route: "members",
+            label: "Members",
+            headline: "成员与分层视图",
+            subheadline: "区分核心用户、普通成员、候补测试者和管理员。",
+            summary: "成员管理是社区和反馈产品的主工作流之一。",
+            metricLabel: "活跃成员",
+            metricValue: "2,431",
+            insightLabel: "核心贡献者",
+            insightValue: "84",
+            records: [
+              { title: "核心创作者", meta: "持续输出使用案例和建议", status: "Champion" },
+              { title: "候补测试者", meta: "等待加入下个测试批次", status: "Queued" },
+              { title: "社区管理员", meta: "负责审核与活动通知", status: "Active" },
+            ],
+            focusAreas: ["Segments", "Roles", "Invites", "Trust"],
+          },
+          {
+            route: "events",
+            label: "Events",
+            headline: "活动与运营编排",
+            subheadline: "把线上 AMA、线下 meetup、版本直播和反馈日统一管理。",
+            summary: "活动页承接社区增长与留存，不只是内容展示。",
+            metricLabel: "本月活动",
+            metricValue: "6",
+            insightLabel: "报名转化",
+            insightValue: "38%",
+            records: [
+              { title: "MornSystem 直播发布会", meta: "预计 480 人报名", status: "Scheduled" },
+              { title: "核心用户 AMA", meta: "整理 23 个高频问题", status: "Drafting" },
+              { title: "城市 meetup", meta: "深圳站场地已确认", status: "Confirmed" },
+            ],
+            focusAreas: ["Calendar", "Invites", "Attendance", "Campaigns"],
+          },
+          {
+            route: "posts",
+            label: "Posts",
+            headline: "帖子与公告流",
+            subheadline: "把社区动态、公告和讨论串统一到一个内容流里。",
+            summary: "这页承接社区内容节奏，不只是反馈列表。",
+            metricLabel: "本周帖子",
+            metricValue: "74",
+            insightLabel: "公告点击率",
+            insightValue: "28%",
+            records: [
+              { title: "MornSystem 迭代说明", meta: "面向核心用户的更新公告", status: "Pinned" },
+              { title: "本周最佳实践合集", meta: "整理了 6 个应用案例", status: "Live" },
+              { title: "功能投票总结", meta: "已同步到路线图页", status: "Synced" },
+            ],
+            focusAreas: ["Announcements", "Discussions", "Pinned updates", "Community feed"],
+          },
+          {
+            route: "settings",
+            label: "Settings",
+            headline: "社区规则与权限",
+            subheadline: "管理审核规则、成员权限、通知和自动化策略。",
+            summary: "这页承接社区安全和运营边界。",
+            metricLabel: "规则集",
+            metricValue: "9",
+            insightLabel: "自动化命中",
+            insightValue: "92%",
+            records: [
+              { title: "敏感词审核", meta: "命中后自动进入 review queue", status: "Active" },
+              { title: "成员邀请规则", meta: "限定 Beta 资格和邮箱域名", status: "Scoped" },
+              { title: "活动提醒自动化", meta: "提前 24 小时推送通知", status: "Healthy" },
+            ],
+            focusAreas: ["Policies", "Automation", "Notifications", "Roles"],
+          },
+        ]
+      : [
+          {
+            route: "dashboard",
+            label: "Dashboard",
+            headline: "Community operations control plane",
+            subheadline: "Bring posts, feedback, member tiers, and events into one operating surface.",
+            summary: "This archetype should feel like a community ops product, not a reporting dashboard.",
+            metricLabel: "New feedback this week",
+            metricValue: "128",
+            insightLabel: "Resolution rate",
+            insightValue: "84%",
+            records: [
+              { title: "New download UX request", meta: "Raised from the beta user group", status: "Triaged" },
+              { title: "Roadmap voting is active", meta: "312 members voted this week", status: "Live" },
+              { title: "Meetup enrollment synced", meta: "Offline event is in the ops calendar", status: "Ready" },
+            ],
+            focusAreas: ["Feedback", "Members", "Events", "Moderation"],
+          },
+          {
+            route: "feedback",
+            label: "Feedback",
+            headline: "Feedback and roadmap intake",
+            subheadline: "Sort requests, issues, and ideas by priority and product line instead of dumping them into one inbox.",
+            summary: "This is the product-improvement engine for community apps.",
+            metricLabel: "Open feedback",
+            metricValue: "46",
+            insightLabel: "Moved to roadmap",
+            insightValue: "12",
+            records: [
+              { title: "MornCursor code completion flow", meta: "Users want faster Code Tab transitions", status: "Under review" },
+              { title: "Download page device guide", meta: "Needs stronger platform install guidance", status: "Planned" },
+              { title: "Member badge system", meta: "Power users want clearer identity markers", status: "New" },
+            ],
+            focusAreas: ["Intake", "Priority", "Roadmap", "Replies"],
+          },
+          ...(routeSet.has("moderation")
+            ? [
+                {
+                  route: "moderation",
+                  label: "Moderation",
+                  headline: "Moderation queue and safety rail",
+                  subheadline: "Keep reports, flagged content, policy updates, and member notices in one moderation desk.",
+                  summary: "This is the safety control plane of the community product, not a side panel in settings.",
+                  metricLabel: "Queued cases",
+                  metricValue: "17",
+                  insightLabel: "High-risk reports",
+                  insightValue: "3",
+                  records: [
+                    { title: "Keyword policy hit", meta: "Post moved into moderation queue for review", status: "Queued" },
+                    { title: "Member abuse report", meta: "3 issues are waiting on moderation action", status: "Review" },
+                    { title: "Event comment escalation", meta: "Needs policy sync and announcement follow-up", status: "Escalated" },
+                  ],
+                  focusAreas: ["Moderation queue", "Policy sync", "Reports", "Safety"],
+                },
+              ]
+            : []),
+          {
+            route: "roadmap",
+            label: "Roadmap",
+            headline: "Public roadmap and delivery rhythm",
+            subheadline: "Turn accepted feedback into visible release planning and delivery windows.",
+            summary: "This page makes the community product feel transparent and accountable.",
+            metricLabel: "Public items",
+            metricValue: "18",
+            insightLabel: "Shipping this month",
+            insightValue: "5",
+            records: [
+              { title: "MornCursor preview polish", meta: "Expected to enter validation this week", status: "In progress" },
+              { title: "Download site platform filters", meta: "Included in April launch plan", status: "Planned" },
+              { title: "Member badge system", meta: "Display system is under design", status: "Research" },
+            ],
+            focusAreas: ["Roadmap", "Release notes", "ETA", "Public updates"],
+          },
+          {
+            route: "members",
+            label: "Members",
+            headline: "Member tiers and access",
+            subheadline: "Separate champions, everyday members, beta testers, and admins.",
+            summary: "Membership is a primary workflow in a community product.",
+            metricLabel: "Active members",
+            metricValue: "2,431",
+            insightLabel: "Core contributors",
+            insightValue: "84",
+            records: [
+              { title: "Champions", meta: "Power users sharing best practices", status: "Champion" },
+              { title: "Beta waitlist", meta: "Queued for the next cohort", status: "Queued" },
+              { title: "Community admins", meta: "Moderating and announcing events", status: "Active" },
+            ],
+            focusAreas: ["Segments", "Roles", "Invites", "Trust"],
+          },
+          {
+            route: "events",
+            label: "Events",
+            headline: "Event and campaign orchestration",
+            subheadline: "Manage livestreams, AMAs, meetups, and launch sessions in one place.",
+            summary: "This route supports retention and growth, not just content display.",
+            metricLabel: "Events this month",
+            metricValue: "6",
+            insightLabel: "Attendance conversion",
+            insightValue: "38%",
+            records: [
+              { title: "MornSystem launch stream", meta: "Forecasting 480 signups", status: "Scheduled" },
+              { title: "Champion AMA", meta: "23 top questions prepared", status: "Drafting" },
+              { title: "City meetup", meta: "Venue confirmed for Shenzhen", status: "Confirmed" },
+            ],
+            focusAreas: ["Calendar", "Invites", "Attendance", "Campaigns"],
+          },
+          {
+            route: "posts",
+            label: "Posts",
+            headline: "Posts and announcement stream",
+            subheadline: "Keep announcements, discussion threads, and content highlights in one community flow.",
+            summary: "This route handles content rhythm, not just feedback intake.",
+            metricLabel: "Posts this week",
+            metricValue: "74",
+            insightLabel: "Announcement CTR",
+            insightValue: "28%",
+            records: [
+              { title: "MornSystem iteration note", meta: "Pinned for core users", status: "Pinned" },
+              { title: "Weekly best practices", meta: "Curates 6 community use cases", status: "Live" },
+              { title: "Feature vote recap", meta: "Already synced to the roadmap", status: "Synced" },
+            ],
+            focusAreas: ["Announcements", "Discussions", "Pinned updates", "Community feed"],
+          },
+          {
+            route: "settings",
+            label: "Settings",
+            headline: "Community rules and permissions",
+            subheadline: "Manage moderation rules, member access, notifications, and automation policies.",
+            summary: "This route defines safety and operating boundaries.",
+            metricLabel: "Rule sets",
+            metricValue: "9",
+            insightLabel: "Automation hit rate",
+            insightValue: "92%",
+            records: [
+              { title: "Keyword moderation", meta: "Matched posts move into review queues", status: "Active" },
+              { title: "Invite rules", meta: "Scoped to beta domains and cohorts", status: "Scoped" },
+              { title: "Event reminders", meta: "Scheduled 24 hours before sessions", status: "Healthy" },
+            ],
+            focusAreas: ["Policies", "Automation", "Notifications", "Roles"],
+          },
+        ]
+  }
+
   return []
 }
 
+function getPreviewRouteBlueprints(spec: AppSpec, limit = 6) {
+  return Array.isArray(spec.routeBlueprint)
+    ? spec.routeBlueprint
+        .filter((item) => item.path && item.path !== "/")
+        .slice(0, limit)
+        .map((item) => ({
+          label: item.label,
+          path: item.path,
+          purpose: item.purpose,
+          actions: item.primaryActions.slice(0, 3),
+        }))
+    : []
+}
+
+function getPreviewEntityBlueprints(spec: AppSpec, limit = 4) {
+  return Array.isArray(spec.entityBlueprint)
+    ? spec.entityBlueprint.slice(0, limit).map((item) => ({
+        label: item.label,
+        summary: item.summary,
+        fields: item.fields.slice(0, 4),
+        workflows: item.workflows.slice(0, 3),
+      }))
+    : []
+}
+
+function getPreviewModuleBlueprints(spec: AppSpec, limit = 6) {
+  return Array.isArray(spec.moduleBlueprint)
+    ? spec.moduleBlueprint.slice(0, limit).map((item) => ({
+        label: item.label,
+        summary: item.summary,
+        capabilities: item.capabilityIds.slice(0, 3),
+      }))
+    : []
+}
+
+function getWorkflowSteps(spec: AppSpec) {
+  return uniqueStrings(
+    String(spec.appIntent?.primaryWorkflow ?? "")
+      .split(/->|→/)
+      .map((item) => sanitizeUiText(item))
+      .filter(Boolean)
+  )
+}
+
+function buildArchetypeConsoleWidgets(
+  spec: AppSpec,
+  current: ArchetypePageDefinition,
+  relatedModules: Array<{ label: string; summary: string }>,
+  relatedEntities: Array<{ label: string; workflows: string[] }>,
+  workflowSteps: string[]
+) {
+  const isCn = spec.region === "cn"
+  const archetype = getScaffoldArchetype(spec)
+  const promptText = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  const relatedEntityLabels = relatedEntities.map((item) => item.label)
+  const relatedModuleLabels = relatedModules.map((item) => item.label)
+
+  if (archetype === "crm") {
+    const renewalHeavy = /renewal|renewals|onboarding|handoff|success|续约|交付|上线|客户成功/.test(promptText)
+    const approvalsHeavy = /quote|quotes|approval|approvals|order|orders|报价|审批|订单/.test(promptText)
+    const teamHeavy = /team target|team targets|quota|owner cadence|manager|负责人|团队目标|配额/.test(promptText)
+    return {
+      heroStats: renewalHeavy
+        ? [
+            { label: isCn ? "续约窗口" : "Renewal window", value: "11", note: isCn ? "未来 45 天到期账户" : "Accounts renewing in 45 days", tone: "#f59e0b" },
+            { label: isCn ? "交付中客户" : "Onboarding accounts", value: "7", note: isCn ? "等待实施与上线" : "Waiting on launch handoff", tone: "#14b8a6" },
+            { label: isCn ? "扩容机会" : "Expansion deals", value: "$188K", note: isCn ? "续约与增购并行" : "Renewal and upsell in flight", tone: "#2563eb" },
+            { label: isCn ? "健康告警" : "Health alerts", value: "3", note: isCn ? "需 CSM 联动处理" : "Needs CSM attention", tone: "#7c3aed" },
+          ]
+        : approvalsHeavy
+          ? [
+              { label: isCn ? "待批报价" : "Pending quotes", value: "6", note: isCn ? "等待主管与财务确认" : "Waiting on sales and finance", tone: "#f59e0b" },
+              { label: isCn ? "开放订单" : "Open orders", value: "11", note: isCn ? "报价转单与回款同步" : "Order execution in motion", tone: "#14b8a6" },
+              { label: isCn ? "赢单收入" : "Revenue won", value: "$245K", note: isCn ? "最近 30 天成交" : "Closed in the last 30 days", tone: "#2563eb" },
+              { label: isCn ? "升级商机" : "Expansion deals", value: "9", note: isCn ? "等待交付交接" : "Waiting on handoff", tone: "#7c3aed" },
+            ]
+          : [
+              { label: isCn ? "管道金额" : "Pipeline value", value: "$955K", note: isCn ? "本季度在跟进机会" : "Open opportunity value", tone: "#2563eb" },
+              { label: isCn ? "已赢收入" : "Revenue won", value: "$245K", note: isCn ? "最近 30 天成交" : "Closed in the last 30 days", tone: "#14b8a6" },
+              { label: isCn ? "活跃线索" : "Active leads", value: "26", note: isCn ? "待推进线索池" : "Open leads in motion", tone: "#7c3aed" },
+              { label: isCn ? "待批报价" : "Pending quotes", value: "4", note: isCn ? "等待主管签批" : "Waiting on manager approval", tone: "#f59e0b" },
+            ],
+      laneTitle: renewalHeavy
+        ? (isCn ? "续约与交付轨道" : "Renewal and onboarding lanes")
+        : approvalsHeavy
+          ? (isCn ? "报价与订单执行" : "Quote and order execution")
+          : (isCn ? "销售阶段分布" : "Pipeline by stage"),
+      laneItems: renewalHeavy
+        ? [
+            { label: isCn ? "续约准备" : "Renewal prep", value: "5", progress: 58, note: isCn ? "等待商务与成功团队联动" : "Sales and success alignment" },
+            { label: isCn ? "合同确认" : "Contract review", value: "4", progress: 42, note: isCn ? "法务条款确认中" : "Legal terms in review" },
+            { label: isCn ? "上线交接" : "Go-live handoff", value: "7", progress: 74, note: isCn ? "实施与支持已排期" : "Implementation scheduled" },
+            { label: isCn ? "扩容推进" : "Expansion push", value: "$188K", progress: 51, note: isCn ? "增购与续约并行" : "Upsell moving with renewals" },
+          ]
+        : approvalsHeavy
+          ? [
+              { label: isCn ? "报价提交" : "Quote intake", value: "9", progress: 46, note: isCn ? "等待初审" : "Initial review queue" },
+              { label: isCn ? "财务审批" : "Finance approval", value: "4", progress: 62, note: isCn ? "待金额确认" : "Pending pricing sign-off" },
+              { label: isCn ? "订单确认" : "Order confirmation", value: "6", progress: 53, note: isCn ? "PO 与回款同步" : "PO and payment sync" },
+              { label: isCn ? "交付交接" : "Delivery handoff", value: "3", progress: 29, note: isCn ? "PM 与 CSM 已接收" : "PM and CSM handoff" },
+            ]
+          : [
+              { label: isCn ? "发现" : "Discovery", value: "$160K", progress: 36, note: isCn ? "4 笔机会" : "4 deals" },
+              { label: isCn ? "方案" : "Proposal", value: "$310K", progress: 72, note: isCn ? "6 笔机会" : "6 deals" },
+              { label: isCn ? "谈判" : "Negotiation", value: "$248K", progress: 58, note: isCn ? "3 笔机会" : "3 deals" },
+              { label: isCn ? "赢单" : "Closed won", value: "$237K", progress: 48, note: isCn ? "2 笔成交" : "2 wins" },
+            ],
+      rightTitle: teamHeavy
+        ? (isCn ? "团队与配额" : "Team and quota")
+        : renewalHeavy
+          ? (isCn ? "客户成功节奏" : "Customer success cadence")
+          : (isCn ? "团队节奏" : "Team cadence"),
+      rightItems: teamHeavy
+        ? [
+            { title: isCn ? "团队目标完成度" : "Quarter target", note: isCn ? "72% 已达成" : "72% completed", accent: "#2563eb" },
+            { title: isCn ? "负责人节奏" : "Owner cadence", note: isCn ? "2 位 AE 跟进滞后" : "2 reps behind on follow-up", accent: "#7c3aed" },
+            { title: isCn ? "配额缺口" : "Quota gap", note: isCn ? "东区仍有 18% 缺口" : "East region still 18% short", accent: "#14b8a6" },
+          ]
+        : renewalHeavy
+          ? [
+              { title: isCn ? "续约提醒" : "Renewal watchlist", note: isCn ? "3 个账户本周到期" : "3 accounts renewing this week", accent: "#f59e0b" },
+              { title: isCn ? "上线任务" : "Onboarding handoff", note: isCn ? "7 个客户等待交付" : "7 accounts waiting on launch", accent: "#14b8a6" },
+              { title: isCn ? "成功团队联动" : "CSM coordination", note: isCn ? "续约与增购共用同一条轨道" : "Renewal and upsell share one rail", accent: "#2563eb" },
+            ]
+          : [
+              { title: isCn ? "团队目标完成度" : "Quarter target", note: isCn ? "72% 已达成" : "72% completed", accent: "#2563eb" },
+              { title: isCn ? "续约提醒" : "Renewal watchlist", note: isCn ? "3 个账户本周到期" : "3 accounts renewing this week", accent: "#f59e0b" },
+              { title: isCn ? "报价审批" : "Quote approvals", note: isCn ? "2 份报价等待负责人确认" : "2 approvals waiting on lead review", accent: "#14b8a6" },
+            ],
+      progressLabel: teamHeavy ? (isCn ? "团队目标" : "Team target") : renewalHeavy ? (isCn ? "续约推进" : "Renewal progress") : (isCn ? "本季度目标" : "Quarter target"),
+      progressValue: renewalHeavy ? 68 : approvalsHeavy ? 64 : 72,
+      progressBreakdown: renewalHeavy
+        ? (isCn ? ["续约 34%", "交付 21%", "增购 13%", "风险 32%"] : ["Renewals 34%", "Onboarding 21%", "Expansion 13%", "Risk 32%"])
+        : approvalsHeavy
+          ? (isCn ? ["报价 28%", "审批 19%", "订单 17%", "缺口 36%"] : ["Quotes 28%", "Approvals 19%", "Orders 17%", "Gap 36%"])
+          : (isCn ? ["已签 52%", "推进中 20%", "缺口 28%"] : ["Closed 52%", "In review 20%", "Gap 28%"]),
+      spotlightTitle: isCn ? "核心对象" : "Core objects",
+      spotlightItems: relatedEntityLabels.length
+        ? relatedEntityLabels
+        : [isCn ? "线索" : "Lead", isCn ? "客户" : "Account", isCn ? "商机" : "Opportunity", isCn ? "订单" : "Order"],
+    }
+  }
+
+  if (archetype === "api_platform") {
+    const docsHeavy = /docs|documentation|sdk|developer onboarding|文档|sdk|开发者/.test(promptText)
+    const usageHeavy = /usage|metering|billing|rate limit|quota|用量|计费|额度/.test(promptText)
+    const webhookHeavy = /webhook|webhooks|callback|callbacks|事件|回调/.test(promptText)
+    return {
+      heroStats: docsHeavy
+        ? [
+            { label: isCn ? "文档阅读" : "Docs sessions", value: "1.9K", note: isCn ? "开发者 onboarding 流量" : "Developer onboarding traffic", tone: "#7c3aed" },
+            { label: isCn ? "SDK 下载" : "SDK downloads", value: "324", note: isCn ? "最近 7 天" : "Across the last 7 days", tone: "#06b6d4" },
+            { label: isCn ? "示例调用" : "Sample executions", value: "8.7K", note: isCn ? "沙盒示例运行" : "Sandbox sample runs", tone: "#14b8a6" },
+            { label: isCn ? "激活密钥" : "Activated keys", value: "114", note: isCn ? "通过 docs 转化" : "Activated from docs", tone: "#3b82f6" },
+          ]
+        : usageHeavy
+          ? [
+              { label: isCn ? "计量请求" : "Metered requests", value: "8.4M", note: isCn ? "近 24 小时流量" : "Across the last 24 hours", tone: "#06b6d4" },
+              { label: isCn ? "计费账户" : "Billable accounts", value: "218", note: isCn ? "活跃付费团队" : "Active paid teams", tone: "#14b8a6" },
+              { label: isCn ? "额度预警" : "Quota alerts", value: "17", note: isCn ? "接近速率上限" : "Near rate limits", tone: "#f59e0b" },
+              { label: isCn ? "P95 延迟" : "P95 latency", value: "182ms", note: isCn ? "核心端点聚合" : "Across critical endpoints", tone: "#3b82f6" },
+            ]
+          : [
+              { label: isCn ? "每日请求" : "Daily requests", value: "8.4M", note: isCn ? "近 24 小时流量" : "Across the last 24 hours", tone: "#06b6d4" },
+              { label: isCn ? "P95 延迟" : "P95 latency", value: "182ms", note: isCn ? "核心端点聚合" : "Across critical endpoints", tone: "#3b82f6" },
+              { label: isCn ? "Webhook 送达" : "Webhook delivery", value: "99.2%", note: isCn ? "最近 12 小时" : "Across the last 12 hours", tone: "#14b8a6" },
+              { label: isCn ? "文档阅读" : "Docs sessions", value: "1.2K", note: isCn ? "开发者 onboarding" : "Developer onboarding traffic", tone: "#7c3aed" },
+            ],
+      laneTitle: docsHeavy ? (isCn ? "开发者上手流" : "Developer onboarding flow") : webhookHeavy ? (isCn ? "事件投递流" : "Webhook delivery rails") : isCn ? "平台流量分布" : "Platform request mix",
+      laneItems: docsHeavy
+        ? [
+            { label: isCn ? "文档入口" : "Docs entry", value: "42%", progress: 42, note: isCn ? "从官网和 SDK 跳入" : "Site and SDK inbound" },
+            { label: isCn ? "示例执行" : "Sample runs", value: "8.7K", progress: 76, note: isCn ? "文档示例成功执行" : "Docs examples executed" },
+            { label: isCn ? "密钥申请" : "Key issuance", value: "114", progress: 64, note: isCn ? "新开发者获取密钥" : "New developer keys issued" },
+            { label: isCn ? "沙盒转正式" : "Sandbox -> prod", value: "38", progress: 31, note: isCn ? "完成生产切换" : "Promoted to production" },
+          ]
+        : webhookHeavy
+          ? [
+              { label: isCn ? "回调接收" : "Callback intake", value: "3.4M", progress: 88, note: isCn ? "事件进入网关" : "Events entering gateway" },
+              { label: isCn ? "重试队列" : "Retry queue", value: "1.8K", progress: 27, note: isCn ? "等待恢复投递" : "Awaiting redelivery" },
+              { label: isCn ? "签名校验" : "Signature checks", value: "99.7%", progress: 83, note: isCn ? "回调签名通过率" : "Webhook signature pass rate" },
+              { label: isCn ? "端点回放" : "Replay rail", value: "214", progress: 46, note: isCn ? "最近回放事件" : "Recent event replays" },
+            ]
+          : [
+              { label: isCn ? "认证" : "Auth", value: "2.1M", progress: 78, note: isCn ? "OAuth 与令牌流" : "OAuth and token flows" },
+              { label: isCn ? "事件" : "Events", value: "3.4M", progress: 88, note: isCn ? "Webhook 与回调" : "Webhooks and callbacks" },
+              { label: isCn ? "计费" : "Billing", value: "1.5M", progress: 46, note: isCn ? "Usage 与计费同步" : "Usage and billing sync" },
+              { label: isCn ? "管理" : "Admin", value: "1.4M", progress: 39, note: isCn ? "控制平面请求" : "Control-plane traffic" },
+            ],
+      rightTitle: docsHeavy ? (isCn ? "文档与 SDK" : "Docs and SDK") : usageHeavy ? (isCn ? "用量与计费" : "Usage and billing") : (isCn ? "发布与环境" : "Release rails"),
+      rightItems: docsHeavy
+        ? [
+            { title: isCn ? "SDK 套件" : "SDK kits", note: isCn ? "JS / Python / Go 套件已准备" : "JS / Python / Go kits are ready", accent: "#06b6d4" },
+            { title: isCn ? "示例工程" : "Sample apps", note: isCn ? "Docs / SDK / examples 已接通" : "Docs / SDK / samples are wired", accent: "#14b8a6" },
+            { title: isCn ? "开发者激活" : "Developer activation", note: isCn ? "从文档流转为正式密钥" : "Docs traffic is converting to live keys", accent: "#2563eb" },
+          ]
+        : usageHeavy
+          ? [
+              { title: isCn ? "计费可见性" : "Billing visibility", note: isCn ? "usage / quota / invoices 已串联" : "Usage / quota / invoices are linked", accent: "#06b6d4" },
+              { title: isCn ? "额度治理" : "Quota governance", note: isCn ? "4 个团队接近上限" : "4 teams nearing limits", accent: "#f59e0b" },
+              { title: isCn ? "环境提升" : "Environment promotion", note: isCn ? "staging -> production 等待批准" : "staging -> production waiting on approval", accent: "#14b8a6" },
+            ]
+          : [
+              { title: isCn ? "环境提升" : "Environment promotion", note: isCn ? "staging -> production 等待批准" : "staging -> production waiting on approval", accent: "#06b6d4" },
+              { title: isCn ? "API 密钥治理" : "Key governance", note: isCn ? "4 个团队正在轮换访问密钥" : "4 teams rotating access keys", accent: "#2563eb" },
+              { title: isCn ? "开发者上手" : "Developer onboarding", note: isCn ? "Docs / SDK / samples 已接通" : "Docs / SDK / samples are wired", accent: "#14b8a6" },
+            ],
+      progressLabel: usageHeavy ? (isCn ? "计费健康度" : "Billing health") : isCn ? "生产稳定性" : "Production health",
+      progressValue: usageHeavy ? 86 : 91,
+      progressBreakdown: usageHeavy
+        ? (isCn ? ["计费 41%", "额度 22%", "稳定 23%", "事件 14%"] : ["Billing 41%", "Quota 22%", "Healthy 23%", "Incidents 14%"])
+        : (isCn ? ["稳定 91%", "观察 6%", "事件 3%"] : ["Healthy 91%", "Observe 6%", "Incidents 3%"]),
+      spotlightTitle: isCn ? "已接入对象" : "Platform objects",
+      spotlightItems: relatedEntityLabels.length
+        ? relatedEntityLabels
+        : [isCn ? "端点" : "Endpoint", isCn ? "日志" : "Log stream", isCn ? "密钥" : "API key", isCn ? "文档" : "Developer doc"],
+    }
+  }
+
+  if (archetype === "community") {
+    const eventsHeavy = /event|events|meetup|webinar|registration|invite|活动|报名|邀请/.test(promptText)
+    const moderationHeavy = /moderation|moderate|safety|governance|审核|治理|风控/.test(promptText)
+    return {
+      heroStats: eventsHeavy
+        ? [
+            { label: isCn ? "活动报名" : "Event signups", value: "624", note: isCn ? "本月活动注册" : "This month’s registrations", tone: "#2563eb" },
+            { label: isCn ? "出席率" : "Attendance rate", value: "71%", note: isCn ? "最近 4 场活动" : "Across the last 4 events", tone: "#14b8a6" },
+            { label: isCn ? "邀请接受" : "Invite accepts", value: "214", note: isCn ? "大使与会员邀请" : "Ambassador and member invites", tone: "#7c3aed" },
+            { label: isCn ? "会后反馈" : "Post-event feedback", value: "86", note: isCn ? "活动结束后收集" : "Collected after events", tone: "#f59e0b" },
+          ]
+        : [
+            { label: isCn ? "活跃成员" : "Active members", value: "4.8K", note: isCn ? "最近 30 天" : "Across the last 30 days", tone: "#7c3aed" },
+            { label: isCn ? "活动报名" : "Event signups", value: "624", note: isCn ? "本月活动注册" : "This month’s registrations", tone: "#2563eb" },
+            { label: isCn ? "反馈队列" : "Feedback queue", value: "38", note: isCn ? "待分发与归档" : "Waiting to triage", tone: "#14b8a6" },
+            { label: isCn ? "路线图票数" : "Roadmap votes", value: "1.9K", note: isCn ? "本周累计" : "Captured this week", tone: "#f59e0b" },
+          ],
+      laneTitle: moderationHeavy ? (isCn ? "治理与审核" : "Moderation and governance") : isCn ? "社区节奏" : "Community rhythm",
+      laneItems: moderationHeavy
+        ? [
+            { label: isCn ? "审核队列" : "Moderation queue", value: "9", progress: 28, note: isCn ? "待人工审核" : "Awaiting moderator review" },
+            { label: isCn ? "成员申诉" : "Appeals", value: "4", progress: 17, note: isCn ? "待治理处理" : "Waiting on governance review" },
+            { label: isCn ? "路线图票数" : "Roadmap votes", value: "1.9K", progress: 63, note: isCn ? "治理后同步 roadmap" : "Votes syncing after moderation" },
+            { label: isCn ? "反馈分流" : "Feedback triage", value: "38", progress: 54, note: isCn ? "待分级处理" : "Needs triage" },
+          ]
+        : [
+            { label: isCn ? "活动" : "Events", value: "3", progress: 62, note: isCn ? "本周活动排期" : "Scheduled this week" },
+            { label: isCn ? "反馈" : "Feedback", value: "38", progress: 54, note: isCn ? "待分级处理" : "Needs triage" },
+            { label: isCn ? "成员" : "Members", value: "124", progress: 71, note: isCn ? "待分群与触达" : "Pending segmentation" },
+            { label: isCn ? "审核" : "Moderation", value: "9", progress: 28, note: isCn ? "待人工审核" : "Awaiting moderator review" },
+          ],
+      rightTitle: eventsHeavy ? (isCn ? "活动运营" : "Event operations") : isCn ? "运营信号" : "Community signals",
+      rightItems: [
+        { title: isCn ? "Roadmap 投票" : "Roadmap momentum", note: isCn ? "3 个主题快速升温" : "3 themes gaining momentum", accent: "#7c3aed" },
+        { title: isCn ? "成员分层" : "Member segments", note: isCn ? "新成员 / 核心贡献者 / 大使已分层" : "New / core / ambassador segments ready", accent: "#2563eb" },
+        { title: isCn ? "活动运营" : "Event operations", note: isCn ? "直播与 meetup 共用同一条运营轨道" : "Webinars and meetups share one rail", accent: "#14b8a6" },
+      ],
+      progressLabel: isCn ? "社区健康度" : "Community health",
+      progressValue: 78,
+      progressBreakdown: isCn ? ["互动 48%", "活动 30%", "待处理 22%"] : ["Engagement 48%", "Events 30%", "Pending 22%"],
+      spotlightTitle: isCn ? "社区对象" : "Community objects",
+      spotlightItems: relatedEntityLabels.length
+        ? relatedEntityLabels
+        : [isCn ? "活动" : "Event", isCn ? "成员" : "Member", isCn ? "反馈" : "Feedback", isCn ? "路线图" : "Roadmap item"],
+    }
+  }
+
+  if (archetype === "marketing_admin") {
+    const devicesHeavy = /device|devices|desktop|mobile|ios|android|mac|windows|设备|桌面|移动|安卓|苹果/.test(promptText)
+    const docsHeavy = /docs|documentation|install guide|changelog|release note|文档|安装|更新日志|发布说明/.test(promptText)
+    return {
+      heroStats: docsHeavy
+        ? [
+            { label: isCn ? "文档会话" : "Docs sessions", value: "9.8K", note: isCn ? "安装与变更日志入口" : "Install and changelog traffic", tone: "#2563eb" },
+            { label: isCn ? "下载转化" : "Docs-to-download", value: "12.4%", note: isCn ? "文档承接下载流" : "Docs converting to downloads", tone: "#14b8a6" },
+            { label: isCn ? "更新日志阅读" : "Changelog reads", value: "3.4K", note: isCn ? "最近版本波峰" : "Latest release spike", tone: "#111827" },
+            { label: isCn ? "版本分发" : "Release lanes", value: "5", note: isCn ? "官网 / 商店 / 企业" : "Site / stores / enterprise", tone: "#f59e0b" },
+          ]
+        : [
+            { label: isCn ? "下载量" : "Downloads", value: "18.2K", note: isCn ? "近 30 天" : "Across the last 30 days", tone: "#111827" },
+            { label: isCn ? "转化率" : "Conversion rate", value: "6.8%", note: isCn ? "官网到下载" : "Site to download", tone: "#2563eb" },
+            { label: isCn ? "活跃构建" : "Active builds", value: "9", note: isCn ? "桌面与移动分发" : "Desktop and mobile releases", tone: "#14b8a6" },
+            { label: isCn ? "分发通道" : "Distribution lanes", value: "5", note: isCn ? "商店 / 官网 / 企业分发" : "Stores / site / enterprise", tone: "#f59e0b" },
+          ],
+      laneTitle: devicesHeavy ? (isCn ? "设备分发进度" : "Device rollout") : docsHeavy ? (isCn ? "文档转化路径" : "Docs conversion path") : (isCn ? "设备分发进度" : "Device rollout"),
+      laneItems: [
+        { label: isCn ? "macOS" : "macOS", value: "v1.8.2", progress: 82, note: isCn ? "官网与商店已同步" : "Site and store synced" },
+        { label: isCn ? "Windows" : "Windows", value: "v1.8.2", progress: 88, note: isCn ? "分发通道稳定" : "Distribution lane stable" },
+        { label: isCn ? "iOS" : "iOS", value: "v1.7.9", progress: 51, note: isCn ? "等待审核" : "Waiting on review" },
+        { label: isCn ? "Android" : "Android", value: "v1.8.2", progress: 74, note: isCn ? "APK 与商店并行" : "APK and store rollout" },
+      ],
+      rightTitle: docsHeavy ? (isCn ? "内容与文档" : "Content and docs") : (isCn ? "内容与发布" : "Story and release"),
+      rightItems: docsHeavy
+        ? [
+            { title: isCn ? "安装文档" : "Install docs", note: isCn ? "系统要求和安装指引已承接下载流" : "Requirements and install guides catch download flow", accent: "#2563eb" },
+            { title: isCn ? "发布说明" : "Release notes", note: isCn ? "最近三次迭代已同步到 changelog" : "Latest 3 iterations landed in changelog", accent: "#111827" },
+            { title: isCn ? "后台分发" : "Admin distribution", note: isCn ? "后台控制台可以灰度与渠道切换" : "Admin rail manages staged rollouts", accent: "#14b8a6" },
+          ]
+        : [
+            { title: isCn ? "发布说明" : "Release notes", note: isCn ? "最近三次迭代已同步到 changelog" : "Latest 3 iterations landed in changelog", accent: "#111827" },
+            { title: isCn ? "Docs 转化" : "Docs conversion", note: isCn ? "安装文档正在承接下载流量" : "Install docs are converting download traffic", accent: "#2563eb" },
+            { title: isCn ? "后台分发" : "Admin distribution", note: isCn ? "后台控制台可以灰度与渠道切换" : "Admin rail manages staged rollouts", accent: "#14b8a6" },
+          ],
+      progressLabel: isCn ? "版本发布完成度" : "Release completion",
+      progressValue: 84,
+      progressBreakdown: isCn ? ["官网 38%", "商店 28%", "后台 18%", "待审 16%"] : ["Website 38%", "Stores 28%", "Admin 18%", "Review 16%"],
+      spotlightTitle: isCn ? "分发对象" : "Distribution objects",
+      spotlightItems: relatedEntityLabels.length
+        ? relatedEntityLabels
+        : [isCn ? "下载资产" : "Download asset", isCn ? "设备构建" : "Device build", isCn ? "版本说明" : "Release note", isCn ? "渠道" : "Distribution lane"],
+    }
+  }
+
+  if (isAdminOpsTaskSpec(spec)) {
+    return {
+      heroStats: [
+        { label: isCn ? "待批队列" : "Approval queue", value: "17", note: isCn ? "等待签批" : "Waiting on approval", tone: "#7c3aed" },
+        { label: isCn ? "策略变更" : "Policy changes", value: "5", note: isCn ? "过去 24 小时" : "Across the last 24 hours", tone: "#2563eb" },
+        { label: isCn ? "告警事件" : "Open incidents", value: "2", note: isCn ? "高优先级事件" : "High-priority incidents", tone: "#ef4444" },
+        { label: isCn ? "审计覆盖" : "Audit coverage", value: "96%", note: isCn ? "关键动作已留痕" : "Critical actions are tracked", tone: "#14b8a6" },
+      ],
+      laneTitle: isCn ? "控制平面队列" : "Control-plane queues",
+      laneItems: [
+        { label: isCn ? "审批" : "Approvals", value: "9", progress: 64, note: isCn ? "待主管签批" : "Needs approver review" },
+        { label: isCn ? "权限" : "Access", value: "5", progress: 42, note: isCn ? "待策略确认" : "Policy changes in review" },
+        { label: isCn ? "审计" : "Audit", value: "13", progress: 81, note: isCn ? "可导出留痕" : "Exportable trail ready" },
+        { label: isCn ? "事件" : "Incidents", value: "2", progress: 24, note: isCn ? "待恢复验证" : "Recovery still in progress" },
+      ],
+      rightTitle: isCn ? "运维信号" : "Ops signals",
+      rightItems: [
+        { title: isCn ? "席位与团队" : "Team and seats", note: isCn ? "两组团队等待容量调整" : "Two teams need seat updates", accent: "#7c3aed" },
+        { title: isCn ? "自动化规则" : "Automation rules", note: isCn ? "审批和审计已接到同一条规则轨道" : "Approval and audit share one rule rail", accent: "#2563eb" },
+        { title: isCn ? "事件恢复" : "Recovery rail", note: isCn ? "已锁定事件负责人和恢复动作" : "Incident owner and recovery steps are locked", accent: "#14b8a6" },
+      ],
+      progressLabel: isCn ? "治理就绪度" : "Governance readiness",
+      progressValue: 79,
+      progressBreakdown: isCn ? ["审批 31%", "权限 26%", "审计 22%", "事件 21%"] : ["Approvals 31%", "Access 26%", "Audit 22%", "Incidents 21%"],
+      spotlightTitle: isCn ? "治理对象" : "Governance objects",
+      spotlightItems: relatedEntityLabels.length
+        ? relatedEntityLabels
+        : [isCn ? "审批请求" : "Approval request", isCn ? "访问策略" : "Access policy", isCn ? "审计事件" : "Audit event", isCn ? "事故" : "Incident"],
+    }
+  }
+
+  return {
+    heroStats: [
+      { label: current.metricLabel, value: current.metricValue, note: current.summary, tone: "#7c3aed" },
+      { label: current.insightLabel, value: current.insightValue, note: relatedModules[0]?.summary || current.subheadline, tone: "#2563eb" },
+      { label: isCn ? "模块数量" : "Linked modules", value: String(relatedModules.length || current.focusAreas.length), note: relatedModuleLabels.slice(0, 2).join(" / "), tone: "#14b8a6" },
+      { label: isCn ? "实体数量" : "Entities", value: String(relatedEntities.length || workflowSteps.length || 1), note: relatedEntityLabels.slice(0, 2).join(" / "), tone: "#f59e0b" },
+    ],
+    laneTitle: isCn ? "当前工作流" : "Current workflow",
+    laneItems: (workflowSteps.length ? workflowSteps : current.focusAreas).slice(0, 4).map((item, index) => ({
+      label: item,
+      value: `${index + 1}`,
+      progress: 25 + index * 18,
+      note: current.label,
+    })),
+    rightTitle: isCn ? "关联模块" : "Linked modules",
+    rightItems: (relatedModules.length
+      ? relatedModules
+      : current.focusAreas.map((item) => ({ label: item, summary: current.summary }))).slice(0, 3).map((item, index) => ({
+      title: item.label,
+      note: item.summary,
+      accent: ["#7c3aed", "#2563eb", "#14b8a6"][index] ?? "#7c3aed",
+    })),
+    progressLabel: isCn ? "当前页进度" : "Current route progress",
+    progressValue: 68,
+    progressBreakdown: current.focusAreas.slice(0, 3),
+    spotlightTitle: isCn ? "关键对象" : "Key objects",
+    spotlightItems: relatedEntityLabels.length ? relatedEntityLabels : current.focusAreas,
+  }
+}
+
 function renderArchetypeWorkspaceHome(spec: AppSpec) {
+  const dashboardConsole = renderArchetypeConsolePage(spec, "dashboard")
+  if (dashboardConsole) {
+    return dashboardConsole
+  }
   const pages = getArchetypePageDefinitions(spec)
   if (!pages.length) return null
   const isCn = spec.region === "cn"
-  const brand = spec.title
+  const brand = spec.appIdentity?.displayName ?? spec.title
   const archetype = getScaffoldArchetype(spec)
+  const identity = spec.appIdentity
+  const intent = spec.appIntent
+  const icon = spec.visualSeed?.icon ?? identity?.icon ?? getArchetypeIconSeed(archetype, spec.title)
+  const visualTone = spec.visualSeed?.tone ?? getArchetypeCategoryLabel(archetype, spec.region)
+  const workflowSteps = getWorkflowSteps(spec)
+  const routeCards = getPreviewRouteBlueprints(spec)
+  const entityCards = getPreviewEntityBlueprints(spec)
   const accent =
     archetype === "crm" ? "#2563eb" : archetype === "api_platform" ? "#06b6d4" : archetype === "marketing_admin" ? "#111827" : "#7c3aed"
 
@@ -1760,23 +6546,46 @@ function renderArchetypeWorkspaceHome(spec: AppSpec) {
 export default function Page() {
   const isCn = ${isCn ? "true" : "false"};
   const pages = ${JSON.stringify(pages, null, 2)} as const;
+  const routeCards = ${JSON.stringify(routeCards, null, 2)} as const;
+  const entityCards = ${JSON.stringify(entityCards, null, 2)} as const;
+  const workflowSteps = ${JSON.stringify(workflowSteps, null, 2)} as const;
   const brand = ${JSON.stringify(brand)};
   const accent = ${JSON.stringify(accent)};
+  const icon = ${JSON.stringify(icon, null, 2)} as const;
+  const shortDescription = ${JSON.stringify(identity?.shortDescription ?? "")};
+  const primaryWorkflow = ${JSON.stringify(intent?.primaryWorkflow ?? "")};
+  const visualTone = ${JSON.stringify(visualTone)};
+  const targetAudience = ${JSON.stringify(intent?.targetAudience?.slice(0, 3) ?? [], null, 2)} as const;
   return (
     <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: "linear-gradient(180deg,#f7f8fc 0%,#ffffff 54%,#eef4ff 100%)", color: "#0f172a" }}>
       <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 18 }}>
         <section style={{ borderRadius: 28, padding: 26, background: "linear-gradient(135deg, rgba(37,99,235,0.08), rgba(255,255,255,0.96))", border: "1px solid rgba(148,163,184,0.18)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-            <div>
+            <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 56, height: 56, borderRadius: 18, background: \`linear-gradient(135deg,\${icon.from},\${icon.to})\`, boxShadow: \`0 18px 40px \${icon.ring}\`, display: "grid", placeItems: "center", color: "#fff", fontWeight: 900, fontSize: 20 }}>
+                  {icon.glyph}
+                </div>
+                <div>
+                  <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(15,23,42,0.06)", color: accent, fontSize: 12, fontWeight: 800 }}>
+                    {visualTone}
+                  </div>
+                  <h1 style={{ margin: "10px 0 0", fontSize: 36, fontWeight: 900 }}>{brand}</h1>
+                </div>
+              </div>
               <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(15,23,42,0.06)", color: accent, fontSize: 12, fontWeight: 800 }}>
                 {isCn ? "应用工作区骨架" : "Application workspace scaffold"}
               </div>
-              <h1 style={{ margin: "14px 0 8px", fontSize: 36, fontWeight: 900 }}>{brand}</h1>
               <p style={{ margin: 0, maxWidth: 860, color: "#475569", lineHeight: 1.8 }}>
-                {isCn
+                {shortDescription || (isCn
                   ? "这一版不再只输出页面，而是把首页、控制台、模块页和运营路径组织成一个可继续扩展的应用工作区。"
-                  : "This version moves beyond page generation and organizes the result as an extensible application workspace with modules and control surfaces."}
+                  : "This version moves beyond page generation and organizes the result as an extensible application workspace with modules and control surfaces.")}
               </p>
+              {primaryWorkflow ? (
+                <div style={{ display: "inline-flex", borderRadius: 14, padding: "10px 12px", background: "#ffffff", border: "1px solid rgba(148,163,184,0.18)", color: "#334155", fontSize: 13 }}>
+                  {(isCn ? "主流程：" : "Primary workflow: ") + primaryWorkflow}
+                </div>
+              ) : null}
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {pages.slice(0, 4).map((item) => (
@@ -1801,36 +6610,59 @@ export default function Page() {
 
         <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
           <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "模块导航" : "Module navigation"}</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "路由蓝图" : "Route blueprint"}</div>
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-              {pages.map((page, index) => (
-                <Link key={page.route} href={page.route === "dashboard" ? "/dashboard" : "/" + page.route} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: index === 0 ? "rgba(37,99,235,0.08)" : "#f8fafc", color: "#0f172a", border: "1px solid rgba(148,163,184,0.14)" }}>
+              {(routeCards.length ? routeCards : pages.map((page) => ({
+                label: page.label,
+                path: page.route === "dashboard" ? "/dashboard" : \`/\${page.route}\`,
+                purpose: page.summary,
+                actions: page.focusAreas.slice(0, 3),
+              }))).map((page, index) => (
+                <Link key={page.path} href={page.path} style={{ textDecoration: "none", borderRadius: 16, padding: "14px 16px", background: index === 0 ? "rgba(37,99,235,0.08)" : "#f8fafc", color: "#0f172a", border: "1px solid rgba(148,163,184,0.14)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                    <div style={{ fontWeight: 800 }}>{page.headline}</div>
-                    <div style={{ borderRadius: 999, padding: "4px 8px", background: "#ffffff", color: accent, fontSize: 11, fontWeight: 800 }}>{page.label}</div>
+                    <div style={{ fontWeight: 800 }}>{page.label}</div>
+                    <div style={{ borderRadius: 999, padding: "4px 8px", background: "#ffffff", color: accent, fontSize: 11, fontWeight: 800 }}>{page.path}</div>
                   </div>
-                  <div style={{ marginTop: 8, color: "#64748b", fontSize: 13, lineHeight: 1.7 }}>{page.subheadline}</div>
+                  <div style={{ marginTop: 8, color: "#64748b", fontSize: 13, lineHeight: 1.7 }}>{page.purpose}</div>
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {page.actions.map((item) => (
+                      <div key={item} style={{ borderRadius: 999, background: "#ffffff", border: "1px solid rgba(148,163,184,0.14)", padding: "4px 8px", fontSize: 12, color: "#475569" }}>
+                        {item}
+                      </div>
+                    ))}
+                  </div>
                 </Link>
               ))}
             </div>
           </div>
           <div style={{ display: "grid", gap: 16 }}>
             <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "为什么这更像应用" : "Why this feels like an app"}</div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "核心实体" : "Core entities"}</div>
               <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                {(isCn
-                  ? ["不再只靠首页承接全部信息", "每个 archetype 都有自己的一组模块页", "控制台、运营页、文档页和后台配置开始分层"]
-                  : ["The home page no longer carries everything", "Each archetype gets its own module set", "Console, ops, docs, and admin layers now diverge"]).map((item) => (
-                  <div key={item} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "#cbd5e1", fontSize: 13 }}>
-                    {item}
+                {(entityCards.length ? entityCards : [{
+                  label: isCn ? "应用实体" : "App entity",
+                  summary: isCn ? "当前 archetype 的关键数据结构会在这里呈现。" : "Core data structures for the current archetype show up here.",
+                  fields: targetAudience,
+                  workflows: workflowSteps,
+                }]).map((item) => (
+                  <div key={item.label} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "12px 12px", color: "#cbd5e1", fontSize: 13 }}>
+                    <div style={{ fontWeight: 800, color: "#f8fafc" }}>{item.label}</div>
+                    <div style={{ marginTop: 6, color: "#cbd5e1", lineHeight: 1.7 }}>{item.summary}</div>
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {item.fields.map((field) => (
+                        <div key={field} style={{ borderRadius: 999, background: "rgba(255,255,255,0.08)", padding: "4px 8px" }}>
+                          {field}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
             <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "当前重点" : "Current focus"}</div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "主工作流" : "Primary workflow"}</div>
               <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                {pages[0].focusAreas.map((item) => (
+                {(workflowSteps.length ? workflowSteps : pages[0].focusAreas).map((item) => (
                   <div key={item} style={{ borderRadius: 12, background: "#f8fafc", padding: "10px 12px", color: "#334155", fontSize: 13 }}>
                     {item}
                   </div>
@@ -1851,8 +6683,20 @@ function renderArchetypeConsolePage(spec: AppSpec, route: string) {
   const current = pages.find((page) => page.route === route)
   if (!current) return null
   const isCn = spec.region === "cn"
-  const brand = spec.title
+  const brand = spec.appIdentity?.displayName ?? spec.title
   const archetype = getScaffoldArchetype(spec)
+  const routeBlueprint =
+    spec.routeBlueprint?.find((item) => item.path === `/${route}` || item.id === toBlueprintId(route)) ?? null
+  const relatedModules = (spec.moduleBlueprint ?? [])
+    .filter((item) => routeBlueprint?.moduleIds.includes(item.id))
+    .slice(0, 4)
+    .map((item) => ({ label: item.label, summary: item.summary }))
+  const relatedEntities = (spec.entityBlueprint ?? [])
+    .filter((item) => routeBlueprint?.entityIds.includes(item.id))
+    .slice(0, 4)
+    .map((item) => ({ label: item.label, workflows: item.workflows.slice(0, 3) }))
+  const workflowSteps = getWorkflowSteps(spec)
+  const dashboardWidgets = buildArchetypeConsoleWidgets(spec, current, relatedModules, relatedEntities, workflowSteps)
   const accent =
     archetype === "crm" ? "#2563eb" : archetype === "api_platform" ? "#06b6d4" : archetype === "marketing_admin" ? "#111827" : "#7c3aed"
   const panelBackground = archetype === "api_platform" ? "#081120" : "#ffffff"
@@ -1860,6 +6704,7 @@ function renderArchetypeConsolePage(spec: AppSpec, route: string) {
   const mutedText = archetype === "api_platform" ? "#94a3b8" : "#64748b"
   const surface = archetype === "api_platform" ? "rgba(15,23,42,0.78)" : "#f8fafc"
   const border = archetype === "api_platform" ? "1px solid rgba(148,163,184,0.12)" : "1px solid rgba(148,163,184,0.16)"
+  const isAdminOps = isAdminOpsTaskSpec(spec)
 
   return `// @ts-nocheck
 import Link from "next/link";
@@ -1869,12 +6714,428 @@ export default function GeneratedConsolePage() {
   const brand = ${JSON.stringify(brand)};
   const pages = ${JSON.stringify(pages, null, 2)} as const;
   const current = ${JSON.stringify(current, null, 2)} as const;
+  const routeBlueprint = ${JSON.stringify(routeBlueprint, null, 2)} as const;
+  const relatedModules = ${JSON.stringify(relatedModules, null, 2)} as const;
+  const relatedEntities = ${JSON.stringify(relatedEntities, null, 2)} as const;
+  const workflowSteps = ${JSON.stringify(workflowSteps, null, 2)} as const;
+  const dashboardWidgets = ${JSON.stringify(dashboardWidgets, null, 2)} as const;
   const accent = ${JSON.stringify(accent)};
   const panelBackground = ${JSON.stringify(panelBackground)};
   const panelText = ${JSON.stringify(panelText)};
   const mutedText = ${JSON.stringify(mutedText)};
   const surface = ${JSON.stringify(surface)};
   const border = ${JSON.stringify(border)};
+  const isDashboard = current.route === "dashboard";
+  const archetype = ${JSON.stringify(archetype)};
+  const isAdminOps = ${isAdminOps ? "true" : "false"};
+
+  const renderProgressRail = (value, tone = accent) => (
+    <div style={{ marginTop: 12, height: 10, borderRadius: 999, background: ${JSON.stringify(archetype === "api_platform" ? "rgba(255,255,255,0.08)" : "#e2e8f0")}, overflow: "hidden" }}>
+      <div style={{ width: \`\${value}%\`, height: "100%", borderRadius: 999, background: \`linear-gradient(90deg,\${tone}, rgba(255,255,255,0.75))\` }} />
+    </div>
+  );
+
+  const renderDashboardShell = () => {
+    if (archetype === "crm") {
+      return (
+        <section style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 16 }}>
+          <div style={{ borderRadius: 26, background: "linear-gradient(180deg,#0f172a 0%,#111827 100%)", color: "#e2e8f0", padding: 20, border: "1px solid rgba(148,163,184,0.18)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 16, background: "linear-gradient(135deg,#2563eb,#14b8a6)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 900 }}>
+                {brand.charAt(0)}
+              </div>
+              <div>
+                <div style={{ fontWeight: 900 }}>{brand}</div>
+                <div style={{ marginTop: 2, color: "rgba(226,232,240,0.62)", fontSize: 12 }}>{isCn ? "销售工作台" : "Revenue workspace"}</div>
+              </div>
+            </div>
+            <div style={{ marginTop: 18, display: "grid", gap: 10 }}>
+              {pages.slice(0, 8).map((item) => (
+                <Link key={item.route} href={item.route === "dashboard" ? "/dashboard" : "/" + item.route} style={{ textDecoration: "none", borderRadius: 16, padding: "12px 14px", background: item.route === current.route ? "rgba(37,99,235,0.24)" : "rgba(255,255,255,0.04)", color: "#f8fafc", fontWeight: 700 }}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+            <div style={{ marginTop: 18, borderRadius: 18, background: "rgba(255,255,255,0.05)", padding: 14 }}>
+              <div style={{ fontSize: 12, color: "rgba(226,232,240,0.62)" }}>{isCn ? "季度目标完成度" : "Quarter target"}</div>
+              <div style={{ marginTop: 8, fontSize: 28, fontWeight: 900 }}>{dashboardWidgets.progressValue}%</div>
+              {renderProgressRail(dashboardWidgets.progressValue, "#60a5fa")}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <section style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 14 }}>
+              {dashboardWidgets.heroStats.map((item) => (
+                <div key={item.label} style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                  <div style={{ width: 50, height: 50, borderRadius: 18, background: "rgba(37,99,235,0.08)", display: "grid", placeItems: "center", color: item.tone, fontSize: 24, fontWeight: 900 }}>
+                    {item.label.charAt(0)}
+                  </div>
+                  <div style={{ marginTop: 18, fontSize: 18, color: mutedText }}>{item.label}</div>
+                  <div style={{ marginTop: 6, fontSize: 36, fontWeight: 900, color: "#0f172a" }}>{item.value}</div>
+                  <div style={{ marginTop: 8, fontSize: 13, color: mutedText }}>{item.note}</div>
+                </div>
+              ))}
+            </section>
+            <section style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+                <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
+                  {dashboardWidgets.laneItems.map((item) => (
+                    <div key={item.label}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                        <div style={{ fontWeight: 700 }}>{item.label}</div>
+                        <div style={{ fontWeight: 800, color: accent }}>{item.value}</div>
+                      </div>
+                      {renderProgressRail(item.progress, "#2563eb")}
+                      <div style={{ marginTop: 8, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "Deal distribution" : "Deal distribution"}</div>
+                <div style={{ marginTop: 22, display: "grid", placeItems: "center" }}>
+                  <div style={{ width: 210, height: 210, borderRadius: "50%", background: "conic-gradient(#2563eb 0 28%, #f59e0b 28% 52%, #7c3aed 52% 76%, #14b8a6 76% 100%)", position: "relative" }}>
+                    <div style={{ position: "absolute", inset: 34, borderRadius: "50%", background: "#fff" }} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
+                  {dashboardWidgets.rightItems.map((item) => (
+                    <div key={item.title} style={{ display: "flex", alignItems: "center", gap: 10, color: mutedText, fontSize: 12 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: 999, background: item.accent }} />
+                      <span>{item.title}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      );
+    }
+
+    if (archetype === "api_platform") {
+      return (
+        <section style={{ display: "grid", gap: 16 }}>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+            {dashboardWidgets.heroStats.map((item) => (
+              <div key={item.label} style={{ borderRadius: 22, border, background: panelBackground, padding: 20 }}>
+                <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 8, fontSize: 34, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: mutedText, fontSize: 13 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+                  <div style={{ marginTop: 6, fontSize: 13, color: mutedText }}>{isCn ? "端点、事件、计费和治理流量分布" : "Endpoint, event, billing, and governance traffic"}</div>
+                </div>
+                <div style={{ borderRadius: 999, padding: "8px 12px", background: "rgba(6,182,212,0.16)", color: "#67e8f9", fontSize: 11, fontWeight: 800 }}>
+                  {dashboardWidgets.progressLabel}
+                </div>
+              </div>
+              <div style={{ marginTop: 18, display: "grid", gap: 12 }}>
+                {dashboardWidgets.laneItems.map((item) => (
+                  <div key={item.label} style={{ borderRadius: 16, padding: "14px 16px", background: "rgba(255,255,255,0.03)", border }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{item.label}</div>
+                        <div style={{ marginTop: 4, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                      </div>
+                      <div style={{ fontWeight: 900, color: "#67e8f9" }}>{item.value}</div>
+                    </div>
+                    {renderProgressRail(item.progress, "#06b6d4")}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.rightItems.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 16, padding: "14px 16px", background: "rgba(255,255,255,0.03)", border }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ width: 10, height: 10, borderRadius: 999, background: item.accent }} />
+                      </div>
+                      <div style={{ marginTop: 8, color: mutedText, lineHeight: 1.7, fontSize: 13 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.spotlightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.spotlightItems.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 16, padding: "12px 14px", background: index === 0 ? "rgba(6,182,212,0.16)" : "rgba(255,255,255,0.03)", border, color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      );
+    }
+
+    if (archetype === "community") {
+      return (
+        <section style={{ display: "grid", gap: 16 }}>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+            {dashboardWidgets.heroStats.map((item) => (
+              <div key={item.label} style={{ borderRadius: 22, border, background: panelBackground, padding: 20 }}>
+                <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 8, fontSize: 32, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: mutedText, fontSize: 13 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: "0.95fr 1.05fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {dashboardWidgets.laneItems.map((item) => (
+                  <div key={item.label} style={{ borderRadius: 18, border, background: surface, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontWeight: 800 }}>{item.label}</div>
+                      <div style={{ fontWeight: 900, color: accent }}>{item.value}</div>
+                    </div>
+                    {renderProgressRail(item.progress, "#7c3aed")}
+                    <div style={{ marginTop: 8, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.rightItems.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 18, border, background: surface, padding: "14px 16px" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 8, color: mutedText, fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.spotlightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.spotlightItems.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 16, padding: "12px 14px", background: index === 0 ? "rgba(124,58,237,0.08)" : surface, border, color: panelText, fontSize: 13, fontWeight: 700 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      );
+    }
+
+    if (archetype === "marketing_admin") {
+      return (
+        <section style={{ display: "grid", gap: 16 }}>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+            {dashboardWidgets.heroStats.map((item) => (
+              <div key={item.label} style={{ borderRadius: 22, border, background: panelBackground, padding: 20 }}>
+                <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 8, fontSize: 32, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: mutedText, fontSize: 13 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                {dashboardWidgets.laneItems.map((item) => (
+                  <div key={item.label} style={{ borderRadius: 16, border, background: surface, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{item.label}</div>
+                        <div style={{ marginTop: 4, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                      </div>
+                      <div style={{ fontWeight: 900, color: accent }}>{item.value}</div>
+                    </div>
+                    {renderProgressRail(item.progress, "#111827")}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.rightItems.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 16, border, background: surface, padding: "14px 16px" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 8, color: mutedText, fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.progressLabel}</div>
+                <div style={{ marginTop: 10, fontSize: 30, fontWeight: 900 }}>{dashboardWidgets.progressValue}%</div>
+                {renderProgressRail(dashboardWidgets.progressValue, "#111827")}
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {dashboardWidgets.progressBreakdown.map((item) => (
+                    <div key={item} style={{ borderRadius: 999, border, background: surface, padding: "6px 10px", fontSize: 12, color: panelText }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      );
+    }
+
+    if (isAdminOps) {
+      return (
+        <section style={{ display: "grid", gap: 16 }}>
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+            {dashboardWidgets.heroStats.map((item) => (
+              <div key={item.label} style={{ borderRadius: 22, border, background: panelBackground, padding: 20 }}>
+                <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 8, fontSize: 32, fontWeight: 900, color: item.tone }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: mutedText, fontSize: 13 }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {dashboardWidgets.laneItems.map((item) => (
+                  <div key={item.label} style={{ borderRadius: 16, border, background: surface, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontWeight: 800 }}>{item.label}</div>
+                      <div style={{ fontWeight: 900, color: accent }}>{item.value}</div>
+                    </div>
+                    {renderProgressRail(item.progress, item.label.toLowerCase().includes("incident") || item.label.includes("事件") ? "#ef4444" : "#7c3aed")}
+                    <div style={{ marginTop: 8, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.rightItems.map((item) => (
+                    <div key={item.title} style={{ borderRadius: 16, border, background: surface, padding: "14px 16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ width: 10, height: 10, borderRadius: 999, background: item.accent }} />
+                      </div>
+                      <div style={{ marginTop: 8, color: mutedText, fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.spotlightTitle}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {dashboardWidgets.spotlightItems.map((item, index) => (
+                    <div key={item} style={{ borderRadius: 16, padding: "12px 14px", background: index === 0 ? "rgba(124,58,237,0.08)" : surface, border, color: panelText, fontSize: 13, fontWeight: 700 }}>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </section>
+      );
+    }
+
+    return (
+      <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+        <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.laneTitle}</div>
+              <div style={{ marginTop: 6, color: mutedText, fontSize: 13 }}>{routeBlueprint?.purpose || current.summary}</div>
+            </div>
+            <div style={{ borderRadius: 999, padding: "8px 12px", background: surface, border, color: accent, fontSize: 11, fontWeight: 800 }}>
+              {dashboardWidgets.progressLabel}
+            </div>
+          </div>
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            {dashboardWidgets.laneItems.map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, border, background: surface, padding: "14px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{item.label}</div>
+                    <div style={{ marginTop: 4, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: accent }}>{item.value}</div>
+                  </div>
+                </div>
+                {renderProgressRail(item.progress)}
+              </div>
+            ))}
+          </div>
+          {routeBlueprint?.primaryActions?.length ? (
+            <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {routeBlueprint.primaryActions.map((item) => (
+                <div key={item} style={{ borderRadius: 999, padding: "8px 12px", background: accent, color: "#ffffff", fontSize: 12, fontWeight: 700, boxShadow: "0 14px 28px rgba(15,23,42,0.12)" }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {dashboardWidgets.rightItems.map((item) => (
+                <div key={item.title} style={{ borderRadius: 16, border, background: surface, padding: "14px 15px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div style={{ fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ width: 12, height: 12, borderRadius: 999, background: item.accent }} />
+                  </div>
+                  <div style={{ marginTop: 8, color: mutedText, fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.progressLabel}</div>
+            <div style={{ marginTop: 14, fontSize: 30, fontWeight: 900, color: accent }}>{dashboardWidgets.progressValue}%</div>
+            {renderProgressRail(dashboardWidgets.progressValue)}
+            <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {dashboardWidgets.progressBreakdown.map((item) => (
+                <div key={item} style={{ borderRadius: 999, background: surface, border, padding: "6px 10px", fontSize: 12, color: panelText }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>{dashboardWidgets.spotlightTitle}</div>
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                {dashboardWidgets.spotlightItems.map((item, index) => (
+                  <div key={item} style={{ borderRadius: 14, padding: "10px 12px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText, fontSize: 13, fontWeight: 700 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  };
 
   return (
     <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: ${JSON.stringify(archetype === "api_platform" ? "linear-gradient(180deg,#07111f 0%,#0b1220 100%)" : "linear-gradient(180deg,#f6f8fc 0%,#ffffff 52%,#eef4ff 100%)")}, color: panelText }}>
@@ -1886,7 +7147,7 @@ export default function GeneratedConsolePage() {
                 {brand}
               </div>
               <h1 style={{ margin: "14px 0 8px", fontSize: 34, fontWeight: 900 }}>{current.headline}</h1>
-              <p style={{ margin: 0, maxWidth: 860, color: mutedText, lineHeight: 1.8 }}>{current.subheadline}</p>
+              <p style={{ margin: 0, maxWidth: 860, color: mutedText, lineHeight: 1.8 }}>{routeBlueprint?.purpose || current.subheadline}</p>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {pages.map((item) => (
@@ -1899,62 +7160,78 @@ export default function GeneratedConsolePage() {
         </section>
 
         <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-          {[
-            { label: current.metricLabel, value: current.metricValue, tone: accent },
-            { label: current.insightLabel, value: current.insightValue, tone: accent },
-            { label: isCn ? "页面角色" : "Page role", value: current.label, tone: panelText },
-            { label: isCn ? "模块数量" : "Linked modules", value: String(current.focusAreas.length), tone: panelText },
-          ].map((item) => (
+          {dashboardWidgets.heroStats.map((item) => (
             <div key={item.label} style={{ borderRadius: 20, border, background: panelBackground, padding: 18 }}>
               <div style={{ color: mutedText, fontSize: 12 }}>{item.label}</div>
               <div style={{ marginTop: 10, fontSize: 28, fontWeight: 900, color: item.tone }}>{item.value}</div>
+              <div style={{ marginTop: 10, color: mutedText, fontSize: 12, lineHeight: 1.6 }}>{item.note}</div>
             </div>
           ))}
         </section>
-
-        <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
-          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "当前页说明" : "Current page overview"}</div>
-            <p style={{ marginTop: 12, color: mutedText, lineHeight: 1.8 }}>{current.summary}</p>
-            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-              {current.records.map((item) => (
-                <div key={item.title} style={{ borderRadius: 16, background: surface, border, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                    <div style={{ fontWeight: 800 }}>{item.title}</div>
-                    <div style={{ borderRadius: 999, padding: "4px 10px", background: ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")}, color: accent, fontSize: 11, fontWeight: 800 }}>
-                      {item.status}
+        {isDashboard ? renderDashboardShell() : (
+          <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "当前页说明" : "Current page overview"}</div>
+              <p style={{ marginTop: 12, color: mutedText, lineHeight: 1.8 }}>{current.summary}</p>
+              {routeBlueprint?.primaryActions?.length ? (
+                <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {routeBlueprint.primaryActions.map((item) => (
+                    <div key={item} style={{ borderRadius: 999, padding: "6px 10px", background: surface, border, color: panelText, fontSize: 12, fontWeight: 700 }}>
+                      {item}
                     </div>
-                  </div>
-                  <div style={{ marginTop: 8, color: mutedText, lineHeight: 1.7, fontSize: 13 }}>{item.meta}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: 16 }}>
-            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "核心模块" : "Core modules"}</div>
-              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                {current.focusAreas.map((item, index) => (
-                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText }}>
-                    {item}
+              ) : null}
+              <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                {current.records.map((item) => (
+                  <div key={item.title} style={{ borderRadius: 16, background: surface, border, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ borderRadius: 999, padding: "4px 10px", background: ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")}, color: accent, fontSize: 11, fontWeight: 800 }}>
+                        {item.status}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, color: mutedText, lineHeight: 1.7, fontSize: 13 }}>{item.meta}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
-              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                {(isCn
-                  ? ["补真实数据读写", "让 AI 修改能反写到当前模块", "继续拉开各 archetype 的模块深度"]
-                  : ["Connect real data reads and writes", "Let AI edits write back into this module", "Keep widening archetype-specific depth"]).map((item, index) => (
-                  <div key={item} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText, fontSize: 13 }}>
-                    {item}
-                  </div>
-                ))}
+            <div style={{ display: "grid", gap: 16 }}>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "关联模块" : "Linked modules"}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {(relatedModules.length ? relatedModules : current.focusAreas.map((item) => ({ label: item, summary: "" }))).map((item, index) => (
+                    <div key={item.label} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText }}>
+                      <div style={{ fontWeight: 800 }}>{item.label}</div>
+                      {"summary" in item && item.summary ? <div style={{ marginTop: 6, color: mutedText, fontSize: 12, lineHeight: 1.6 }}>{item.summary}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "关联实体与流程" : "Entities and workflows"}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {(relatedEntities.length
+                    ? relatedEntities.map((item) => ({
+                        title: item.label,
+                        note: item.workflows.join(" / "),
+                      }))
+                    : (workflowSteps.length ? workflowSteps : (isCn
+                        ? ["补真实数据读写", "让 AI 修改能反写到当前模块", "继续拉开各 archetype 的模块深度"]
+                        : ["Connect real data reads and writes", "Let AI edits write back into this module", "Keep widening archetype-specific depth"])).map((item) => ({
+                        title: item,
+                        note: routeBlueprint?.label || current.label,
+                      }))).map((item, index) => (
+                    <div key={item.title} style={{ borderRadius: 14, padding: "12px 14px", background: index === 0 ? ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(37,99,235,0.08)")} : surface, border, color: panelText, fontSize: 13 }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 6, color: mutedText }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
       </div>
     </main>
   );
@@ -1964,48 +7241,59 @@ export default function GeneratedConsolePage() {
 
 function renderCodePlatformHome(spec: AppSpec) {
   const isCn = spec.region === "cn"
-  const brand = spec.title
-  const heroTitle = isCn ? "早上好，开发者" : "Good morning, builder"
-  const heroDesc = isCn
-    ? "今日已完成 47 次构建，AI 协助修复了 12 个问题。项目整体进度良好。"
-    : "47 builds completed today, with AI assisting on 12 fixes. Overall progress is healthy."
-  const projectRows = isCn
-    ? [
-        { name: "MornCursor 官网", stack: "TypeScript", desc: "产品官网与下载站", progress: 85, tone: "#8b5cf6", time: "3 分钟前" },
-        { name: "销售管理后台", stack: "React", desc: "CRM 销售闭环系统", progress: 62, tone: "#3b82f6", time: "1 小时前" },
-        { name: "API 数据平台", stack: "Python", desc: "接口管理与监控中心", progress: 41, tone: "#10b981", time: "2 小时前" },
-        { name: "社区反馈中心", stack: "Vue", desc: "用户反馈与工单系统", progress: 93, tone: "#f59e0b", time: "5 小时前" },
-      ]
-    : [
-        { name: "MornCursor website", stack: "TypeScript", desc: "Homepage and download hub", progress: 85, tone: "#8b5cf6", time: "3 min ago" },
-        { name: "Sales admin", stack: "React", desc: "CRM closing workspace", progress: 62, tone: "#3b82f6", time: "1 hour ago" },
-        { name: "API platform", stack: "Python", desc: "Interface and monitoring center", progress: 41, tone: "#10b981", time: "2 hours ago" },
-        { name: "Community hub", stack: "Vue", desc: "Feedback and ticketing workspace", progress: 93, tone: "#f59e0b", time: "5 hours ago" },
-      ]
-  const quickActions = isCn
-    ? [
-        { title: "新建项目", desc: "从模板快速创建", tone: "#7c3aed" },
-        { title: "AI 生成", desc: "描述需求自动生成", tone: "#0ea5e9" },
-        { title: "导入仓库", desc: "从 Git 导入项目", tone: "#10b981" },
-        { title: "快速部署", desc: "一键发布到预览链路", tone: "#f59e0b" },
-      ]
-    : [
-        { title: "New project", desc: "Start from a template", tone: "#7c3aed" },
-        { title: "AI generate", desc: "Describe the app and build", tone: "#0ea5e9" },
-        { title: "Import repo", desc: "Bring in an existing Git repo", tone: "#10b981" },
-        { title: "Deploy", desc: "Ship to a preview instantly", tone: "#f59e0b" },
-      ]
-  const activityItems = isCn
-    ? [
-        { title: "AI 自动修复了 3 个 ESLint 错误", meta: "官网项目  ·  2 分钟前", tone: "#8b5cf6" },
-        { title: "构建成功 #247 已部署到预发布", meta: "销售后台  ·  15 分钟前", tone: "#10b981" },
-        { title: "模板同步完成，更新了价格页套餐差异", meta: "MornCursor  ·  28 分钟前", tone: "#3b82f6" },
-      ]
-    : [
-        { title: "AI repaired 3 ESLint issues", meta: "Website  ·  2 min ago", tone: "#8b5cf6" },
-        { title: "Build #247 shipped to preview", meta: "Sales admin  ·  15 min ago", tone: "#10b981" },
-        { title: "Template sync updated pricing tiers", meta: "MornCursor  ·  28 min ago", tone: "#3b82f6" },
-      ]
+  const brand = spec.appIdentity?.displayName ?? spec.title
+  const icon = spec.visualSeed?.icon ?? spec.appIdentity?.icon ?? getArchetypeIconSeed("code_platform", spec.title)
+  const heroTitle = isCn ? `欢迎回来，${brand}` : `Welcome back to ${brand}`
+  const heroDesc =
+    spec.appIdentity?.shortDescription ||
+    (isCn
+      ? "继续围绕当前工作区推进生成、编辑、预览和交付。"
+      : "Continue from the current workspace across generate, edit, preview, and delivery.")
+  const routeSeeds = getPreviewRouteBlueprints(spec)
+  const entitySeeds = getPreviewEntityBlueprints(spec)
+  const projectRows = (routeSeeds.length ? routeSeeds : [
+    { label: isCn ? "编辑器" : "Editor", path: "/editor", purpose: isCn ? "主编码工作区" : "Primary coding surface", actions: [] },
+    { label: isCn ? "运行" : "Runs", path: "/runs", purpose: isCn ? "查看构建与预览" : "Inspect builds and preview", actions: [] },
+    { label: isCn ? "模板库" : "Templates", path: "/templates", purpose: isCn ? "选择生成起点" : "Choose generation starting points", actions: [] },
+  ]).slice(0, 4).map((item, index) => ({
+    name: item.label,
+    stack: item.path.replace(/^\//, "") || "home",
+    desc: item.purpose,
+    progress: 72 + index * 7,
+    tone: ["#8b5cf6", "#3b82f6", "#10b981", "#f59e0b"][index] ?? "#8b5cf6",
+    time: isCn ? `${index * 12 + 3} 分钟前` : `${index * 12 + 3} min ago`,
+  }))
+  const quickActions = [
+    {
+      title: isCn ? "AI 生成" : "AI generate",
+      desc: isCn ? (spec.appIntent?.primaryWorkflow || "描述需求自动生成完整应用") : (spec.appIntent?.primaryWorkflow || "Describe the app and generate it"),
+      tone: "#0ea5e9",
+    },
+    {
+      title: isCn ? "进入编辑器" : "Open editor",
+      desc: isCn ? "切到当前文件树和多标签编辑器" : "Jump into the file tree and multi-tab editor",
+      tone: "#7c3aed",
+    },
+    {
+      title: isCn ? "查看实体" : "Inspect entities",
+      desc: entitySeeds[0]?.label ? `${entitySeeds[0].label} / ${entitySeeds[1]?.label ?? (isCn ? "运行记录" : "runtime")}` : (isCn ? "查看初始数据结构" : "Review initial data structures"),
+      tone: "#10b981",
+    },
+    {
+      title: isCn ? "部署预览" : "Deploy preview",
+      desc: isCn ? "检查构建状态并打开预览" : "Check build state and open preview",
+      tone: "#f59e0b",
+    },
+  ]
+  const activityItems = (entitySeeds.length ? entitySeeds : [
+    { label: isCn ? "源文件" : "Source file", summary: isCn ? "编辑器与文件树已建立" : "Editor and file tree are ready" },
+    { label: isCn ? "运行记录" : "Runtime run", summary: isCn ? "构建验收链路正常" : "Build acceptance rail is healthy" },
+    { label: isCn ? "模板资产" : "Template asset", summary: isCn ? "模板与套餐已同步" : "Templates and plans are synced" },
+  ]).slice(0, 3).map((item, index) => ({
+    title: isCn ? `${item.label} 已接入 ${brand}` : `${item.label} is now wired into ${brand}`,
+    meta: item.summary + (isCn ? `  ·  ${index * 11 + 2} 分钟前` : `  ·  ${index * 11 + 2} min ago`),
+    tone: ["#8b5cf6", "#10b981", "#3b82f6"][index] ?? "#8b5cf6",
+  }))
 
   return `// @ts-nocheck
 import Link from "next/link";
@@ -2034,11 +7322,11 @@ export default function Page() {
       <div style={{ maxWidth: 1460, margin: "0 auto", display: "grid", gap: 18 }}>
         <section style={{ borderRadius: 26, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(22,23,32,0.96)", overflow: "hidden" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", padding: "16px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 14, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "grid", placeItems: "center", fontSize: 20 }}>✦</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 14, background: \`linear-gradient(135deg,\${icon.from},\${icon.to})\`, boxShadow: \`0 14px 34px \${icon.ring}\`, display: "grid", placeItems: "center", fontSize: 16, fontWeight: 900 }}>{icon.glyph}</div>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800 }}>{${JSON.stringify(brand)}}</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{isCn ? "中国版 AI 编程平台" : "China-ready AI coding platform"}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{${JSON.stringify(spec.visualSeed?.tone ?? (isCn ? "AI 代码平台" : "AI code platform"))}}</div>
               </div>
               <div style={{ borderRadius: 10, padding: "6px 10px", background: "rgba(124,58,237,0.2)", color: "#c4b5fd", fontSize: 12, fontWeight: 700 }}>
                 ${getCompactPlanTag(spec.planTier)}
@@ -2053,7 +7341,7 @@ export default function Page() {
               <div style={{ marginLeft: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "#1c1e29", padding: "10px 16px", minWidth: 220, color: "rgba(255,255,255,0.42)", fontSize: 13 }}>
                 {isCn ? "搜索命令..." : "Search commands..."}
               </div>
-              <div style={{ width: 38, height: 38, borderRadius: 999, background: "linear-gradient(135deg,#8b5cf6,#a855f7)", display: "grid", placeItems: "center", fontWeight: 800 }}>M</div>
+              <div style={{ width: 38, height: 38, borderRadius: 999, background: \`linear-gradient(135deg,\${icon.from},\${icon.to})\`, display: "grid", placeItems: "center", fontWeight: 800 }}>{icon.glyph}</div>
             </div>
           </div>
 
@@ -2555,7 +7843,7 @@ export default function Page() {
 }
 
 function renderPage(spec: AppSpec) {
-  if (spec.kind === "code_platform") {
+  if (getScaffoldArchetype(spec) === "code_platform") {
     return renderCodePlatformHome(spec)
   }
   const archetypeHome = renderArchetypeWorkspaceHome(spec)
@@ -9617,6 +14905,7 @@ export default function DownloadsPage() {
 function renderReportsPage(spec: AppSpec) {
   const skin = getTemplateSkin(spec)
   const isCn = spec.region === "cn"
+  const archetype = getScaffoldArchetype(spec)
   return `import Link from "next/link";
 
 export default function ReportsPage() {
@@ -9652,7 +14941,7 @@ export default function ReportsPage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             {[
               { href: "/", label: isCn ? "总览" : "Overview" },
-              ...(spec.kind === "code_platform" ? [{ href: "/editor", label: isCn ? "编辑器" : "Editor" }] : []),
+              ...(${JSON.stringify(archetype === "code_platform")} ? [{ href: "/editor", label: isCn ? "编辑器" : "Editor" }] : []),
               { href: "/reports", label: isCn ? "汇报中心" : "Reports", active: true },
               { href: "/team", label: isCn ? "团队" : "Team" },
             ].map((item) => (
@@ -9975,6 +15264,21 @@ export default function PlaybooksPage() {
 
 function extractPlannedRouteNames(spec: AppSpec) {
   const routes = new Set<string>()
+  const archetype = getScaffoldArchetype(spec)
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  if (Array.isArray(spec.routeBlueprint) && spec.routeBlueprint.length) {
+    for (const route of spec.routeBlueprint) {
+      const normalized = String(route.path || route.id || "")
+        .trim()
+        .replace(/^\/+/, "")
+        .replace(/\/+$/, "")
+      if (!normalized) {
+        routes.add("home")
+        continue
+      }
+      routes.add(normalized)
+    }
+  }
   for (const moduleName of spec.modules) {
     const match = String(moduleName)
       .trim()
@@ -9984,12 +15288,46 @@ function extractPlannedRouteNames(spec: AppSpec) {
       routes.add(match[1])
     }
   }
-  if (spec.kind === "code_platform") {
-    ;["dashboard", "editor", "runs", "templates", "pricing", "settings"].forEach((route) => routes.add(route))
+  if (archetype === "code_platform") {
+    const entityIds = new Set((spec.entityBlueprint ?? []).map((item) => item.id))
+    const codeRoutes = new Set<string>(["dashboard", "editor"])
+    const push = (route: string, enabled: boolean) => {
+      if (enabled) codeRoutes.add(route)
+    }
+    push("runs", /run|runs|runtime|log|logs|preview|terminal|构建|运行|日志|预览|终端/.test(text) || entityIds.has("runtime_run"))
+    push("templates", /template|templates|scaffold|gallery|模板|脚手架|模板库/.test(text) || entityIds.has("template_asset"))
+    push(
+      "assistant",
+      /assistant|chat|conversation|copilot|agent|助手|对话|智能体/.test(text) || entityIds.has("assistant_thread") || entityIds.has("ai_session")
+    )
+    push(
+      "publish",
+      /publish|deploy|delivery|release|上线|发布|交付/.test(text) || entityIds.has("release_deployment")
+    )
+    push("pricing", /pricing|price|plan|subscription|套餐|定价|价格|升级/.test(text))
+    push("settings", /setting|settings|config|database|access|permission|environment|设置|配置|数据库|权限|环境/.test(text))
+    push("about", /about|story|intro|介绍|说明|关于/.test(text))
+    push("analytics", /analytics|metrics|usage|analysis|report|分析|指标|用量|报表/.test(text))
+    return Array.from(codeRoutes)
   }
-  if (hasFeature(spec, "about_page")) routes.add("about")
-  if (hasFeature(spec, "analytics_page")) routes.add("analytics")
-  if (spec.kind === "task") {
+  if (archetype === "community") {
+    const eventDrivenCommunity = /event|events|meetup|webinar|registration|registrations|schedule|scheduling|session|sessions|ambassador|invite|segment|segments|活动|直播|聚会|报名|日程|议程|邀请|大使|分层/.test(
+      text
+    )
+    if (eventDrivenCommunity) routes.add("events")
+    if (/member|members|invite|segment|segments|membership|ambassador|成员|邀请|分层|会员|大使/.test(text)) routes.add("members")
+    if (/feedback|feedback intake|request|requests|post-event feedback|反馈|诉求/.test(text)) routes.add("feedback")
+    if (/moderation|moderate|review|report abuse|safety|审核|治理|举报|安全/.test(text)) routes.add("moderation")
+    if (/roadmap|vote|wishlist|路线图|投票|愿望单/.test(text)) routes.add("roadmap")
+    if (/post|posts|forum|announcement|discussion|content|帖子|论坛|公告|讨论|内容/.test(text)) routes.add("posts")
+    const orderedRoutes = eventDrivenCommunity
+      ? ["dashboard", "events", "members", "feedback", "moderation", "roadmap", "posts", "settings", "about"]
+      : ["dashboard", "feedback", "moderation", "roadmap", "members", "events", "posts", "settings", "about"]
+    return orderedRoutes.filter((route) => routes.has(route))
+  }
+  if (archetype !== "code_platform" && hasFeature(spec, "about_page")) routes.add("about")
+  if (archetype !== "code_platform" && hasFeature(spec, "analytics_page")) routes.add("analytics")
+  if (archetype === "task") {
     if (spec.planTier === "builder" || spec.planTier === "pro" || spec.planTier === "elite") {
       routes.add("reports")
       routes.add("automations")
@@ -10027,6 +15365,24 @@ function getGeneratedRouteLabel(route: string, isCn: boolean) {
     downloads: ["Downloads", "Downloads"],
     docs: ["Docs", "Docs"],
     admin: ["Admin", "Admin"],
+    patients: ["患者", "Patients"],
+    appointments: ["预约", "Appointments"],
+    care: ["护理", "Care"],
+    courses: ["课程", "Courses"],
+    students: ["学生", "Students"],
+    assignments: ["作业", "Assignments"],
+    accounts: ["账户", "Accounts"],
+    transactions: ["交易", "Transactions"],
+    reconciliation: ["对账", "Reconciliation"],
+    candidates: ["候选人", "Candidates"],
+    jobs: ["岗位", "Jobs"],
+    interviews: ["面试", "Interviews"],
+    tickets: ["工单", "Tickets"],
+    cases: ["案例", "Cases"],
+    knowledge: ["知识库", "Knowledge"],
+    products: ["商品", "Products"],
+    inventory: ["库存", "Inventory"],
+    orders: ["订单", "Orders"],
   }
   const mapped = labels[route]
   if (mapped) return isCn ? mapped[0] : mapped[1]
@@ -10040,6 +15396,8 @@ function getGeneratedRouteLabel(route: string, isCn: boolean) {
 function renderGenericPlannerPage(spec: AppSpec, route: string, plannedRoutes: string[]) {
   const isCn = spec.region === "cn"
   const label = getGeneratedRouteLabel(route, isCn)
+  const routeBlueprint =
+    spec.routeBlueprint?.find((item) => item.path === `/${route}` || item.id === toBlueprintId(route)) ?? null
   const navItems = plannedRoutes
     .filter((item) => item !== "home")
     .slice(0, 8)
@@ -10048,9 +15406,30 @@ function renderGenericPlannerPage(spec: AppSpec, route: string, plannedRoutes: s
       label: getGeneratedRouteLabel(item, isCn),
       active: item === route,
     }))
-  const focusAreas = spec.modules
-    .filter((item) => !/^([a-z0-9_-]+)\s+page$/i.test(item))
-    .slice(0, 6)
+  const focusAreas =
+    (spec.moduleBlueprint ?? [])
+      .filter((item) => routeBlueprint?.moduleIds.includes(item.id))
+      .slice(0, 6)
+      .map((item) => item.label)
+      .filter(Boolean)
+      .length
+      ? (spec.moduleBlueprint ?? [])
+          .filter((item) => routeBlueprint?.moduleIds.includes(item.id))
+          .slice(0, 6)
+          .map((item) => item.label)
+      : spec.modules
+          .filter((item) => !/^([a-z0-9_-]+)\s+page$/i.test(item))
+          .slice(0, 6)
+  const linkedEntities = (spec.entityBlueprint ?? [])
+    .filter((item) => routeBlueprint?.entityIds.includes(item.id))
+    .slice(0, 4)
+    .map((item) => ({
+      label: item.label,
+      summary: item.summary,
+      workflows: item.workflows.slice(0, 3),
+    }))
+  const primaryActions = routeBlueprint?.primaryActions?.slice(0, 4) ?? []
+  const workflowSteps = getWorkflowSteps(spec)
   const records = (isCn
     ? [
         { title: `${label} 视图`, meta: "已按生成规划落地为独立路由", status: "Ready" },
@@ -10082,9 +15461,26 @@ export default function GeneratedPlannerPage() {
   const spec = ${JSON.stringify(spec, null, 2)} as const;
   const navItems = ${JSON.stringify(navItems, null, 2)} as const;
   const focusAreas = ${JSON.stringify(focusAreas, null, 2)} as const;
+  const routeBlueprint = ${JSON.stringify(routeBlueprint, null, 2)} as const;
+  const linkedEntities = ${JSON.stringify(linkedEntities, null, 2)} as const;
+  const primaryActions = ${JSON.stringify(primaryActions, null, 2)} as const;
+  const workflowSteps = ${JSON.stringify(workflowSteps, null, 2)} as const;
   const records = ${JSON.stringify(records, null, 2)} as const;
   const actions = ${JSON.stringify(actions, null, 2)} as const;
   const isCn = spec.region === "cn";
+  const prototype = routeBlueprint?.pagePrototype || "dashboard";
+  const prototypeRows = linkedEntities.length
+    ? linkedEntities.map((item, index) => ({
+        title: item.label,
+        note: item.summary,
+        status: primaryActions[index] || (isCn ? "已接入" : "Connected"),
+      }))
+    : records;
+  const prototypeStages = [
+    { label: isCn ? "待处理" : "Queued", value: 32, tone: "#2563eb" },
+    { label: isCn ? "推进中" : "Active", value: 56, tone: "#7c3aed" },
+    { label: isCn ? "已完成" : "Done", value: 44, tone: "#059669" },
+  ];
 
   return (
     <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: "linear-gradient(180deg,#f8fafc 0%,#ffffff 54%,#eef4ff 100%)", color: "#0f172a" }}>
@@ -10097,9 +15493,9 @@ export default function GeneratedPlannerPage() {
               </div>
               <h1 style={{ margin: "14px 0 8px", fontSize: 34, fontWeight: 900 }}>${label}</h1>
               <p style={{ margin: 0, maxWidth: 860, color: "#64748b", lineHeight: 1.8 }}>
-                {isCn
+                {routeBlueprint?.purpose || (isCn
                   ? "这一页来自生成规划里的独立模块，不再被塞回首页或一块静态演示卡片里。"
-                  : "This route comes directly from the generated plan instead of being collapsed back into a single poster-like homepage."}
+                  : "This route comes directly from the generated plan instead of being collapsed back into a single poster-like homepage.")}
               </p>
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -10126,9 +15522,113 @@ export default function GeneratedPlannerPage() {
           ))}
         </section>
 
+        {prototype === "kanban" ? (
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {prototypeStages.map((stage) => (
+              <div key={stage.label} style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 18, minHeight: 230 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>{stage.label}</div>
+                  <div style={{ color: stage.tone, fontWeight: 900 }}>{stage.value}</div>
+                </div>
+                <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+                  {prototypeRows.slice(0, 3).map((item) => (
+                    <div key={item.title} style={{ borderRadius: 16, background: "#f8fafc", border: "1px solid rgba(148,163,184,0.14)", padding: 14 }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 8, color: "#64748b", lineHeight: 1.6, fontSize: 13 }}>{item.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        ) : prototype === "docs" ? (
+          <section style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 16 }}>
+            <aside style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
+              <div style={{ fontSize: 13, letterSpacing: "0.14em", textTransform: "uppercase", color: "#93c5fd" }}>{isCn ? "文档目录" : "Docs rail"}</div>
+              <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+                {prototypeRows.slice(0, 5).map((item) => (
+                  <div key={item.title} style={{ borderRadius: 14, background: "rgba(255,255,255,0.06)", padding: "12px 14px" }}>
+                    <div style={{ fontWeight: 800 }}>{item.title}</div>
+                    <div style={{ marginTop: 6, color: "#cbd5e1", fontSize: 13 }}>{item.status}</div>
+                  </div>
+                ))}
+              </div>
+            </aside>
+            <article style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 24 }}>
+              <div style={{ fontSize: 28, fontWeight: 900 }}>{isCn ? "接入指南与运行说明" : "Implementation guide and runtime notes"}</div>
+              <p style={{ marginTop: 12, color: "#64748b", lineHeight: 1.8 }}>{routeBlueprint?.purpose}</p>
+              <pre style={{ marginTop: 18, whiteSpace: "pre-wrap", borderRadius: 18, background: "#0f172a", color: "#e2e8f0", padding: 18, lineHeight: 1.7 }}>{"const response = await client.runPrimaryAction({\\n  route: routeBlueprint.id,\\n  mode: prototype,\\n})"}</pre>
+            </article>
+          </section>
+        ) : prototype === "distribution" ? (
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {["macOS", "Windows", "Mobile"].map((platform, index) => (
+              <div key={platform} style={{ borderRadius: 26, background: index === 0 ? "#0f172a" : "#ffffff", color: index === 0 ? "#f8fafc" : "#0f172a", border: "1px solid rgba(148,163,184,0.16)", padding: 22, minHeight: 220 }}>
+                <div style={{ fontSize: 24, fontWeight: 900 }}>{platform}</div>
+                <div style={{ marginTop: 12, color: index === 0 ? "#cbd5e1" : "#64748b", lineHeight: 1.7 }}>{isCn ? "安装包、签名状态和分发渠道保持同步。" : "Installer, signing state, and distribution channel stay in sync."}</div>
+                <button style={{ marginTop: 18, border: 0, borderRadius: 14, padding: "12px 14px", background: index === 0 ? "#38bdf8" : "#0f172a", color: "#ffffff", fontWeight: 800, cursor: "pointer" }}>{isCn ? "查看下载" : "View build"}</button>
+              </div>
+            ))}
+          </section>
+        ) : prototype === "admin_queue" || prototype === "workflow" ? (
+          <section style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>{isCn ? "操作队列" : "Action queue"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {prototypeRows.map((item) => (
+                  <div key={item.title} style={{ borderRadius: 16, background: "#f8fafc", border: "1px solid rgba(148,163,184,0.14)", padding: 14, display: "flex", justifyContent: "space-between", gap: 16 }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ marginTop: 6, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>{item.note}</div>
+                    </div>
+                    <div style={{ color: "#2563eb", fontSize: 12, fontWeight: 900 }}>{item.status}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>{isCn ? "端到端流程" : "End-to-end flow"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {actions.map((item, index) => (
+                  <div key={item} style={{ display: "grid", gridTemplateColumns: "34px 1fr", gap: 10, alignItems: "start" }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 12, display: "grid", placeItems: "center", background: "rgba(37,99,235,0.24)", color: "#93c5fd", fontWeight: 900 }}>{index + 1}</div>
+                    <div style={{ borderRadius: 14, background: "rgba(255,255,255,0.06)", padding: "10px 12px" }}>{item}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : prototype === "timeline" || prototype === "analytics" ? (
+          <section style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>{prototype === "timeline" ? (isCn ? "时间线" : "Timeline") : (isCn ? "指标分析" : "Analytics")}</div>
+            <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
+              {prototypeStages.map((stage) => (
+                <div key={stage.label}>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#64748b", marginBottom: 8 }}>
+                    <span>{stage.label}</span>
+                    <strong style={{ color: "#0f172a" }}>{stage.value}%</strong>
+                  </div>
+                  <div style={{ height: 12, borderRadius: 999, background: "#e2e8f0", overflow: "hidden" }}>
+                    <div style={{ width: stage.value + "%", height: "100%", background: stage.tone }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
           <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "页面记录" : "Route records"}</div>
+            {primaryActions.length ? (
+              <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {primaryActions.map((item) => (
+                  <div key={item} style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(37,99,235,0.08)", color: "#2563eb", fontSize: 12, fontWeight: 700 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
               {records.map((item) => (
                 <div key={item.title} style={{ borderRadius: 16, background: "#f8fafc", border: "1px solid rgba(148,163,184,0.14)", padding: "14px 16px" }}>
@@ -10155,11 +15655,20 @@ export default function GeneratedPlannerPage() {
               </div>
             </div>
             <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下一步动作" : "Suggested next actions"}</div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "实体与工作流" : "Entities and workflow"}</div>
               <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-                {actions.map((item) => (
-                  <div key={item} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "#cbd5e1", fontSize: 13 }}>
-                    {item}
+                {(linkedEntities.length
+                  ? linkedEntities.map((item) => ({
+                      title: item.label,
+                      note: item.workflows.join(" / ") || item.summary,
+                    }))
+                  : (workflowSteps.length ? workflowSteps : actions).map((item) => ({
+                      title: item,
+                      note: routeBlueprint?.label || ${JSON.stringify(label)},
+                    }))).map((item) => (
+                  <div key={item.title} style={{ borderRadius: 12, background: "rgba(255,255,255,0.06)", padding: "10px 12px", color: "#cbd5e1", fontSize: 13 }}>
+                    <div style={{ fontWeight: 800, color: "#f8fafc" }}>{item.title}</div>
+                    <div style={{ marginTop: 6 }}>{item.note}</div>
                   </div>
                 ))}
               </div>
@@ -10294,6 +15803,7 @@ export async function buildSpecDrivenWorkspaceFiles(
     }
   }
   const archetype = getScaffoldArchetype(spec)
+  const routeSet = new Set(extractPlannedRouteNames(spec))
 
   if (spec.planTier !== "free" && spec.planTier !== "starter") {
     pushWorkspaceFile({
@@ -10303,11 +15813,11 @@ export async function buildSpecDrivenWorkspaceFiles(
     })
   }
 
-  if (spec.kind === "code_platform" || archetype !== "task" || spec.planTier === "pro" || spec.planTier === "elite") {
+  if (archetype === "code_platform" || archetype !== "task" || spec.planTier === "pro" || spec.planTier === "elite") {
     pushWorkspaceFile({
       path: "app/dashboard/page.tsx",
       content: renderDashboardPage(spec),
-      reason: spec.kind === "code_platform"
+      reason: archetype === "code_platform"
         ? "Add generated dashboard overview entry page for code-platform projects"
         : archetype !== "task"
           ? "Add generated dashboard overview entry page for scaffold-driven application projects"
@@ -10315,42 +15825,42 @@ export async function buildSpecDrivenWorkspaceFiles(
     })
   }
 
-  if (spec.kind === "code_platform") {
-    pushWorkspaceFile(
-      {
+  if (archetype === "code_platform") {
+    if (routeSet.has("editor")) {
+      pushWorkspaceFile({
         path: "app/editor/page.tsx",
         content: renderCodeEditorPage(spec, iterationContext),
         reason: "Add dedicated editor page for code-platform projects",
-      }
-    )
-    pushWorkspaceFile(
-      {
+      })
+    }
+    if (routeSet.has("runs")) {
+      pushWorkspaceFile({
         path: "app/runs/page.tsx",
         content: renderCodeRunsPage(spec),
         reason: "Add runtime and preview page for code-platform projects",
-      }
-    )
-    pushWorkspaceFile(
-      {
+      })
+    }
+    if (routeSet.has("templates")) {
+      pushWorkspaceFile({
         path: "app/templates/page.tsx",
         content: renderCodeTemplatesPage(spec),
         reason: "Add template gallery page for code-platform projects",
-      }
-    )
-    pushWorkspaceFile(
-      {
+      })
+    }
+    if (routeSet.has("pricing")) {
+      pushWorkspaceFile({
         path: "app/pricing/page.tsx",
         content: renderCodePricingPage(spec),
         reason: "Add upgrade and pricing page for code-platform projects",
-      }
-    )
-    pushWorkspaceFile(
-      {
+      })
+    }
+    if (routeSet.has("settings")) {
+      pushWorkspaceFile({
         path: "app/settings/page.tsx",
         content: renderCodeSettingsPage(spec),
         reason: "Add environment, database, and access settings page for code-platform projects",
-      }
-    )
+      })
+    }
   }
 
   if (archetype === "crm") {
@@ -10456,7 +15966,7 @@ export async function buildSpecDrivenWorkspaceFiles(
     )
   }
 
-  if (hasFeature(spec, "about_page")) {
+  if (hasFeature(spec, "about_page") && (archetype !== "code_platform" || routeSet.has("about"))) {
     pushWorkspaceFile({
       path: "app/about/page.tsx",
       content: renderAboutPage(spec),
@@ -10464,7 +15974,7 @@ export async function buildSpecDrivenWorkspaceFiles(
     })
   }
 
-  if (hasFeature(spec, "analytics_page")) {
+  if (hasFeature(spec, "analytics_page") && (archetype !== "code_platform" || routeSet.has("analytics"))) {
     pushWorkspaceFile({
       path: "app/analytics/page.tsx",
       content: renderAnalyticsPage(spec),

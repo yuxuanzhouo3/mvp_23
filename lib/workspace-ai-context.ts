@@ -50,6 +50,17 @@ export type WorkspaceElementContext = {
 export type WorkspaceSessionContext = {
   projectName?: string
   specKind?: string
+  appArchetype?: string
+  appCategory?: string
+  appSummary?: string
+  primaryWorkflow?: string
+  visualTone?: string
+  routeBlueprintSummary?: string[]
+  moduleBlueprintSummary?: string[]
+  entityBlueprintSummary?: string[]
+  activeRoutePurpose?: string
+  activeModuleSummary?: string
+  activeEntitySummary?: string
   workspaceSurface?: string
   activeSection?: string
   routeId?: string

@@ -118,12 +118,33 @@ type ProjectDetail = {
     features?: string[]
     deploymentTarget?: string
     databaseTarget?: string
+    appIntent?: {
+      archetype?: string
+      productCategory?: string
+      primaryWorkflow?: string
+    }
+    appIdentity?: {
+      displayName?: string
+      shortDescription?: string
+      category?: string
+    }
+    routeBlueprint?: Array<{ label?: string; path?: string }>
+    moduleBlueprint?: Array<{ label?: string }>
+    entityBlueprint?: Array<{ label?: string }>
+    visualSeed?: {
+      tone?: string
+    }
   } | null
   presentation?: {
     displayName: string
     subtitle: string
     summary: string
     routes: string[]
+    archetype?: string
+    category?: string
+    coreModules?: string[]
+    entities?: string[]
+    visualTone?: string
     icon: {
       glyph: string
       from: string
@@ -299,12 +320,15 @@ type WorkspaceSearchResp = {
 
 type AiTimelineEntry = {
   id: string
+  actor: "user" | "ai" | "system"
   headline: string
   action: string
   detail?: string
   fileChips: string[]
   time: string
   tone: "live" | "neutral" | "warning" | "success"
+  bullets?: string[]
+  mode?: string
 }
 
 type FileTreeNode = {
@@ -1004,28 +1028,34 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
 
   async function loadGenerateTask() {
     if (!jobId) return
-    const res = await fetch(
-      `/api/generate?jobId=${encodeURIComponent(jobId)}${workspaceSnapshot ? "" : "&snapshot=1"}`
-    )
-    if (!res.ok) return
-    const json = (await res.json()) as GenerateTaskResp & { workspaceSnapshot?: WorkspaceBootstrapSnapshot | null }
-    setGenerateTask(json)
-    if (json.workspaceSnapshot) {
-      applyWorkspaceSnapshot(json.workspaceSnapshot, { recovered: false })
-    } else {
-      persistWorkspaceSnapshotDraft((current) => {
-        if (!current?.project) return current
-        return {
-          ...current,
-          updatedAt: current.project.updatedAt || new Date().toISOString(),
-          generateTask: json as WorkspaceBootstrapSnapshot["generateTask"],
-        }
-      })
-    }
-    if (json.status === "done" || json.status === "error") {
-      setGeneratePanelOpen(false)
-    } else {
-      setGeneratePanelOpen(true)
+    try {
+      const res = await fetch(
+        `/api/generate?jobId=${encodeURIComponent(jobId)}${workspaceSnapshot ? "" : "&snapshot=1"}`
+      )
+      if (!res.ok) return
+      const json = (await res.json()) as GenerateTaskResp & { workspaceSnapshot?: WorkspaceBootstrapSnapshot | null }
+      setGenerateTask(json)
+      if (json.workspaceSnapshot) {
+        applyWorkspaceSnapshot(json.workspaceSnapshot, { recovered: false })
+      } else {
+        persistWorkspaceSnapshotDraft((current) => {
+          if (!current?.project) return current
+          return {
+            ...current,
+            updatedAt: current.project.updatedAt || new Date().toISOString(),
+            generateTask: json as WorkspaceBootstrapSnapshot["generateTask"],
+          }
+        })
+      }
+      if (json.status === "done" || json.status === "error") {
+        setGeneratePanelOpen(false)
+      } else {
+        setGeneratePanelOpen(true)
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[workspace] generate task polling skipped", error)
+      }
     }
   }
 
@@ -1336,6 +1366,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
             new Set([
               selectedCodeFile,
               aiPageContext.filePath,
+              ...blueprintRelatedPaths,
               ...codeTabs,
               ...routeFileEntries.slice(0, 6).map((entry) => entry.filePath),
             ].filter(Boolean))
@@ -1525,13 +1556,19 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       return
     }
     const timer = setInterval(async () => {
-      const res = await fetch(`/api/generate?jobId=${encodeURIComponent(jobId)}`)
-      if (!res.ok) return
-      const json = (await res.json()) as GenerateTaskResp
-      setGenerateTask(json)
-      if (json.status === "done" || json.status === "error" || workspaceReady || previewLive) {
-        setGeneratePanelOpen(false)
-        clearInterval(timer)
+      try {
+        const res = await fetch(`/api/generate?jobId=${encodeURIComponent(jobId)}`)
+        if (!res.ok) return
+        const json = (await res.json()) as GenerateTaskResp
+        setGenerateTask(json)
+        if (json.status === "done" || json.status === "error" || workspaceReady || previewLive) {
+          setGeneratePanelOpen(false)
+          clearInterval(timer)
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[workspace] generate task interval skipped", error)
+        }
       }
     }, 1000)
     return () => clearInterval(timer)
@@ -1743,11 +1780,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   const refreshPreview = () => {
     setPreviewRefreshKey((current) => current + 1)
   }
-  const resolvedPreviewUrl =
-    previewProbe?.resolvedPreviewUrl ||
-    primaryPreviewUrl
-  const iframePreviewUrl = primaryPreviewUrl || resolvedPreviewUrl
-  const previewCommandUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
+  const resolvedPreviewUrl = previewProbe?.resolvedPreviewUrl || primaryPreviewUrl
+  const iframePreviewUrl = resolvedPreviewUrl || primaryPreviewUrl
+  const previewCommandUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || primaryPreviewUrl)
   const fallbackReason =
     project?.preview?.fallbackReason ||
     (previewProbe?.renderStrategy === "structured_fallback"
@@ -1823,6 +1858,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       })),
     [pageManifest]
   )
+  const routeFileMap = useMemo(() => new Map(routeFileEntries.map((item) => [item.route, item.filePath])), [routeFileEntries])
+  const routeBlueprintEntries = useMemo(() => (Array.isArray(project?.spec?.routeBlueprint) ? project.spec.routeBlueprint : []), [project?.spec?.routeBlueprint])
+  const moduleBlueprintEntries = useMemo(() => (Array.isArray(project?.spec?.moduleBlueprint) ? project.spec.moduleBlueprint : []), [project?.spec?.moduleBlueprint])
+  const entityBlueprintEntries = useMemo(() => (Array.isArray(project?.spec?.entityBlueprint) ? project.spec.entityBlueprint : []), [project?.spec?.entityBlueprint])
   const editorRailItems = useMemo(
     () => [
       { key: "explorer" as const, label: isCn ? "文件" : "Files", short: "F" },
@@ -2196,23 +2235,6 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     ].filter(Boolean)
     return lines.slice(-8)
   }, [generateTask?.logs, isCn, iterateResult?.build?.logs, runStatus, runtime?.status, selectedCodeFile, workspaceStatus.label])
-  const quickSuggestions = isCn
-    ? [
-        "把首页改成深色科技风",
-        "增加登录页和账号切换入口",
-        "把按钮层级变得更简洁",
-        "增加支付入口与状态说明",
-        "补充数据库配置切换",
-        "切换为国内版默认方案",
-      ]
-    : [
-        "Turn the homepage into a darker AI SaaS style",
-        "Add a login page and account switcher",
-        "Simplify button hierarchy",
-        "Add a payment entry and status flow",
-        "Expose database configuration choices",
-        "Switch to the China-default setup",
-      ]
   const conversationItems = useMemo(
     () =>
       (project?.history ?? [])
@@ -2292,8 +2314,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       region: workspaceRegion,
       planTier: currentPlanTier,
     })
+  const absoluteCanonicalPreviewUrl = toAbsoluteBrowserUrl(canonicalPreviewUrl)
   const absolutePrimaryPreviewUrl = toAbsoluteBrowserUrl(primaryPreviewUrl)
-  const absoluteResolvedPreviewUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || iframePreviewUrl || primaryPreviewUrl)
+  const absoluteResolvedPreviewUrl = toAbsoluteBrowserUrl(resolvedPreviewUrl || primaryPreviewUrl)
   const absoluteAssignedAppUrl = toAbsoluteBrowserUrl(assignedAppDomain)
   const hostedCnPreviewBaseUrl = process.env.NEXT_PUBLIC_CN_PREVIEW_SITE_URL || "https://mornstack.mornscience.top"
   const hostedIntlPreviewBaseUrl = process.env.NEXT_PUBLIC_INTL_PREVIEW_SITE_URL || "https://www.mornscience.app"
@@ -2309,12 +2332,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   const openPreviewUrl = isLocalPreviewHost
-    ? absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+    ? absoluteResolvedPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
     : workspaceRegion === "intl"
-      ? hostedIntlPreviewUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+      ? absoluteResolvedPreviewUrl || hostedIntlPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
       : workspaceRegion === "cn"
-        ? hostedCnPreviewUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
-        : absoluteAssignedAppUrl || absoluteResolvedPreviewUrl || absolutePrimaryPreviewUrl
+        ? absoluteResolvedPreviewUrl || hostedCnPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+        : absoluteResolvedPreviewUrl || absoluteAssignedAppUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl
   const sharedAppUrl = openPreviewUrl
   const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
   const moduleCount = project?.spec?.modules?.length ?? 0
@@ -2883,6 +2906,15 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       }),
     [activeSectionKey, currentCodeRoute, previewTab, selectedCodeFile, workspaceAiRoutes, workspaceRegion]
   )
+  const activeBlueprintRoute = useMemo(() => {
+    const activeRoute = aiPageContext.route || currentCodeRoute || "/"
+    return routeBlueprintEntries.find((item) => {
+      if (item.path === activeRoute) return true
+      if (item.id === aiPageContext.id) return true
+      if (item.path === `/${aiPageContext.id}`) return true
+      return aiPageContext.id === "home" && item.path === "/"
+    })
+  }, [aiPageContext.id, aiPageContext.route, currentCodeRoute, routeBlueprintEntries])
   const availableAiSymbols = useMemo(() => {
     const fromFile = selectedCodeSymbols.map((item) => item.name).filter((item): item is string => Boolean(item))
     return Array.from(
@@ -2928,18 +2960,81 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       }),
     [aiPageContext, aiTargetElement, editorBottomTabLabel, editorRailLabel, previewTab]
   )
+  const activeBlueprintModuleSummary = useMemo(() => {
+    if (!activeBlueprintRoute?.moduleIds?.length) return undefined
+    const matchedModules = activeBlueprintRoute.moduleIds
+      .map((moduleId) => moduleBlueprintEntries.find((item) => item.id === moduleId))
+      .filter((item): item is NonNullable<(typeof moduleBlueprintEntries)[number]> => Boolean(item))
+    if (!matchedModules.length) return undefined
+    return matchedModules
+      .slice(0, 3)
+      .map((item) => item.summary || item.label || item.id)
+      .filter(Boolean)
+      .join(" | ")
+  }, [activeBlueprintRoute, moduleBlueprintEntries])
+  const activeBlueprintEntitySummary = useMemo(() => {
+    if (!activeBlueprintRoute?.entityIds?.length) return undefined
+    const matchedEntities = activeBlueprintRoute.entityIds
+      .map((entityId) => entityBlueprintEntries.find((item) => item.id === entityId))
+      .filter((item): item is NonNullable<(typeof entityBlueprintEntries)[number]> => Boolean(item))
+    if (!matchedEntities.length) return undefined
+    return matchedEntities
+      .slice(0, 3)
+      .map((item) => item.summary || item.label || item.id)
+      .filter(Boolean)
+      .join(" | ")
+  }, [activeBlueprintRoute, entityBlueprintEntries])
+  const blueprintRelatedPaths = useMemo(() => {
+    const paths = new Set<string>()
+    const pushRouteFile = (routePath?: string | null) => {
+      if (!routePath) return
+      const normalizedRoute = routePath === "home" ? "/" : routePath.startsWith("/") ? routePath : `/${routePath}`
+      const filePath = routeFileMap.get(normalizedRoute)
+      if (filePath) paths.add(filePath)
+    }
+    pushRouteFile(activeBlueprintRoute?.path)
+    for (const moduleId of activeBlueprintRoute?.moduleIds ?? []) {
+      const moduleEntry = moduleBlueprintEntries.find((item) => item.id === moduleId)
+      for (const routeId of moduleEntry?.routeIds ?? []) pushRouteFile(routeId)
+    }
+    for (const entityId of activeBlueprintRoute?.entityIds ?? []) {
+      const entityEntry = entityBlueprintEntries.find((item) => item.id === entityId)
+      for (const viewPath of entityEntry?.primaryViews ?? []) pushRouteFile(viewPath)
+    }
+    return Array.from(paths)
+  }, [activeBlueprintRoute, entityBlueprintEntries, moduleBlueprintEntries, routeFileMap])
   const requestSharedSession = useMemo<WorkspaceSessionContext>(
     () => ({
       ...(sharedSessionSnapshot ?? {}),
       projectName,
       specKind: project?.spec?.kind || "workspace",
+      appArchetype: project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || undefined,
+      appCategory: project?.spec?.appIntent?.productCategory || project?.presentation?.category || undefined,
+      appSummary: project?.spec?.appIdentity?.shortDescription || project?.presentation?.summary || undefined,
+      primaryWorkflow: project?.spec?.appIntent?.primaryWorkflow || undefined,
+      visualTone: project?.spec?.visualSeed?.tone || project?.presentation?.visualTone || undefined,
+      routeBlueprintSummary: Array.isArray(project?.spec?.routeBlueprint)
+        ? project.spec.routeBlueprint
+            .slice(0, 8)
+            .map((item) => `${item.label || item.path || ""}${item.path ? ` (${item.path})` : ""}`.trim())
+            .filter(Boolean)
+        : undefined,
+      moduleBlueprintSummary: Array.isArray(project?.spec?.moduleBlueprint)
+        ? project.spec.moduleBlueprint.slice(0, 10).map((item) => item.label || "").filter(Boolean)
+        : project?.presentation?.coreModules,
+      entityBlueprintSummary: Array.isArray(project?.spec?.entityBlueprint)
+        ? project.spec.entityBlueprint.slice(0, 10).map((item) => item.label || "").filter(Boolean)
+        : project?.presentation?.entities,
       workspaceSurface: previewTab,
       activeSection: activeSectionKey || aiPageContext.id,
       routeId: aiPageContext.id,
       routeLabel: aiPageContext.label,
+      activeRoutePurpose: activeBlueprintRoute?.purpose || sharedSessionSnapshot?.activeRoutePurpose || undefined,
       filePath: selectedCodeFile || aiPageContext.filePath,
       symbolName: aiModuleContext.name,
+      activeModuleSummary: activeBlueprintModuleSummary || sharedSessionSnapshot?.activeModuleSummary || undefined,
       elementName: aiElementContext.name,
+      activeEntitySummary: activeBlueprintEntitySummary || sharedSessionSnapshot?.activeEntitySummary || undefined,
       deploymentTarget: normalizedDeploymentTarget,
       databaseTarget: normalizedDatabaseTarget,
       region: workspaceRegion,
@@ -2964,6 +3059,9 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     }),
     [
       activeSectionKey,
+      activeBlueprintEntitySummary,
+      activeBlueprintModuleSummary,
+      activeBlueprintRoute?.purpose,
       aiElementContext.name,
       aiModuleContext.name,
       aiPageContext.filePath,
@@ -2982,7 +3080,21 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       normalizedDatabaseTarget,
       normalizedDeploymentTarget,
       previewTab,
+      project?.presentation?.archetype,
+      project?.presentation?.category,
+      project?.presentation?.entities,
+      project?.presentation?.summary,
+      project?.presentation?.visualTone,
       project?.spec?.kind,
+      project?.spec?.appIdentity?.category,
+      project?.spec?.appIdentity?.shortDescription,
+      project?.spec?.appIntent?.archetype,
+      project?.spec?.appIntent?.primaryWorkflow,
+      project?.spec?.appIntent?.productCategory,
+      project?.spec?.entityBlueprint,
+      project?.spec?.moduleBlueprint,
+      project?.spec?.routeBlueprint,
+      project?.spec?.visualSeed?.tone,
       projectName,
       prompt,
       selectedCodeFile,
@@ -3458,22 +3570,83 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     [activeSectionKey, copy.code, copy.preview, isCn, previewTab, workspaceRootHref]
   )
   const dashboardNavItems = useMemo(
-    () => [
-      { key: "overview", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Overview" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
-      { key: "users", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Users" : "Users", icon: Users, href: `${workspaceRootHref}/users`, active: activeDashboardSection === "users" },
-      { key: "data", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Data" : "Data", icon: Database, href: `${workspaceRootHref}/data`, active: activeDashboardSection === "data" },
-      { key: "analytics", group: isCn ? "Growth" : "Growth", label: isCn ? "Analytics" : "Analytics", icon: BarChart3, href: `${workspaceRootHref}/analytics`, badge: "Beta", active: activeDashboardSection === "analytics" },
-      { key: "social", group: isCn ? "Growth" : "Growth", label: isCn ? "Social / Content" : "Social / Content", icon: Megaphone, href: "/market", badge: isCn ? "新" : "New", active: false },
-      { key: "domains", group: isCn ? "Growth" : "Growth", label: isCn ? "Domains" : "Domains", icon: Globe, href: `${workspaceRootHref}/domains`, active: activeDashboardSection === "domains" },
-      { key: "integrations", group: isCn ? "Operate" : "Operate", label: isCn ? "Integrations" : "Integrations", icon: Puzzle, href: `${workspaceRootHref}/integrations`, active: activeDashboardSection === "integrations" },
-      { key: "security", group: isCn ? "Operate" : "Operate", label: isCn ? "Security" : "Security", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
-      { key: "agents", group: isCn ? "Operate" : "Operate", label: isCn ? "Agents" : "Agents", icon: Bot, href: `${workspaceRootHref}/agents`, active: activeDashboardSection === "agents" },
-      { key: "automations", group: isCn ? "Operate" : "Operate", label: isCn ? "Automations" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
-      { key: "logs", group: isCn ? "Operate" : "Operate", label: isCn ? "Logs" : "Logs", icon: FileText, href: `${workspaceRootHref}/logs`, active: activeDashboardSection === "logs" },
-      { key: "api", group: isCn ? "Ship" : "Ship", label: "API", icon: Code2, href: `${workspaceRootHref}/api`, active: activeDashboardSection === "api" },
-      { key: "settings", group: isCn ? "Ship" : "Ship", label: isCn ? "Settings" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
-    ],
-    [activeDashboardSection, isCn, workspaceRootHref]
+    () => {
+      const archetype = project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace"
+      if (archetype === "crm") {
+        return [
+          { key: "overview", group: isCn ? "销售控制台" : "Revenue", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+          { key: "leads", group: isCn ? "销售控制台" : "Revenue", label: isCn ? "线索" : "Leads", icon: Users, href: `${workspaceRootHref}/users`, active: activeDashboardSection === "users" },
+          { key: "accounts", group: isCn ? "销售控制台" : "Revenue", label: isCn ? "客户账户" : "Accounts", icon: Database, href: `${workspaceRootHref}/data`, active: activeDashboardSection === "data" },
+          { key: "pipeline", group: isCn ? "销售控制台" : "Revenue", label: isCn ? "销售管道" : "Pipeline", icon: BarChart3, href: `${workspaceRootHref}/analytics`, active: activeDashboardSection === "analytics" },
+          { key: "orders", group: isCn ? "成交推进" : "Execution", label: isCn ? "订单 / 报价" : "Orders / Quotes", icon: FileText, href: `${workspaceRootHref}/api`, active: activeDashboardSection === "api" },
+          { key: "automations", group: isCn ? "成交推进" : "Execution", label: isCn ? "自动化" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
+          { key: "access", group: isCn ? "运营与交付" : "Operate", label: isCn ? "访问控制" : "Access", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+          { key: "settings", group: isCn ? "运营与交付" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+        ]
+      }
+      if (archetype === "api_platform") {
+        return [
+          { key: "overview", group: isCn ? "平台控制台" : "Platform", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+          { key: "endpoints", group: isCn ? "平台控制台" : "Platform", label: isCn ? "接口目录" : "Endpoints", icon: Code2, href: `${workspaceRootHref}/api`, active: activeDashboardSection === "api" },
+          { key: "logs", group: isCn ? "平台控制台" : "Platform", label: isCn ? "运行日志" : "Logs", icon: FileText, href: `${workspaceRootHref}/logs`, active: activeDashboardSection === "logs" },
+          { key: "auth", group: isCn ? "平台控制台" : "Platform", label: isCn ? "鉴权与权限" : "Auth", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+          { key: "webhooks", group: isCn ? "交付与运营" : "Operate", label: isCn ? "Webhook 与集成" : "Webhooks / Integrations", icon: Puzzle, href: `${workspaceRootHref}/integrations`, active: activeDashboardSection === "integrations" },
+          { key: "usage", group: isCn ? "交付与运营" : "Operate", label: isCn ? "用量与计费" : "Usage / Billing", icon: BarChart3, href: `${workspaceRootHref}/analytics`, active: activeDashboardSection === "analytics" },
+          { key: "domains", group: isCn ? "交付与运营" : "Operate", label: isCn ? "环境与域名" : "Environments", icon: Globe, href: `${workspaceRootHref}/domains`, active: activeDashboardSection === "domains" },
+          { key: "settings", group: isCn ? "交付与运营" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+        ]
+      }
+      if (archetype === "community") {
+        return [
+          { key: "overview", group: isCn ? "社区运营" : "Community", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+          { key: "members", group: isCn ? "社区运营" : "Community", label: isCn ? "成员" : "Members", icon: Users, href: `${workspaceRootHref}/users`, active: activeDashboardSection === "users" },
+          { key: "events", group: isCn ? "社区运营" : "Community", label: isCn ? "活动与报名" : "Events", icon: Megaphone, href: `${workspaceRootHref}/analytics`, active: activeDashboardSection === "analytics" },
+          { key: "feedback", group: isCn ? "社区运营" : "Community", label: isCn ? "反馈 / 路线图" : "Feedback / Roadmap", icon: Database, href: `${workspaceRootHref}/data`, active: activeDashboardSection === "data" },
+          { key: "moderation", group: isCn ? "治理与交付" : "Operate", label: isCn ? "治理 / 审核" : "Moderation", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+          { key: "automations", group: isCn ? "治理与交付" : "Operate", label: isCn ? "自动化" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
+          { key: "integrations", group: isCn ? "治理与交付" : "Operate", label: isCn ? "集成" : "Integrations", icon: Puzzle, href: `${workspaceRootHref}/integrations`, active: activeDashboardSection === "integrations" },
+          { key: "settings", group: isCn ? "治理与交付" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+        ]
+      }
+      if (archetype === "marketing_admin") {
+        return [
+          { key: "overview", group: isCn ? "官网分发" : "Growth", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+          { key: "website", group: isCn ? "官网分发" : "Growth", label: isCn ? "官网叙事" : "Website", icon: Megaphone, href: `${workspaceRootHref}/analytics`, active: activeDashboardSection === "analytics" },
+          { key: "downloads", group: isCn ? "官网分发" : "Growth", label: isCn ? "下载与设备" : "Downloads", icon: Globe, href: `${workspaceRootHref}/domains`, active: activeDashboardSection === "domains" },
+          { key: "docs", group: isCn ? "官网分发" : "Growth", label: isCn ? "文档 / 更新" : "Docs / Changelog", icon: FileText, href: `${workspaceRootHref}/api`, active: activeDashboardSection === "api" },
+          { key: "distribution", group: isCn ? "分发后台" : "Distribution", label: isCn ? "分发控制台" : "Distribution", icon: Puzzle, href: `${workspaceRootHref}/integrations`, active: activeDashboardSection === "integrations" },
+          { key: "automations", group: isCn ? "分发后台" : "Distribution", label: isCn ? "自动化" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
+          { key: "security", group: isCn ? "分发后台" : "Distribution", label: isCn ? "权限" : "Access", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+          { key: "settings", group: isCn ? "分发后台" : "Distribution", label: isCn ? "设置" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+        ]
+      }
+      if (archetype === "admin_ops_internal_tool" || archetype === "task" || archetype === "task_workspace") {
+        return [
+          { key: "overview", group: isCn ? "控制平面" : "Control Plane", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+          { key: "approvals", group: isCn ? "控制平面" : "Control Plane", label: isCn ? "审批队列" : "Approvals", icon: Users, href: `${workspaceRootHref}/users`, active: activeDashboardSection === "users" },
+          { key: "security", group: isCn ? "控制平面" : "Control Plane", label: isCn ? "访问 / 权限" : "Security", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+          { key: "audit", group: isCn ? "控制平面" : "Control Plane", label: isCn ? "审计与日志" : "Audit / Logs", icon: FileText, href: `${workspaceRootHref}/logs`, active: activeDashboardSection === "logs" },
+          { key: "incidents", group: isCn ? "交付与运营" : "Operate", label: isCn ? "事件响应" : "Incidents", icon: BarChart3, href: `${workspaceRootHref}/analytics`, active: activeDashboardSection === "analytics" },
+          { key: "team", group: isCn ? "交付与运营" : "Operate", label: isCn ? "团队 / 席位" : "Team", icon: Database, href: `${workspaceRootHref}/data`, active: activeDashboardSection === "data" },
+          { key: "automations", group: isCn ? "交付与运营" : "Operate", label: isCn ? "自动化" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
+          { key: "settings", group: isCn ? "交付与运营" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+        ]
+      }
+      return [
+        { key: "overview", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Overview" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
+        { key: "users", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Users" : "Users", icon: Users, href: `${workspaceRootHref}/users`, active: activeDashboardSection === "users" },
+        { key: "data", group: isCn ? "Workspace" : "Workspace", label: isCn ? "Data" : "Data", icon: Database, href: `${workspaceRootHref}/data`, active: activeDashboardSection === "data" },
+        { key: "analytics", group: isCn ? "Growth" : "Growth", label: isCn ? "Analytics" : "Analytics", icon: BarChart3, href: `${workspaceRootHref}/analytics`, badge: "Beta", active: activeDashboardSection === "analytics" },
+        { key: "domains", group: isCn ? "Growth" : "Growth", label: isCn ? "Domains" : "Domains", icon: Globe, href: `${workspaceRootHref}/domains`, active: activeDashboardSection === "domains" },
+        { key: "integrations", group: isCn ? "Operate" : "Operate", label: isCn ? "Integrations" : "Integrations", icon: Puzzle, href: `${workspaceRootHref}/integrations`, active: activeDashboardSection === "integrations" },
+        { key: "security", group: isCn ? "Operate" : "Operate", label: isCn ? "Security" : "Security", icon: Shield, href: `${workspaceRootHref}/security`, active: activeDashboardSection === "security" },
+        { key: "automations", group: isCn ? "Operate" : "Operate", label: isCn ? "Automations" : "Automations", icon: Zap, href: `${workspaceRootHref}/automations`, active: activeDashboardSection === "automations" },
+        { key: "logs", group: isCn ? "Operate" : "Operate", label: isCn ? "Logs" : "Logs", icon: FileText, href: `${workspaceRootHref}/logs`, active: activeDashboardSection === "logs" },
+        { key: "api", group: isCn ? "Ship" : "Ship", label: "API", icon: Code2, href: `${workspaceRootHref}/api`, active: activeDashboardSection === "api" },
+        { key: "settings", group: isCn ? "Ship" : "Ship", label: isCn ? "Settings" : "Settings", icon: Settings, href: `${workspaceRootHref}/settings`, active: activeDashboardSection === "settings" },
+      ]
+    },
+    [activeDashboardSection, isCn, project?.presentation?.archetype, project?.spec?.appIdentity?.category, project?.spec?.appIntent?.archetype, workspaceRootHref]
   )
   const dashboardNavGroups = useMemo(
     () =>
@@ -3483,31 +3656,260 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       })),
     [dashboardNavItems]
   )
+  const aiTimelineScrollerRef = useRef<HTMLDivElement | null>(null)
+  const workspaceArchetype = project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace"
+  const dashboardSurfaceModel = useMemo(() => {
+    const routeList = routeBlueprintEntries.slice(0, 6)
+    const entityList = entityBlueprintEntries.slice(0, 5)
+    const moduleList = moduleBlueprintEntries.slice(0, 6)
+    const routeCountText = `${generatedRouteCount} ${isCn ? "个页面" : "surfaces"}`
+    const entityCountText = `${entityBlueprintEntries.length || 0} ${isCn ? "个数据对象" : "entities"}`
+    const moduleCountText = `${moduleCount} ${isCn ? "个模块" : "modules"}`
+    const previewStateText = workspaceStatus.label
+    const buildStateText = buildAcceptanceLabel
+    if (workspaceArchetype === "crm") {
+      return {
+        eyebrow: isCn ? "Revenue command" : "Revenue command",
+        accent: "from-emerald-500 via-cyan-500 to-sky-500",
+        title: isCn ? "销售控制台" : "Revenue control plane",
+        summary: isCn ? "围绕线索、客户、管道、订单和续约推进成交节奏。" : "Run the workspace around leads, accounts, pipeline movement, orders, and renewals.",
+        stats: [
+          { label: isCn ? "销售工作流" : "Sales workflow", value: routeCountText, helper: isCn ? "概览、线索、管道、订单和续约都应是不同入口。" : "Dashboard, leads, pipeline, orders, and renewals should feel like separate surfaces." },
+          { label: isCn ? "客户对象" : "Customer objects", value: entityCountText, helper: isCn ? "线索、客户、订单、商机和报价应是不同数据对象。" : "Leads, accounts, orders, opportunities, and quotes should feel like different data objects." },
+          { label: isCn ? "自动化与审批" : "Automation & approvals", value: moduleCountText, helper: isCn ? "报价审批、团队目标和续约提醒会拉开 CRM 节奏。" : "Quote approvals, team targets, and renewals create a different CRM rhythm." },
+        ],
+        flowTitle: isCn ? "成交推进" : "Revenue motion",
+        flowSteps: isCn ? ["线索采集", "客户推进", "报价审批", "订单交付"] : ["Lead intake", "Account motion", "Quote approval", "Order handoff"],
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: [
+          isCn ? "深色营收工作台与成交节奏" : "Dark revenue workspace shell",
+          isCn ? "管道/分布/阶段进度视图" : "Pipeline and distribution views",
+          isCn ? "线索、客户、订单对象链路" : "Lead/account/order object chain",
+        ],
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
+    if (workspaceArchetype === "api_platform") {
+      return {
+        eyebrow: isCn ? "Platform command" : "Platform command",
+        accent: "from-cyan-500 via-sky-500 to-blue-500",
+        title: isCn ? "API 控制平面" : "API control plane",
+        summary: isCn ? "围绕接口、鉴权、环境、Webhook、文档和用量构建开发者平台。" : "Run the app around endpoints, auth, environments, webhooks, docs, and usage metering.",
+        stats: [
+          { label: isCn ? "平台表面" : "Platform surfaces", value: routeCountText, helper: isCn ? "接口、日志、文档、Webhook 和环境要像不同的产品面。" : "Endpoints, logs, docs, webhooks, and environments should feel like distinct product surfaces." },
+          { label: isCn ? "开发者对象" : "Developer objects", value: entityCountText, helper: isCn ? "endpoint、webhook、developer_doc、api_key 等对象应被独立建模。" : "endpoint, webhook, developer_doc, api_key, and usage objects should be distinct." },
+          { label: isCn ? "运行与交付" : "Runtime & delivery", value: buildStateText, helper: isCn ? "环境推进、鉴权、计费和开发者接入一起构成平台节奏。" : "Environments, auth, billing, and onboarding shape the platform rhythm." },
+        ],
+        flowTitle: isCn ? "平台主链路" : "Platform workflow",
+        flowSteps: isCn ? ["接口上线", "鉴权配置", "Webhook 交付", "文档与用量"] : ["Endpoint release", "Auth policy", "Webhook delivery", "Docs & usage"],
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: [
+          isCn ? "深色 command center 与平台指标" : "Dark command center shell",
+          isCn ? "环境推进 / Webhook / 文档入口" : "Environment, webhook, and docs surfaces",
+          isCn ? "API 对象与开发者接入链路" : "API objects and onboarding chain",
+        ],
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
+    if (workspaceArchetype === "community") {
+      return {
+        eyebrow: isCn ? "Community ops" : "Community ops",
+        accent: "from-fuchsia-500 via-violet-500 to-indigo-500",
+        title: isCn ? "社区运营工作台" : "Community operating system",
+        summary: isCn ? "围绕活动、成员、反馈、路线图和治理建立社区节奏。" : "Run the workspace around events, members, feedback, roadmap, and moderation.",
+        stats: [
+          { label: isCn ? "社区入口" : "Community surfaces", value: routeCountText, helper: isCn ? "活动、成员、反馈和路线图应该是真正不同的面。" : "Events, members, feedback, and roadmap should feel like different surfaces." },
+          { label: isCn ? "社区对象" : "Community objects", value: entityCountText, helper: isCn ? "member、event、feedback、moderation_case 应当明确存在。" : "member, event, feedback, and moderation_case should be explicit." },
+          { label: isCn ? "治理能力" : "Governance", value: moduleCountText, helper: isCn ? "运营节奏、治理、自动化是社区产品的关键差异。" : "Ops rhythm, moderation, and automations make the product feel community-native." },
+        ],
+        flowTitle: isCn ? "社区节奏" : "Community rhythm",
+        flowSteps: isCn ? ["活动筹备", "成员触达", "反馈沉淀", "路线图运营"] : ["Event prep", "Member outreach", "Feedback intake", "Roadmap ops"],
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: [
+          isCn ? "活动、成员与反馈的运营中枢" : "Events, members, and feedback hub",
+          isCn ? "治理与自动化并行的社区面" : "Moderation and automation rails",
+          isCn ? "不同于 CRM / API 的内容节奏" : "A rhythm distinct from CRM and API platforms",
+        ],
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
+    if (workspaceArchetype === "marketing_admin") {
+      return {
+        eyebrow: isCn ? "Launch & distribution" : "Launch & distribution",
+        accent: "from-orange-500 via-amber-500 to-yellow-500",
+        title: isCn ? "官网与分发后台" : "Website and distribution control",
+        summary: isCn ? "围绕官网叙事、下载分发、设备支持、更新日志和后台控制构建增长产品。" : "Run the app around website storytelling, downloads, devices, changelog, docs, and distribution controls.",
+        stats: [
+          { label: isCn ? "增长入口" : "Growth surfaces", value: routeCountText, helper: isCn ? "官网、下载、文档、更新和设备支持必须同时成立。" : "Website, downloads, docs, changelog, and device support should coexist." },
+          { label: isCn ? "分发对象" : "Distribution objects", value: entityCountText, helper: isCn ? "release、device、download_asset、distribution_channel 应该是真实对象。" : "release, device, download_asset, and distribution_channel should be real objects." },
+          { label: isCn ? "上线状态" : "Release state", value: previewStateText, helper: isCn ? "这类产品要更像增长站和分发后台，不是任务工具。" : "This should feel like a launch site plus distribution console, not a task tool." },
+        ],
+        flowTitle: isCn ? "分发主链路" : "Distribution flow",
+        flowSteps: isCn ? ["官网叙事", "下载转化", "设备分发", "后台控制"] : ["Website story", "Download conversion", "Device rollout", "Ops control"],
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: [
+          isCn ? "官网叙事与下载转化底壳" : "Website and download shell",
+          isCn ? "设备/版本/分发对象关系" : "Device, release, and distribution objects",
+          isCn ? "明确区别于内部后台与 CRM" : "A clear split from CRM and internal tools",
+        ],
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
+    if (workspaceArchetype === "admin_ops_internal_tool" || workspaceArchetype === "task" || workspaceArchetype === "task_workspace") {
+      return {
+        eyebrow: isCn ? "Control plane" : "Control plane",
+        accent: "from-slate-500 via-zinc-500 to-stone-500",
+        title: isCn ? "内部控制平面" : "Internal control plane",
+        summary: isCn ? "围绕审批、访问、审计、事件响应和团队容量建立后台控制中心。" : "Run the app around approvals, access control, audit trails, incidents, and team capacity.",
+        stats: [
+          { label: isCn ? "控制台入口" : "Control surfaces", value: routeCountText, helper: isCn ? "审批、权限、审计、事件和团队面应是不同控制面。" : "Approvals, security, audit, incidents, and team capacity should feel distinct." },
+          { label: isCn ? "治理对象" : "Governance objects", value: entityCountText, helper: isCn ? "approval_queue、access_policy、audit_event、incident 应被独立建模。" : "approval_queue, access_policy, audit_event, and incident should be explicit." },
+          { label: isCn ? "交付状态" : "Delivery state", value: buildStateText, helper: isCn ? "它要像后台控制平面，而不是任务板换名字。" : "This should feel like a control plane, not a task board with new labels." },
+        ],
+        flowTitle: isCn ? "治理链路" : "Governance loop",
+        flowSteps: isCn ? ["审批", "权限", "审计", "事件响应"] : ["Approvals", "Access", "Audit", "Incident response"],
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: [
+          isCn ? "审批 / 权限 / 审计 / 事件响应底壳" : "Approvals, security, audit, and incident shell",
+          isCn ? "不同于 CRM 与营销站的控制台布局" : "A layout distinct from CRM and launch sites",
+          isCn ? "更像内部后台而不是任务面板" : "Closer to an internal control plane than a generic task board",
+        ],
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
+    return {
+      eyebrow: isCn ? "Workspace command" : "Workspace command",
+      accent: "from-violet-500 via-indigo-500 to-sky-500",
+      title: isCn ? "产品工作台" : "Product workspace",
+      summary: projectSummary,
+      stats: [
+        { label: isCn ? "页面" : "Surfaces", value: routeCountText, helper: isCn ? "不同页面应该表现不同工作流。" : "Different routes should represent different workflows." },
+        { label: isCn ? "模块" : "Modules", value: moduleCountText, helper: isCn ? "模块应表达产品责任，而不是同一个后台壳。" : "Modules should represent product responsibilities, not one repeated shell." },
+        { label: isCn ? "状态" : "State", value: previewStateText, helper: isCn ? "Preview / Dashboard / Code 要共享同一条产品链路。" : "Preview, Dashboard, and Code should share the same product thread." },
+      ],
+      flowTitle: isCn ? "主工作流" : "Primary flow",
+      flowSteps: isCn ? ["规划", "页面", "模块", "交付"] : ["Plan", "Routes", "Modules", "Ship"],
+      sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+      sideItems: [
+        isCn ? "不同 archetype 的页面、模块和实体蓝图" : "Archetype-specific routes, modules, and entities",
+        isCn ? "左侧 AI 过程流与当前工作台联动" : "AI process rail connected to the workspace",
+        isCn ? "不再只是同一个后台壳换标题" : "No longer one repeated shell with a new title",
+      ],
+      routeList,
+      entityList,
+      moduleList,
+    }
+  }, [
+    buildAcceptanceLabel,
+    entityBlueprintEntries,
+    generatedRouteCount,
+    isCn,
+    moduleBlueprintEntries,
+    moduleCount,
+    project?.presentation?.archetype,
+    project?.spec?.appIdentity?.category,
+    project?.spec?.appIntent?.archetype,
+    projectSummary,
+    routeBlueprintEntries,
+    workspaceArchetype,
+    workspaceStatus.label,
+  ])
   const aiTimelineItems = useMemo(() => {
     const fallbackFile = sharedSessionSnapshot?.lastChangedFile || contextFile || "app/page.tsx"
     const items: AiTimelineEntry[] = []
+    const plannerPages = generateTask?.planner?.pages?.slice(0, 4).map((page) => page.replace(/_/g, " "))
+    const plannerModules = generateTask?.planner?.modules?.slice(0, 4)
+    const plannerTasks = generateTask?.planner?.taskPlan?.slice(0, 3)
+    const plannerBullets = [
+      ...(generateTask?.planner?.productType
+        ? [
+            (isCn ? "产品类型：" : "Product type: ") +
+              generateTask.planner.productType.replace(/_/g, " "),
+          ]
+        : []),
+      ...(plannerPages?.length
+        ? [
+            (isCn ? "关键页面：" : "Key pages: ") +
+              plannerPages.join(isCn ? " / " : " / "),
+          ]
+        : []),
+      ...(plannerModules?.length
+        ? [
+            (isCn ? "核心模块：" : "Core modules: ") +
+              plannerModules.join(isCn ? " / " : " / "),
+          ]
+        : []),
+      ...(plannerTasks?.length
+        ? plannerTasks.map((item) => `• ${item}`)
+        : []),
+    ].slice(0, 4)
+
+    if (copilotIntroPrompt) {
+      items.push({
+        id: "prompt-origin",
+        actor: "user",
+        headline: copilotIntroPrompt,
+        action: isCn ? "需求" : "Prompt",
+        detail: isCn ? "这条需求会驱动当前工作区的页面、模块和数据结构。" : "This request seeds the current workspace routes, modules, and data model.",
+        fileChips: [],
+        time: project?.history?.[0]?.createdAt ? new Date(project.history[0].createdAt).toLocaleString() : (isCn ? "刚刚" : "Just now"),
+        tone: "neutral",
+      })
+    }
 
     if (iterating) {
       items.push({
         id: "iterate-live",
+        actor: "ai",
         headline: iterateStatus || (isCn ? "Codex 正在围绕当前上下文应用修改。" : "Codex is applying the scoped change."),
         action: aiWorkflowMode === "discuss" ? "Planning" : aiMode === "fix" ? "Fix" : aiMode === "refactor" ? "Refactor" : aiMode === "explain" ? "Read" : "Edited",
         detail: contextFile || contextRoute || undefined,
         fileChips: [fallbackFile],
         time: isCn ? "实时" : "Live",
         tone: "live",
+        mode: aiWorkflowMode === "discuss" ? "Discuss" : aiMode === "fix" ? "Fix" : aiMode === "refactor" ? "Refactor" : aiMode === "explain" ? "Explain" : "Generate",
       })
     }
 
     if (generateTask?.planner) {
       items.push({
         id: "generate-plan",
-        headline: generateTask.planner.productName || projectName || "MornCursor",
+        actor: "ai",
+        headline:
+          generateTask.planner.productName || projectName
+            ? isCn
+              ? `我会开始搭建 ${generateTask.planner.productName || projectName}，先把页面、模块和数据结构规划出来。`
+              : `I'll build ${generateTask.planner.productName || projectName} and map the pages, modules, and data model first.`
+            : isCn
+              ? "我会先规划当前应用的页面、模块和数据结构。"
+              : "I'll plan the current app structure, modules, and data model first.",
         action: "Planning",
-        detail: generateTask.planner.summary || generationAcceptance?.contextSummary || undefined,
+        detail:
+          generateTask.planner.summary ||
+          generationAcceptance?.contextSummary ||
+          (isCn
+            ? "接下来会继续写入实体、样式和关键页面。"
+            : "Next I’ll write the entities, styling, and key pages."),
         fileChips: extractTimelineFiles(generateTask.planner.summary || "", generateTask.changedFiles ?? [], fallbackFile, 0),
         time: previewGenerating ? (isCn ? "实时" : "Live") : (isCn ? "最新" : "Latest"),
         tone: previewGenerating ? "live" : "neutral",
+        bullets: plannerBullets,
+        mode:
+          generateTask.planner.workflowMode === "discuss"
+            ? "Discuss"
+            : generateTask.planner.workflowMode === "edit_context"
+              ? "Visual Edit"
+              : "Generate",
       })
     }
 
@@ -3521,6 +3923,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
           const detected = detectTimelineAction(normalized)
           items.push({
             id: `generate-log-${index}-${normalized}`,
+            actor: "system",
             headline: normalized,
             action: detected.action,
             detail:
@@ -3537,11 +3940,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     if (generateTask?.changedFiles?.length) {
       items.push({
         id: "generate-files",
+        actor: "system",
         headline:
           generateTask.status === "done"
             ? (isCn ? `已生成 ${generateTask.changedFiles.length} 个工作区文件` : `${generateTask.changedFiles.length} workspace files generated`)
             : (isCn ? `正在写入 ${generateTask.changedFiles.length} 个文件` : `Writing ${generateTask.changedFiles.length} files`),
-        action: generateTask.status === "done" ? "Generated" : "Edited",
+        action: generateTask.status === "done" ? "Generated" : "Wrote",
         detail: generateTask.summary || generationAcceptance?.fallbackReason || undefined,
         fileChips: generateTask.changedFiles.slice(0, 5),
         time: generateTask.status === "done" ? (isCn ? "完成" : "Done") : (isCn ? "进行中" : "In progress"),
@@ -3562,6 +3966,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                 : "Edited"
       items.push({
         id: "iterate-result",
+        actor: "ai",
         headline: iterateResult.summary || iterateResult.thinking || (isCn ? "最近一次上下文改写已完成。" : "The latest contextual edit is complete."),
         action: iterateAction,
         detail:
@@ -3572,6 +3977,11 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
         fileChips: (iterateResult.changedFiles?.length ? iterateResult.changedFiles : [fallbackFile]).slice(0, 5),
         time: isCn ? "刚刚" : "Just now",
         tone: iterateResult.build?.status === "failed" ? "warning" : "success",
+        bullets: [
+          ...(iterateResult.plan?.routeMap?.slice(0, 3).map((item) => `${isCn ? "路由" : "Route"} · ${item}`) ?? []),
+          ...(iterateResult.plan?.modulePlan?.slice(0, 2).map((item) => `${isCn ? "模块" : "Module"} · ${item}`) ?? []),
+        ].slice(0, 4),
+        mode: aiWorkflowMode === "discuss" ? "Discuss" : aiMode === "fix" ? "Fix" : aiMode === "refactor" ? "Refactor" : aiMode === "explain" ? "Explain" : "Generate",
       })
     }
 
@@ -3582,6 +3992,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       .forEach((item, index) => {
         items.push({
           id: item.id,
+          actor: item.type === "generate" ? "user" : "system",
           headline: index === 0 ? item.prompt : item.summary || item.prompt,
           action: item.type === "generate" ? "Generated" : item.changedFiles?.length ? "Edited" : "Read",
           detail: item.summary || undefined,
@@ -3620,6 +4031,19 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     sharedSessionSnapshot?.lastChangedFile,
   ])
   const compactFallbackNote = fallbackReason || runtime?.lastError || runStatus
+  useEffect(() => {
+    const node = aiTimelineScrollerRef.current
+    if (!node) return
+    const nextTop = node.scrollHeight - node.clientHeight
+    if (nextTop <= 0) return
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollTo({
+        top: nextTop,
+        behavior: aiTimelineItems.length > 2 ? "smooth" : "auto",
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [aiTimelineItems.length, iterating, previewGenerating, generateTask?.logs?.length, generateTask?.changedFiles?.length])
   useEffect(() => {
     if (!project) return
     const projectRecord = project
@@ -3691,7 +4115,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
             response.ok &&
             (
               candidate === canonicalPreviewUrl
-                ? serverPreviewStatus === "ready"
+                ? responsePreviewState !== "fallback"
                 : previewMode === "static_ssr"
                   ? staticPreviewReady && responsePreviewState !== "fallback"
                   : responsePreviewState === "runtime" || responsePreviewState === "sandbox" || !responseResolvedToCanonical
@@ -4092,81 +4516,103 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
               </div>
 
               <div className="min-h-0 flex-1 overflow-hidden px-3 py-3">
-                <div className="h-full overflow-y-auto pr-1">
+                <div ref={aiTimelineScrollerRef} className="h-full overflow-y-auto pr-1">
                   <div className="space-y-4">
-                  {aiTimelineItems.length ? (
-                    aiTimelineItems.map((item, index) => (
-                      <div key={item.id} className="border-b border-slate-100 pb-4 last:border-b-0 last:pb-0">
-                        <div className="text-[11px] leading-6 text-slate-800">{item.headline}</div>
-                        {item.detail ? <div className="mt-1 text-[11px] leading-5 text-slate-500">{item.detail}</div> : null}
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${
-                                item.tone === "warning"
-                                  ? "bg-amber-100 text-amber-700"
-                                  : item.tone === "success"
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : item.tone === "live" || index === 0
+                    {aiTimelineItems.length ? (
+                      aiTimelineItems.map((item, index) => {
+                        const isUserBubble = item.actor === "user"
+                        const isAiBubble = item.actor === "ai"
+                        const isSystemRow = item.actor === "system"
+                        const bubbleClass = isUserBubble
+                          ? "ml-8 rounded-[24px] border border-blue-100 bg-blue-50/90 px-4 py-4 shadow-[0_10px_30px_rgba(37,99,235,0.08)]"
+                          : isAiBubble
+                            ? "rounded-[24px] border border-slate-200 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.05)]"
+                            : "rounded-[20px] border border-dashed border-slate-200 bg-slate-50/80 px-3 py-3"
+                        return (
+                          <div key={item.id} className={bubbleClass}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
+                                    isUserBubble
                                       ? "bg-slate-950 text-white"
-                                      : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {item.action}
-                            </span>
-                            {item.fileChips.map((fileChip) => (
-                              <button
-                                key={fileChip}
-                                type="button"
-                                onClick={() => focusWorkspaceCodeFile(fileChip, null, { forceCode: true })}
-                                className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] text-slate-600 transition hover:bg-slate-200"
-                              >
-                                {fileChip.split("/").slice(-1)[0]}
-                              </button>
-                            ))}
+                                      : isAiBubble
+                                        ? "bg-violet-100 text-violet-700"
+                                        : "bg-slate-200 text-slate-600"
+                                  }`}
+                                >
+                                  {isUserBubble ? "You" : isAiBubble ? "AI" : "Log"}
+                                </span>
+                                <div className="min-w-0">
+                                  <div className="truncate text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">
+                                    {item.mode || item.action}
+                                  </div>
+                                  <div className="mt-1 text-[12px] font-medium leading-6 text-slate-900">{item.headline}</div>
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-[10px] text-slate-400">{item.time}</span>
+                            </div>
+                            {item.detail ? <div className="mt-2 text-[12px] leading-6 text-slate-500">{item.detail}</div> : null}
+                            {item.bullets?.length ? (
+                              <div className="mt-3 space-y-2">
+                                {item.bullets.map((bullet) => (
+                                  <div key={bullet} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-600">
+                                    {bullet}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {item.fileChips.length ? (
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${
+                                    item.tone === "warning"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : item.tone === "success"
+                                        ? "bg-emerald-100 text-emerald-700"
+                                        : item.tone === "live" || index === 0
+                                          ? "bg-slate-950 text-white"
+                                          : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  {item.action}
+                                </span>
+                                {item.fileChips.map((fileChip) => (
+                                  <button
+                                    key={fileChip}
+                                    type="button"
+                                    onClick={() => focusWorkspaceCodeFile(fileChip, null, { forceCode: true })}
+                                    className={`rounded-full px-2.5 py-1 text-[10px] transition ${
+                                      isSystemRow ? "bg-white text-slate-600 hover:bg-slate-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                    }`}
+                                  >
+                                    {fileChip.split("/").slice(-1)[0]}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
-                          <span className="shrink-0 text-[10px] text-slate-400">{item.time}</span>
-                        </div>
+                        )
+                      })
+                    ) : (
+                      <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                        {workspaceStatus.key === "ready" || workspaceStatus.key === "workspace" || workspaceStatus.key === "fallback" || workspaceStatus.key === "sandbox"
+                          ? (isCn ? "工作区已经打开，这里会继续记录你和 AI 的修改过程。" : "The workspace is already live. This rail will capture your next AI edits.")
+                          : copy.noConversation}
                       </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[22px] border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                      {workspaceStatus.key === "ready" || workspaceStatus.key === "workspace" || workspaceStatus.key === "fallback" || workspaceStatus.key === "sandbox"
-                        ? (isCn ? "工作区已经打开，这里会继续记录你和 AI 的修改过程。" : "The workspace is already live. This rail will capture your next AI edits.")
-                        : copy.noConversation}
-                    </div>
-                  )}
+                    )}
                   </div>
                 </div>
               </div>
 
               <div className="border-t border-slate-200/80 px-3 py-3">
                 <div className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">{copy.quickSuggestions}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {quickSuggestions.slice(0, 3).map((item) => (
-                        <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 rounded-[18px] border border-slate-200 bg-white px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "Target file" : "Target file"}</div>
-                      <div className="mt-1 truncate text-xs font-medium text-slate-900">{contextFile || copy.noFileSelected}</div>
-                      <div className="mt-0.5 truncate text-[11px] text-slate-400">{contextRoute || contextPage.label}</div>
-                    </div>
-                  </div>
-
                   <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3">
                     <textarea
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       placeholder={copy.continuePrompt}
-                      className="min-h-[156px] w-full resize-none bg-transparent px-1 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                      className="min-h-[128px] w-full resize-none bg-transparent px-1 py-1 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                     />
                     {iterateStatus ? <div className="mt-2 text-xs text-slate-500">{iterateStatus}</div> : null}
                     {iterateResult?.summary ? <div className="mt-1 text-xs text-slate-500">{iterateResult.summary}</div> : null}
@@ -4344,79 +4790,173 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                     </div>
 
                     <div className="bg-white p-6">
-                      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-                        <div className="flex min-w-0 items-start gap-4">
-                          <div
-                            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[22px] text-xl font-semibold text-white"
-                            style={projectIcon ? { background: `linear-gradient(135deg, ${projectIcon.from}, ${projectIcon.to})`, boxShadow: `0 0 0 1px ${projectIcon.ring}` } : { background: "linear-gradient(135deg,#0f172a,#334155)" }}
-                          >
-                            {projectIcon?.glyph || projectName.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <h2 className="text-[2.15rem] font-semibold tracking-tight text-slate-950">{projectName || "MornCursor"}</h2>
-                            <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-500">{projectSummary}</p>
-                            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                              <span>{isCn ? "创建于" : "Created"} {new Date(project.createdAt).toLocaleDateString(workspaceRegion === "cn" ? "zh-CN" : "en-US")}</span>
-                              <span>•</span>
-                              <span>{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "Global"}</span>
+                      <div className={`overflow-hidden rounded-[28px] bg-gradient-to-br ${dashboardSurfaceModel.accent} p-[1px] shadow-[0_20px_50px_rgba(15,23,42,0.12)]`}>
+                        <div className="rounded-[27px] bg-[#0f1425] px-6 py-6 text-white">
+                          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+                            <div className="min-w-0">
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-white/60">{dashboardSurfaceModel.eyebrow}</div>
+                              <div className="mt-4 flex min-w-0 items-start gap-4">
+                                <div
+                                  className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[22px] text-xl font-semibold text-white"
+                                  style={projectIcon ? { background: `linear-gradient(135deg, ${projectIcon.from}, ${projectIcon.to})`, boxShadow: `0 0 0 1px ${projectIcon.ring}` } : { background: "linear-gradient(135deg,#0f172a,#334155)" }}
+                                >
+                                  {projectIcon?.glyph || projectName.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <h2 className="text-[2.15rem] font-semibold tracking-tight text-white">{projectName || "MornCursor"}</h2>
+                                  <p className="mt-2 max-w-3xl text-sm leading-7 text-white/75">{dashboardSurfaceModel.summary}</p>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/55">
+                                    <span>{isCn ? "创建于" : "Created"} {new Date(project.createdAt).toLocaleDateString(workspaceRegion === "cn" ? "zh-CN" : "en-US")}</span>
+                                    <span>•</span>
+                                    <span>{workspaceRegion === "cn" ? (isCn ? "国内版" : "China") : isCn ? "国际版" : "Global"}</span>
+                                    <span>•</span>
+                                    <span>{dashboardSurfaceModel.title}</span>
+                                  </div>
+                                  <div className="mt-5 flex flex-wrap gap-3">
+                                    <Button onClick={() => sharedAppUrl && window.open(sharedAppUrl, "_blank", "noopener,noreferrer")} className="h-11 rounded-2xl bg-white px-5 text-slate-950 hover:bg-white/90">
+                                      {isCn ? "打开应用" : "Open App"}
+                                    </Button>
+                                    <Button variant="outline" onClick={() => void navigator.clipboard?.writeText(sharedAppUrl || "")} className="h-11 rounded-2xl border-white/20 bg-white/5 px-5 text-white hover:bg-white/10 hover:text-white">
+                                      {isCn ? "分享应用" : "Share App"}
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="mt-6 grid gap-3 md:grid-cols-3">
+                                {dashboardSurfaceModel.stats.map((item) => (
+                                  <div key={item.label} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+                                    <div className="text-[11px] uppercase tracking-[0.14em] text-white/45">{item.label}</div>
+                                    <div className="mt-3 text-2xl font-semibold text-white">{item.value}</div>
+                                    <div className="mt-2 text-xs leading-6 text-white/60">{item.helper}</div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="mt-5 flex flex-wrap gap-3">
-                              <Button onClick={() => sharedAppUrl && window.open(sharedAppUrl, "_blank", "noopener,noreferrer")} className="h-11 rounded-2xl bg-slate-950 px-5 text-white hover:bg-slate-800">
-                                {isCn ? "打开应用" : "Open App"}
-                              </Button>
-                              <Button variant="outline" onClick={() => void navigator.clipboard?.writeText(sharedAppUrl || "")} className="h-11 rounded-2xl bg-white px-5">
-                                {isCn ? "分享应用" : "Share App"}
-                              </Button>
+                            <div className="space-y-3 rounded-[26px] border border-white/10 bg-white/5 p-4">
+                              <div className="rounded-2xl border border-white/10 bg-[#11182b] px-4 py-4">
+                                <div className="text-[11px] uppercase tracking-[0.14em] text-white/45">{dashboardSurfaceModel.flowTitle}</div>
+                                <div className="mt-3 space-y-3">
+                                  {dashboardSurfaceModel.flowSteps.map((step, index) => (
+                                    <div key={step} className="space-y-2">
+                                      <div className="flex items-center justify-between text-sm text-white/80">
+                                        <span>{step}</span>
+                                        <span className="text-xs text-white/45">{index + 1}/4</span>
+                                      </div>
+                                      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                                        <div
+                                          className="h-full rounded-full bg-white/85 transition-all"
+                                          style={{ width: `${Math.max(18, 100 - index * 18)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="rounded-2xl border border-white/10 bg-[#11182b] px-4 py-4">
+                                <div className="text-[11px] uppercase tracking-[0.14em] text-white/45">{dashboardSurfaceModel.sideTitle}</div>
+                                <div className="mt-3 space-y-2 text-sm leading-6 text-white/75">
+                                  {dashboardSurfaceModel.sideItems.map((item) => (
+                                    <div key={item} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5">
+                                      {item}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
-                        <div className="space-y-3 rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{copy.appVisibility}</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-950">{copy.public}</div>
-                            <div className="mt-1 text-sm text-slate-500">{copy.appVisibilityDesc}</div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{copy.inviteUsers}</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-950">Team</div>
-                            <div className="mt-1 text-sm text-slate-500">{copy.inviteUsersDesc}</div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{copy.moveToWorkspace}</div>
-                            <div className="mt-2 text-sm font-semibold text-slate-950">{copy.workspaceTitle}</div>
-                            <div className="mt-1 text-sm text-slate-500">{copy.moveToWorkspaceDesc}</div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "分配子域名" : "Assigned subdomain"}</div>
-                            <div className="mt-2 break-all text-sm font-semibold text-slate-950">{assignedAppDomain}</div>
-                            <div className="mt-1 text-sm text-slate-500">
-                              {isCn
-                                ? `当前套餐可保留 ${effectiveSubdomainSlots} 个 app 子域名位。`
-                                : `This plan reserves ${effectiveSubdomainSlots} app subdomain slot(s).`}
+                      </div>
+
+                      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+                        <div className="space-y-6">
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{isCn ? "页面蓝图" : "Route blueprint"}</div>
+                                  <div className="mt-1 text-lg font-semibold text-slate-950">{dashboardSurfaceModel.flowTitle}</div>
+                                </div>
+                                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">{generatedRouteCount} {isCn ? "个页面" : "routes"}</div>
+                              </div>
+                              <div className="mt-4 space-y-3">
+                                {dashboardSurfaceModel.routeList.map((item, index) => (
+                                  <div key={`${item.id}-${item.path}-${index}`} className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="text-sm font-semibold text-slate-950">{item.label || item.path}</div>
+                                      <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-500">{item.path}</div>
+                                    </div>
+                                    <div className="mt-2 text-xs leading-6 text-slate-500">{item.purpose || (isCn ? "围绕当前 archetype 的关键页面。" : "A core surface for the current archetype.")}</div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="mt-3">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => void navigator.clipboard?.writeText(assignedAppDomain)}
-                                className="h-9 rounded-xl bg-white px-3"
-                              >
-                                {isCn ? "复制子域名" : "Copy subdomain"}
-                              </Button>
+                            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{isCn ? "数据对象" : "Entity blueprint"}</div>
+                                  <div className="mt-1 text-lg font-semibold text-slate-950">{isCn ? "产品对象模型" : "Product object model"}</div>
+                                </div>
+                                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">{entityBlueprintEntries.length} {isCn ? "个对象" : "entities"}</div>
+                              </div>
+                              <div className="mt-4 grid gap-3">
+                                {dashboardSurfaceModel.entityList.map((item) => (
+                                  <div key={item.id} className="rounded-[22px] border border-slate-200 bg-white px-4 py-3">
+                                    <div className="text-sm font-semibold text-slate-950">{item.label || item.id}</div>
+                                    <div className="mt-2 text-xs leading-6 text-slate-500">{item.summary || (item.primaryViews?.join(" · ") || (isCn ? "当前对象已接入页面蓝图。" : "Connected to the current route blueprint."))}</div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "平台标识" : "Platform Badge"}</div>
+
+                          <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{isCn ? "模块职责" : "Module blueprint"}</div>
+                                <div className="mt-1 text-lg font-semibold text-slate-950">{isCn ? "不同产品会长出不同模块责任" : "Different prompts now map to different module responsibilities"}</div>
+                              </div>
+                              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500">{moduleCount} {isCn ? "个模块" : "modules"}</div>
+                            </div>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {dashboardSurfaceModel.moduleList.map((item) => (
+                                <div key={item.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 px-4 py-4">
+                                  <div className="text-sm font-semibold text-slate-950">{item.label || item.id}</div>
+                                  <div className="mt-2 text-xs leading-6 text-slate-500">{item.summary || (item.routeIds?.join(" · ") || (isCn ? "当前模块已接入工作流。" : "This module is already wired into the current workflow."))}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "交付状态" : "Delivery state"}</div>
+                            <div className="mt-3 grid gap-3">
+                              {deliveryChecklist.slice(0, 4).map((item) => (
+                                <div key={item.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="text-sm font-medium text-slate-950">{item.label}</div>
+                                    <div className={`rounded-full px-2.5 py-1 text-[11px] ${item.ready ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{item.value}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-4">
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-slate-400">{isCn ? "交付与发布" : "Ship and share"}</div>
+                            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+                              <div className="text-sm font-semibold text-slate-950">{assignedAppDomain}</div>
+                              <div className="mt-2 text-xs leading-6 text-slate-500">
+                                {isCn
+                                  ? `当前套餐保留 ${effectiveSubdomainSlots} 个 app 子域名位，项目上限 ${effectiveProjectLimit}，协作人数 ${effectiveCollaboratorLimit}。`
+                                  : `This plan reserves ${effectiveSubdomainSlots} app subdomain slot(s), ${effectiveProjectLimit} projects, and ${effectiveCollaboratorLimit} collaborators.`}
+                              </div>
+                            </div>
                             <div className="mt-3 flex flex-wrap gap-2">
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{isCn ? deploymentOption.nameCn : deploymentOption.nameEn}</span>
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{isCn ? databaseOption.nameCn : databaseOption.nameEn}</span>
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{currentPlanLabel}</span>
-                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-600">{codeExportLabel}</span>
-                            </div>
-                            <div className="mt-2 text-xs text-slate-500">
-                              {isCn
-                                ? `项目上限 ${effectiveProjectLimit} · 协作人数 ${effectiveCollaboratorLimit} · DB ${databaseAccessMode}`
-                                : `Projects ${effectiveProjectLimit} · collaborators ${effectiveCollaboratorLimit} · DB ${databaseAccessMode}`}
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">{isCn ? deploymentOption.nameCn : deploymentOption.nameEn}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">{isCn ? databaseOption.nameCn : databaseOption.nameEn}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">{currentPlanLabel}</span>
+                              <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600">{codeExportLabel}</span>
                             </div>
                           </div>
                         </div>

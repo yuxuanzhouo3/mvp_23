@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useSearchParams } from "next/navigation"
 import { Check, Copy } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,7 @@ type PaymentResp = {
 }
 
 function WechatPaymentPageContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const paymentId = searchParams.get("paymentId") || ""
   const codeUrl = searchParams.get("codeUrl") || ""
@@ -45,6 +47,19 @@ function WechatPaymentPageContent() {
   useEffect(() => {
     void refreshStatus()
   }, [paymentId])
+
+  useEffect(() => {
+    if (!paymentId || status !== "pending") return
+    const timer = window.setInterval(() => {
+      void refreshStatus()
+    }, 3000)
+    return () => window.clearInterval(timer)
+  }, [paymentId, status])
+
+  useEffect(() => {
+    if (!paymentId || status !== "completed") return
+    router.push(`/payment/success?paymentId=${encodeURIComponent(paymentId)}`)
+  }, [paymentId, router, status])
 
   async function verifyPaid() {
     if (!paymentId) return
@@ -126,9 +141,15 @@ function WechatPaymentPageContent() {
             <div className="text-muted-foreground">{paymentId}</div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-            <Button onClick={verifyPaid} disabled={loading}>
-              {loading ? "查询中..." : "确认已支付并校验到账"}
-            </Button>
+            {status !== "completed" ? (
+              <Button onClick={verifyPaid} disabled={loading}>
+                {loading ? "查询中..." : "确认已支付并校验到账"}
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link href={`/payment/success?paymentId=${encodeURIComponent(paymentId)}`}>进入支付成功页</Link>
+              </Button>
+            )}
             <Button onClick={refreshStatus} disabled={loading}>
               {loading ? "刷新中..." : "刷新支付状态"}
             </Button>

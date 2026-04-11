@@ -65,23 +65,14 @@ export async function resolveProjectLookup(routeParamRaw: string): Promise<Proje
   }
 
   const allProjects = await listProjects()
-  const candidates: Array<{
-    record: ProjectRecord
-    slug: string
-    displayName: string
-  }> = []
-
-  for (const record of allProjects) {
-    const presentation = await getPresentation(record)
-    const slug = record.projectSlug || slugify(presentation.displayName) || record.projectId
-    candidates.push({
-      record,
-      slug,
-      displayName: presentation.displayName,
-    })
-  }
+  const candidates = allProjects.map((record) => ({
+    record,
+    slug: record.projectSlug || slugify(record.projectId) || record.projectId,
+  }))
 
   const matched =
+    candidates.find((item) => item.record.projectId === routeParam || item.record.projectId === safeParam) ||
+    candidates.find((item) => safeProjectId(item.record.projectId) === safeParam) ||
     candidates.find((item) => item.slug === routeParam || item.slug === safeParam) ||
     candidates.find((item) => safeProjectId(item.slug) === safeParam)
 
@@ -94,27 +85,33 @@ export async function resolveProjectLookup(routeParamRaw: string): Promise<Proje
       lookupKey: routeParam || safeParam,
       projectFound: false,
       availableKeys: candidates.flatMap((item) => [item.record.projectId, item.slug]),
-      manifestKeys: candidates.map((item) => item.slug),
+      manifestKeys: candidates.flatMap((item) => [item.record.projectId, item.slug]),
       storePath: getProjectsStorePath(),
       project: null,
     }
   }
 
+  const presentation = await getPresentation(matched.record)
+  const projectSlug = matched.record.projectSlug || slugify(presentation.displayName) || matched.record.projectId
+
   return {
     routeParam,
     projectId: matched.record.projectId,
-    projectSlug: matched.slug,
-    projectName: matched.displayName,
-    lookupKey: matched.slug,
+    projectSlug,
+    projectName: presentation.displayName,
+    lookupKey: projectSlug,
     projectFound: true,
-    availableKeys: [matched.record.projectId, matched.slug],
-    manifestKeys: candidates.map((item) => item.slug),
+    availableKeys: [matched.record.projectId, projectSlug],
+    manifestKeys: candidates.flatMap((item) => [item.record.projectId, item.slug]),
     storePath: getProjectsStorePath(),
     project: matched.record,
   }
 }
 
 export function buildProjectLookupLogPayload(result: ProjectLookupResult) {
+  const previewKeys = (values: string[]) =>
+    values.length > 16 ? [...values.slice(0, 16), `...${values.length - 16} more`] : values
+
   return {
     routeParam: result.routeParam,
     lookupKey: result.lookupKey,
@@ -122,8 +119,8 @@ export function buildProjectLookupLogPayload(result: ProjectLookupResult) {
     projectSlug: result.projectSlug,
     projectName: result.projectName,
     projectFound: result.projectFound,
-    manifestKeys: result.manifestKeys,
-    availableKeys: result.availableKeys,
+    manifestKeys: previewKeys(result.manifestKeys),
+    availableKeys: previewKeys(result.availableKeys),
     storePath: result.storePath,
   }
 }

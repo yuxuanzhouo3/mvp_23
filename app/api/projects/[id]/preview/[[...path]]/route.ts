@@ -190,13 +190,17 @@ function rewriteHtmlForPreview(html: string, projectId: string) {
 }
 
 export async function handleProjectPreviewRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
-  const projectId = safeProjectId(projectIdRaw)
-  const project = await getProject(projectId)
+  const lookup = await resolveProjectLookup(projectIdRaw)
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[preview:api-lookup]", buildProjectLookupLogPayload(lookup))
+  }
+  const projectId = lookup.projectId ?? safeProjectId(projectIdRaw)
+  const project = lookup.project ?? (projectId ? await getProject(projectId) : null)
   const runtimeState = project?.runtime
   const wantsHtml = isHtmlLikeRequest(req, pathSegments)
   const normalizedPathSegments =
     pathSegments.length === 1 && isRuntimePreviewRootSegment(pathSegments[0]) ? [] : pathSegments
-  const publicProjectKey = project?.projectSlug || projectId
+  const publicProjectKey = lookup.projectSlug || project?.projectSlug || projectId
   const fallbackUrl = buildCanonicalPreviewUrl(publicProjectKey, normalizedPathSegments.join("/"))
 
   if (!project || !runtimeState?.port) {

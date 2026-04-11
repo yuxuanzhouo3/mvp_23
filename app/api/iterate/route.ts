@@ -289,6 +289,12 @@ function normalizeTextValue(value: unknown) {
   return sanitizeUiText(String(value ?? "")).trim()
 }
 
+function normalizeTextList(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  const items = value.map((item) => normalizeTextValue(item)).filter(Boolean)
+  return items.length ? items : undefined
+}
+
 function normalizePositiveInteger(value: unknown) {
   const normalized = Number(value)
   if (!Number.isFinite(normalized) || normalized <= 0) return undefined
@@ -379,6 +385,17 @@ function normalizeSessionContext(value: unknown, region: Region): WorkspaceSessi
   return {
     projectName: normalizeTextValue(session.projectName) || undefined,
     specKind: normalizeTextValue(session.specKind) || undefined,
+    appArchetype: normalizeTextValue(session.appArchetype) || undefined,
+    appCategory: normalizeTextValue(session.appCategory) || undefined,
+    appSummary: normalizeTextValue(session.appSummary) || undefined,
+    primaryWorkflow: normalizeTextValue(session.primaryWorkflow) || undefined,
+    visualTone: normalizeTextValue(session.visualTone) || undefined,
+    routeBlueprintSummary: normalizeTextList(session.routeBlueprintSummary),
+    moduleBlueprintSummary: normalizeTextList(session.moduleBlueprintSummary),
+    entityBlueprintSummary: normalizeTextList(session.entityBlueprintSummary),
+    activeRoutePurpose: normalizeTextValue(session.activeRoutePurpose) || undefined,
+    activeModuleSummary: normalizeTextValue(session.activeModuleSummary) || undefined,
+    activeEntitySummary: normalizeTextValue(session.activeEntitySummary) || undefined,
     workspaceSurface: normalizeTextValue(session.workspaceSurface) || undefined,
     activeSection: normalizeTextValue(session.activeSection) || undefined,
     routeId: normalizeTextValue(session.routeId) || undefined,
@@ -500,6 +517,26 @@ function buildResolvedSessionContext(options: {
     ...session,
     projectName: context.sharedSession?.projectName || session?.projectName,
     specKind: context.sharedSession?.specKind || session?.specKind,
+    appArchetype: context.sharedSession?.appArchetype || session?.appArchetype,
+    appCategory: context.sharedSession?.appCategory || session?.appCategory,
+    appSummary: context.sharedSession?.appSummary || session?.appSummary,
+    primaryWorkflow: context.sharedSession?.primaryWorkflow || session?.primaryWorkflow,
+    visualTone: context.sharedSession?.visualTone || session?.visualTone,
+    routeBlueprintSummary:
+      context.sharedSession?.routeBlueprintSummary?.length
+        ? context.sharedSession.routeBlueprintSummary
+        : session?.routeBlueprintSummary,
+    moduleBlueprintSummary:
+      context.sharedSession?.moduleBlueprintSummary?.length
+        ? context.sharedSession.moduleBlueprintSummary
+        : session?.moduleBlueprintSummary,
+    entityBlueprintSummary:
+      context.sharedSession?.entityBlueprintSummary?.length
+        ? context.sharedSession.entityBlueprintSummary
+        : session?.entityBlueprintSummary,
+    activeRoutePurpose: context.sharedSession?.activeRoutePurpose || session?.activeRoutePurpose,
+    activeModuleSummary: context.sharedSession?.activeModuleSummary || session?.activeModuleSummary,
+    activeEntitySummary: context.sharedSession?.activeEntitySummary || session?.activeEntitySummary,
     workspaceSurface: context.sharedSession?.workspaceSurface || session?.workspaceSurface,
     activeSection: context.currentPage?.id || context.sharedSession?.activeSection || session?.activeSection,
     routeId: context.currentPage?.id || session?.routeId,
@@ -612,6 +649,124 @@ function buildGenericWorkspacePageContext(context: EditorRequestContext, region:
   }
 }
 
+function findBlueprintRouteForContext(
+  projectSpec: Awaited<ReturnType<typeof readProjectSpec>> | null | undefined,
+  context: EditorRequestContext
+) {
+  const routes = Array.isArray(projectSpec?.routeBlueprint) ? projectSpec.routeBlueprint : []
+  if (!routes.length) return null
+
+  const normalizedRoute =
+    context.currentRoute ||
+    context.currentPage?.route ||
+    inferRouteFromFilePath(context.currentFilePath) ||
+    inferRouteFromFilePath(context.sharedSession?.filePath)
+  const normalizedRouteId =
+    normalizeTextValue(context.currentPage?.id || context.sharedSession?.routeId || context.sharedSession?.activeSection) ||
+    ""
+  const normalizedFile = normalizeContextPath(context.currentFilePath || context.currentPage?.filePath || context.sharedSession?.filePath)
+
+  return (
+    routes.find((item) => normalizeTextValue(item.path) === normalizeTextValue(normalizedRoute)) ||
+    routes.find((item) => normalizeTextValue(item.id) === normalizedRouteId) ||
+    routes.find((item) => {
+      const itemFile = item.path === "/" ? "app/page.tsx" : `app${item.path}/page.tsx`
+      return normalizeContextPath(itemFile) === normalizedFile
+    }) ||
+    routes[0] ||
+    null
+  )
+}
+
+function findBlueprintModuleForContext(
+  projectSpec: Awaited<ReturnType<typeof readProjectSpec>> | null | undefined,
+  context: EditorRequestContext,
+  routeBlueprint: NonNullable<Awaited<ReturnType<typeof readProjectSpec>>["routeBlueprint"]>[number] | null
+) {
+  const modules = Array.isArray(projectSpec?.moduleBlueprint) ? projectSpec.moduleBlueprint : []
+  if (!modules.length) return null
+  const explicitName = normalizeTextValue(context.currentModule?.name || context.sharedSession?.symbolName)
+  const routeModuleIds = routeBlueprint?.moduleIds ?? []
+
+  return (
+    modules.find((item) => normalizeTextValue(item.label) === explicitName || normalizeTextValue(item.id) === explicitName) ||
+    modules.find((item) => routeModuleIds.includes(item.id)) ||
+    modules[0] ||
+    null
+  )
+}
+
+function findBlueprintEntityForContext(
+  projectSpec: Awaited<ReturnType<typeof readProjectSpec>> | null | undefined,
+  context: EditorRequestContext,
+  routeBlueprint: NonNullable<Awaited<ReturnType<typeof readProjectSpec>>["routeBlueprint"]>[number] | null
+) {
+  const entities = Array.isArray(projectSpec?.entityBlueprint) ? projectSpec.entityBlueprint : []
+  if (!entities.length) return null
+  const explicitName = normalizeTextValue(context.currentElement?.name || context.sharedSession?.elementName)
+  const routeEntityIds = routeBlueprint?.entityIds ?? []
+
+  return (
+    entities.find((item) => normalizeTextValue(item.label) === explicitName || normalizeTextValue(item.id) === explicitName) ||
+    entities.find((item) => routeEntityIds.includes(item.id)) ||
+    entities[0] ||
+    null
+  )
+}
+
+function buildBlueprintWorkspacePageContext(
+  projectSpec: Awaited<ReturnType<typeof readProjectSpec>> | null | undefined,
+  context: EditorRequestContext,
+  region: Region
+) {
+  const routeBlueprint = findBlueprintRouteForContext(projectSpec, context)
+  if (!routeBlueprint) {
+    return {
+      pageContext: buildGenericWorkspacePageContext(context, region),
+      routeBlueprint: null,
+      moduleBlueprint: null,
+      entityBlueprint: null,
+    }
+  }
+
+  const moduleBlueprint = findBlueprintModuleForContext(projectSpec, context, routeBlueprint)
+  const entityBlueprint = findBlueprintEntityForContext(projectSpec, context, routeBlueprint)
+  const fallbackFilePath =
+    routeBlueprint.path === "/" ? "app/page.tsx" : `app${routeBlueprint.path}/page.tsx`
+  const pageContext: WorkspacePageContext = {
+    id: routeBlueprint.id,
+    label: routeBlueprint.label,
+    route: routeBlueprint.path,
+    filePath:
+      normalizeContextPath(context.currentPage?.filePath) ||
+      normalizeContextPath(context.currentFilePath) ||
+      normalizeContextPath(context.sharedSession?.filePath) ||
+      fallbackFilePath,
+    focus: routeBlueprint.purpose,
+    symbols: [moduleBlueprint?.label, ...(moduleBlueprint?.capabilityIds ?? [])].filter(Boolean).slice(0, 6) as string[],
+    elements: [
+      ...(routeBlueprint.primaryActions ?? []),
+      moduleBlueprint?.label,
+      entityBlueprint?.label,
+    ].filter(Boolean).slice(0, 6) as string[],
+  }
+
+  return {
+    pageContext,
+    routeBlueprint,
+    moduleBlueprint,
+    entityBlueprint,
+  }
+}
+
+function shouldUseBlueprintRouteForCodePlatform(
+  routeBlueprint: ReturnType<typeof buildBlueprintWorkspacePageContext>["routeBlueprint"],
+  routes: ReturnType<typeof buildCodePlatformContextRoutes>
+) {
+  if (!routeBlueprint) return false
+  return !routes.some((item) => item.id === routeBlueprint.id) && !routes.some((item) => item.href === routeBlueprint.path)
+}
+
 function resolveWorkspacePageContext(args: {
   region: Region
   routes: ReturnType<typeof buildCodePlatformContextRoutes>
@@ -636,26 +791,48 @@ function resolveWorkspacePageContext(args: {
   return buildGenericWorkspacePageContext(args.context, args.region)
 }
 
-function rebuildNonCodePlatformFocus(context: EditorRequestContext, region: Region) {
-  const pageContext = buildGenericWorkspacePageContext(
-    {
-      ...context,
-      currentPage: undefined,
-    },
-    region
-  )
-  const moduleContext = inferCodePlatformModuleContext({
-    currentFilePath: context.currentFilePath,
-    currentFileSymbols: context.currentFileSymbols,
-    currentPage: pageContext,
-    activeSymbolName: context.currentModule?.name || context.sharedSession?.symbolName,
-  })
-  const elementContext = inferCodePlatformElementContext({
-    currentPage: pageContext,
-    activeElementName:
-      context.currentElement?.source === "explicit" ? context.currentElement.name : context.sharedSession?.elementName,
-    previewTab: context.sharedSession?.workspaceSurface,
-  })
+function rebuildNonCodePlatformFocus(
+  context: EditorRequestContext,
+  region: Region,
+  projectSpec?: Awaited<ReturnType<typeof readProjectSpec>> | null
+) {
+  const blueprintFocus = buildBlueprintWorkspacePageContext(projectSpec, context, region)
+  const pageContext = blueprintFocus.pageContext
+  const moduleContext: WorkspaceModuleContext =
+    blueprintFocus.moduleBlueprint
+      ? {
+          name: blueprintFocus.moduleBlueprint.label,
+          source: "page",
+          relatedSymbols: blueprintFocus.moduleBlueprint.capabilityIds.slice(0, 6),
+        }
+      : inferCodePlatformModuleContext({
+          currentFilePath: context.currentFilePath,
+          currentFileSymbols: context.currentFileSymbols,
+          currentPage: pageContext,
+          activeSymbolName: context.currentModule?.name || context.sharedSession?.symbolName,
+        })
+  const elementContext: WorkspaceElementContext =
+    context.currentElement?.source === "explicit" && context.currentElement.name
+      ? {
+          ...context.currentElement,
+          options: context.currentElement.options.length ? context.currentElement.options : pageContext.elements,
+        }
+      : {
+          name:
+            blueprintFocus.entityBlueprint?.label ||
+            pageContext.elements[0] ||
+            context.sharedSession?.elementName ||
+            (region === "cn" ? "主要内容" : "Primary surface"),
+          source: "page",
+          options: [
+            ...(pageContext.elements ?? []),
+            ...(blueprintFocus.entityBlueprint?.primaryViews ?? []),
+          ].filter(Boolean).slice(0, 8) as string[],
+          detail:
+            blueprintFocus.entityBlueprint?.summary ||
+            context.currentElement?.detail ||
+            pageContext.focus,
+        }
 
   return {
     currentPage: pageContext,
@@ -843,8 +1020,11 @@ function collectHintMatchedFiles(files: string[], context: EditorRequestContext,
     context.currentElement?.name,
     context.sharedSession?.routeId,
     context.sharedSession?.routeLabel,
+    context.sharedSession?.activeRoutePurpose,
     context.sharedSession?.symbolName,
+    context.sharedSession?.activeModuleSummary,
     context.sharedSession?.elementName,
+    context.sharedSession?.activeEntitySummary,
     ...((context.currentFileSymbols ?? []).map((item) => item.name))
   )
 
@@ -921,8 +1101,11 @@ function constrainModelEdits(
     context.currentElement?.name,
     context.sharedSession?.routeId,
     context.sharedSession?.routeLabel,
+    context.sharedSession?.activeRoutePurpose,
     context.sharedSession?.symbolName,
+    context.sharedSession?.activeModuleSummary,
     context.sharedSession?.elementName,
+    context.sharedSession?.activeEntitySummary,
     ...((context.currentFileSymbols ?? []).map((item) => item.name))
   )
   const anchors = [currentFile, pageFile, ...targetStrategy.targetFiles]
@@ -1055,16 +1238,62 @@ function inferSymbolsFromContent(content?: string | null): WorkspaceSymbolRef[] 
 function rebuildEditorFocus(
   context: EditorRequestContext,
   region: Region,
-  routes: ReturnType<typeof buildCodePlatformContextRoutes>
+  routes: ReturnType<typeof buildCodePlatformContextRoutes>,
+  projectSpec?: Awaited<ReturnType<typeof readProjectSpec>> | null
 ) {
   if (context.sharedSession?.specKind && context.sharedSession.specKind !== "code_platform") {
-    const rebuilt = rebuildNonCodePlatformFocus(context, region)
+    const rebuilt = rebuildNonCodePlatformFocus(context, region, projectSpec)
     return {
       ...context,
       currentRoute: context.currentRoute || rebuilt.currentPage.route,
       currentPage: rebuilt.currentPage,
       currentModule: rebuilt.currentModule,
       currentElement: rebuilt.currentElement,
+    } satisfies EditorRequestContext
+  }
+
+  const blueprintFocus = buildBlueprintWorkspacePageContext(projectSpec, context, region)
+  if (shouldUseBlueprintRouteForCodePlatform(blueprintFocus.routeBlueprint, routes)) {
+    const currentPage = blueprintFocus.pageContext
+    const currentModule: WorkspaceModuleContext =
+      blueprintFocus.moduleBlueprint
+        ? {
+            name: blueprintFocus.moduleBlueprint.label,
+            source: "page",
+            relatedSymbols: blueprintFocus.moduleBlueprint.capabilityIds.slice(0, 6),
+          }
+        : inferCodePlatformModuleContext({
+            currentFilePath: context.currentFilePath,
+            currentFileSymbols: context.currentFileSymbols,
+            currentPage,
+            activeSymbolName: context.currentModule?.name || context.sharedSession?.symbolName,
+          })
+    const currentElement: WorkspaceElementContext =
+      context.currentElement?.source === "explicit" && context.currentElement.name
+        ? {
+            ...context.currentElement,
+            options: context.currentElement.options.length ? context.currentElement.options : currentPage.elements,
+          }
+        : {
+            name:
+              blueprintFocus.entityBlueprint?.label ||
+              currentPage.elements[0] ||
+              context.sharedSession?.elementName ||
+              "Primary surface",
+            source: "page",
+            options: [
+              ...(currentPage.elements ?? []),
+              ...(blueprintFocus.entityBlueprint?.primaryViews ?? []),
+            ].filter(Boolean).slice(0, 8) as string[],
+            detail: blueprintFocus.entityBlueprint?.summary || currentPage.focus,
+          }
+
+    return {
+      ...context,
+      currentRoute: context.currentRoute || currentPage.route,
+      currentPage,
+      currentModule,
+      currentElement,
     } satisfies EditorRequestContext
   }
 
@@ -1324,22 +1553,50 @@ async function resolveEditorContext(
     specKind: resolvedSpecKind,
   })
 
+  const earlyBlueprintFocus =
+    resolvedSpecKind === "code_platform" ? buildBlueprintWorkspacePageContext(projectSpec, context, specRegion) : null
+  const shouldUseCodeBlueprint =
+    resolvedSpecKind === "code_platform" &&
+    shouldUseBlueprintRouteForCodePlatform(earlyBlueprintFocus?.routeBlueprint ?? null, routes)
+  const codePlatformPage = shouldUseCodeBlueprint ? earlyBlueprintFocus?.pageContext ?? currentPage : currentPage
+
   const currentModule =
     normalizeModuleContext(body?.currentModule) ??
-    inferCodePlatformModuleContext({
-      currentFilePath: context.currentFilePath,
-      currentFileSymbols,
-      currentPage,
-      activeSymbolName: normalizeTextValue(body?.currentModule?.name) || incomingSession?.symbolName,
-    })
+    (shouldUseCodeBlueprint && earlyBlueprintFocus?.moduleBlueprint
+      ? {
+          name: earlyBlueprintFocus.moduleBlueprint.label,
+          source: "page" as const,
+          relatedSymbols: earlyBlueprintFocus.moduleBlueprint.capabilityIds.slice(0, 6),
+        }
+      : inferCodePlatformModuleContext({
+          currentFilePath: context.currentFilePath,
+          currentFileSymbols,
+          currentPage: codePlatformPage,
+          activeSymbolName: normalizeTextValue(body?.currentModule?.name) || incomingSession?.symbolName,
+        }))
 
   const currentElement =
     normalizeElementContext(body?.currentElement) ??
-    inferCodePlatformElementContext({
-      currentPage,
-      activeElementName: normalizeTextValue(body?.currentElement?.name) || incomingSession?.elementName,
-      previewTab: incomingSession?.workspaceSurface,
-    })
+    (shouldUseCodeBlueprint
+      ? {
+          name:
+            earlyBlueprintFocus?.entityBlueprint?.label ||
+            codePlatformPage.elements[0] ||
+            normalizeTextValue(body?.currentElement?.name) ||
+            incomingSession?.elementName ||
+            "Primary surface",
+          source: "page" as const,
+          options: [
+            ...(codePlatformPage.elements ?? []),
+            ...(earlyBlueprintFocus?.entityBlueprint?.primaryViews ?? []),
+          ].filter(Boolean).slice(0, 8) as string[],
+          detail: earlyBlueprintFocus?.entityBlueprint?.summary || codePlatformPage.focus,
+        }
+      : inferCodePlatformElementContext({
+          currentPage: codePlatformPage,
+          activeElementName: normalizeTextValue(body?.currentElement?.name) || incomingSession?.elementName,
+          previewTab: incomingSession?.workspaceSurface,
+        }))
 
   const initialFocus =
     resolvedSpecKind && resolvedSpecKind !== "code_platform"
@@ -1354,59 +1611,135 @@ async function resolveEditorContext(
               specKind: resolvedSpecKind,
             },
           },
-          specRegion
+          specRegion,
+          projectSpec
         )
       : {
-          currentPage,
+          currentPage: codePlatformPage,
           currentModule,
           currentElement: {
             ...currentElement,
-            options: currentElement.options.length ? currentElement.options : currentPage.elements,
+            options: currentElement.options.length ? currentElement.options : codePlatformPage.elements,
           },
         }
 
-  const sharedSession =
-    incomingSession ??
-    (() => {
-      const planTier = normalizePlanTier(projectSpec?.planTier)
-      const planPolicy = getPlanPolicy(planTier)
-      return {
-        projectName: normalizeTextValue(projectSpec?.title) || undefined,
-        specKind: resolvedSpecKind,
-        workspaceSurface: normalizeTextValue(body?.sharedSession?.workspaceSurface) || undefined,
-        activeSection: normalizeTextValue(body?.sharedSession?.activeSection) || initialFocus.currentPage.id,
-        routeId: initialFocus.currentPage.id,
-        routeLabel: initialFocus.currentPage.label,
-        filePath: context.currentFilePath || initialFocus.currentPage.filePath,
-        symbolName: initialFocus.currentModule.name,
-        elementName: initialFocus.currentElement.name,
-        deploymentTarget: normalizeTextValue(projectSpec?.deploymentTarget) || undefined,
-        databaseTarget: normalizeTextValue(projectSpec?.databaseTarget) || undefined,
-        region: specRegion,
-        selectedPlanId: planTier,
-        selectedPlanName: getPlanDefinition(planTier)[specRegion === "cn" ? "nameCn" : "nameEn"],
-        selectedTemplate: normalizeTextValue(body?.sharedSession?.selectedTemplate) || undefined,
-        codeExportAllowed: planPolicy.codeExportLevel !== "none",
-        codeExportLevel: planPolicy.codeExportLevel,
-        databaseAccessMode: planPolicy.databaseAccessMode,
-        generationProfile: planPolicy.generationProfile,
-        routeBudget: planPolicy.maxGeneratedRoutes,
-        moduleBudget: planPolicy.maxGeneratedModules,
-        projectLimit: planPolicy.projectLimit,
-        collaboratorLimit: planPolicy.collaboratorLimit,
-        subdomainSlots: planPolicy.subdomainSlots,
-        assignedDomain: buildAssignedAppUrl({
-          projectSlug: projectSlug || projectId,
-          projectId,
-          region: specRegion,
-          planTier,
-        }),
-        workspaceStatus: normalizeTextValue(body?.sharedSession?.workspaceStatus) || undefined,
-        lastIntent: normalizeTextValue(body?.prompt) || undefined,
-        lastChangedFile: context.currentFilePath || initialFocus.currentPage.filePath,
-        readiness: "context_ready",
-      } satisfies WorkspaceSessionContext
-    })()
+  const matchedRouteBlueprint = findBlueprintRouteForContext(projectSpec, {
+    ...context,
+    currentPage: initialFocus.currentPage,
+    currentModule: initialFocus.currentModule,
+    currentElement: initialFocus.currentElement,
+    sharedSession: incomingSession,
+  })
+  const matchedModuleBlueprint = findBlueprintModuleForContext(projectSpec, {
+    ...context,
+    currentPage: initialFocus.currentPage,
+    currentModule: initialFocus.currentModule,
+    currentElement: initialFocus.currentElement,
+    sharedSession: incomingSession,
+  }, matchedRouteBlueprint)
+  const matchedEntityBlueprint = findBlueprintEntityForContext(projectSpec, {
+    ...context,
+    currentPage: initialFocus.currentPage,
+    currentModule: initialFocus.currentModule,
+    currentElement: initialFocus.currentElement,
+    sharedSession: incomingSession,
+  }, matchedRouteBlueprint)
+
+  const planTier = normalizePlanTier(projectSpec?.planTier)
+  const planPolicy = getPlanPolicy(planTier)
+  const sessionDefaults = {
+    projectName: normalizeTextValue(projectSpec?.title) || undefined,
+    specKind: resolvedSpecKind,
+    appArchetype: normalizeTextValue(projectSpec?.appIdentity?.category || projectSpec?.appIntent?.archetype) || undefined,
+    appCategory: normalizeTextValue(projectSpec?.appIntent?.productCategory || projectSpec?.appIdentity?.archetypeLabel) || undefined,
+    appSummary: normalizeTextValue(projectSpec?.appIdentity?.shortDescription) || undefined,
+    primaryWorkflow: normalizeTextValue(projectSpec?.appIntent?.primaryWorkflow) || undefined,
+    visualTone: normalizeTextValue(projectSpec?.visualSeed?.tone) || undefined,
+    routeBlueprintSummary: Array.isArray(projectSpec?.routeBlueprint)
+      ? projectSpec.routeBlueprint
+          .slice(0, 8)
+          .map((item) => normalizeTextValue(`${item.label} (${item.path})`))
+          .filter(Boolean)
+      : undefined,
+    moduleBlueprintSummary: Array.isArray(projectSpec?.moduleBlueprint)
+      ? projectSpec.moduleBlueprint
+          .slice(0, 10)
+          .map((item) => normalizeTextValue(item.label))
+          .filter(Boolean)
+      : undefined,
+    entityBlueprintSummary: Array.isArray(projectSpec?.entityBlueprint)
+      ? projectSpec.entityBlueprint
+          .slice(0, 10)
+          .map((item) => normalizeTextValue(item.label))
+          .filter(Boolean)
+      : undefined,
+    activeRoutePurpose: normalizeTextValue(matchedRouteBlueprint?.purpose) || undefined,
+    activeModuleSummary: normalizeTextValue(matchedModuleBlueprint?.summary) || undefined,
+    activeEntitySummary: normalizeTextValue(matchedEntityBlueprint?.summary) || undefined,
+    workspaceSurface: normalizeTextValue(body?.sharedSession?.workspaceSurface) || undefined,
+    activeSection: normalizeTextValue(body?.sharedSession?.activeSection) || initialFocus.currentPage.id,
+    routeId: initialFocus.currentPage.id,
+    routeLabel: initialFocus.currentPage.label,
+    filePath: context.currentFilePath || initialFocus.currentPage.filePath,
+    symbolName: initialFocus.currentModule.name,
+    elementName: initialFocus.currentElement.name,
+    deploymentTarget: normalizeTextValue(projectSpec?.deploymentTarget) || undefined,
+    databaseTarget: normalizeTextValue(projectSpec?.databaseTarget) || undefined,
+    region: specRegion,
+    selectedPlanId: planTier,
+    selectedPlanName: getPlanDefinition(planTier)[specRegion === "cn" ? "nameCn" : "nameEn"],
+    selectedTemplate: normalizeTextValue(body?.sharedSession?.selectedTemplate) || undefined,
+    codeExportAllowed: planPolicy.codeExportLevel !== "none",
+    codeExportLevel: planPolicy.codeExportLevel,
+    databaseAccessMode: planPolicy.databaseAccessMode,
+    generationProfile: planPolicy.generationProfile,
+    routeBudget: planPolicy.maxGeneratedRoutes,
+    moduleBudget: planPolicy.maxGeneratedModules,
+    projectLimit: planPolicy.projectLimit,
+    collaboratorLimit: planPolicy.collaboratorLimit,
+    subdomainSlots: planPolicy.subdomainSlots,
+    assignedDomain: buildAssignedAppUrl({
+      projectSlug: projectSlug || projectId,
+      projectId,
+      region: specRegion,
+      planTier,
+    }),
+    workspaceStatus: normalizeTextValue(body?.sharedSession?.workspaceStatus) || undefined,
+    lastIntent: normalizeTextValue(body?.prompt) || undefined,
+    lastChangedFile: context.currentFilePath || initialFocus.currentPage.filePath,
+    readiness: "context_ready",
+  } satisfies WorkspaceSessionContext
+
+  const sharedSession = {
+    ...sessionDefaults,
+    ...incomingSession,
+    specKind: incomingSession?.specKind || sessionDefaults.specKind,
+    appArchetype: incomingSession?.appArchetype || sessionDefaults.appArchetype,
+    appCategory: incomingSession?.appCategory || sessionDefaults.appCategory,
+    appSummary: incomingSession?.appSummary || sessionDefaults.appSummary,
+    primaryWorkflow: incomingSession?.primaryWorkflow || sessionDefaults.primaryWorkflow,
+    visualTone: incomingSession?.visualTone || sessionDefaults.visualTone,
+    routeBlueprintSummary:
+      incomingSession?.routeBlueprintSummary?.length
+        ? incomingSession.routeBlueprintSummary
+        : sessionDefaults.routeBlueprintSummary,
+    moduleBlueprintSummary:
+      incomingSession?.moduleBlueprintSummary?.length
+        ? incomingSession.moduleBlueprintSummary
+        : sessionDefaults.moduleBlueprintSummary,
+    entityBlueprintSummary:
+      incomingSession?.entityBlueprintSummary?.length
+        ? incomingSession.entityBlueprintSummary
+        : sessionDefaults.entityBlueprintSummary,
+    activeRoutePurpose: incomingSession?.activeRoutePurpose || sessionDefaults.activeRoutePurpose,
+    activeModuleSummary: incomingSession?.activeModuleSummary || sessionDefaults.activeModuleSummary,
+    activeEntitySummary: incomingSession?.activeEntitySummary || sessionDefaults.activeEntitySummary,
+    routeId: incomingSession?.routeId || sessionDefaults.routeId,
+    routeLabel: incomingSession?.routeLabel || sessionDefaults.routeLabel,
+    filePath: incomingSession?.filePath || sessionDefaults.filePath,
+    symbolName: incomingSession?.symbolName || sessionDefaults.symbolName,
+    elementName: incomingSession?.elementName || sessionDefaults.elementName,
+  } satisfies WorkspaceSessionContext
 
   context.sharedSession = buildResolvedSessionContext({
     session: sharedSession,
@@ -1438,7 +1771,8 @@ async function resolveEditorContext(
       ]),
     },
     specRegion,
-    routes
+    routes,
+    projectSpec
   )
 
   return {
@@ -1816,6 +2150,23 @@ async function callEditorModel(
     ? [
         context.sharedSession.projectName ? `Project name: ${context.sharedSession.projectName}` : "",
         context.sharedSession.specKind ? `Workspace kind: ${context.sharedSession.specKind}` : "",
+        context.sharedSession.appArchetype ? `App archetype: ${context.sharedSession.appArchetype}` : "",
+        context.sharedSession.appCategory ? `App category: ${context.sharedSession.appCategory}` : "",
+        context.sharedSession.appSummary ? `App summary: ${context.sharedSession.appSummary}` : "",
+        context.sharedSession.primaryWorkflow ? `Primary workflow: ${context.sharedSession.primaryWorkflow}` : "",
+        context.sharedSession.visualTone ? `Visual tone: ${context.sharedSession.visualTone}` : "",
+        context.sharedSession.routeBlueprintSummary?.length
+          ? `Route blueprints: ${context.sharedSession.routeBlueprintSummary.join(", ")}`
+          : "",
+        context.sharedSession.activeRoutePurpose ? `Active route purpose: ${context.sharedSession.activeRoutePurpose}` : "",
+        context.sharedSession.moduleBlueprintSummary?.length
+          ? `Module blueprints: ${context.sharedSession.moduleBlueprintSummary.join(", ")}`
+          : "",
+        context.sharedSession.activeModuleSummary ? `Active module summary: ${context.sharedSession.activeModuleSummary}` : "",
+        context.sharedSession.entityBlueprintSummary?.length
+          ? `Entity blueprints: ${context.sharedSession.entityBlueprintSummary.join(", ")}`
+          : "",
+        context.sharedSession.activeEntitySummary ? `Active entity summary: ${context.sharedSession.activeEntitySummary}` : "",
         context.sharedSession.workspaceSurface ? `Workspace surface: ${context.sharedSession.workspaceSurface}` : "",
         context.sharedSession.activeSection ? `Active section: ${context.sharedSession.activeSection}` : "",
         context.sharedSession.routeId ? `Route id: ${context.sharedSession.routeId}` : "",
@@ -2026,6 +2377,19 @@ function buildIterateContextSummary(context: EditorRequestContext, region: Regio
 }
 
 function resolveDiscussionArchetype(prompt: string, context: EditorRequestContext, spec: Awaited<ReturnType<typeof readProjectSpec>>) {
+  const explicitArchetype = normalizeTextValue(
+    context.sharedSession?.appArchetype ||
+      spec?.appIntent?.archetype ||
+      spec?.appIdentity?.category
+  ).toLowerCase()
+  if (explicitArchetype === "code_platform") return "code_platform" as const
+  if (explicitArchetype === "crm") return "crm" as const
+  if (explicitArchetype === "api_platform") return "api_platform" as const
+  if (explicitArchetype === "community") return "community" as const
+  if (explicitArchetype === "marketing_admin" || explicitArchetype === "content") {
+    return "website_landing_download" as const
+  }
+
   const text = [
     prompt,
     spec?.prompt,
@@ -2061,6 +2425,12 @@ function getDiscussionRouteMap(
   archetype: DiscussPlan["archetype"],
   spec: Awaited<ReturnType<typeof readProjectSpec>>
 ) {
+  if (Array.isArray(spec?.routeBlueprint) && spec.routeBlueprint.length) {
+    const routes = spec.routeBlueprint
+      .map((item) => String(item.path || "").trim())
+      .filter(Boolean)
+    if (routes.length) return Array.from(new Set(routes))
+  }
   if (spec?.kind === "code_platform" || archetype === "code_platform") {
     return ["/dashboard", "/editor", "/runs", "/templates", "/pricing", "/settings"]
   }
@@ -2085,6 +2455,33 @@ function buildWorkspaceDiscussionPlan(args: {
   const routeMap = getDiscussionRouteMap(archetype, nextSpec)
   const modulePlan = Array.from(new Set(nextSpec.modules)).slice(0, 8)
   const constraints = [
+    context.sharedSession?.appCategory
+      ? `${isCn ? "应用类别" : "App category"}: ${context.sharedSession.appCategory}`
+      : "",
+    context.sharedSession?.primaryWorkflow
+      ? `${isCn ? "主工作流" : "Primary workflow"}: ${context.sharedSession.primaryWorkflow}`
+      : "",
+    context.sharedSession?.visualTone
+      ? `${isCn ? "视觉方向" : "Visual tone"}: ${context.sharedSession.visualTone}`
+      : "",
+    context.sharedSession?.routeBlueprintSummary?.length
+      ? `${isCn ? "关键路由" : "Key routes"}: ${context.sharedSession.routeBlueprintSummary.join(" / ")}`
+      : "",
+    context.sharedSession?.activeRoutePurpose
+      ? `${isCn ? "当前路由职责" : "Active route purpose"}: ${context.sharedSession.activeRoutePurpose}`
+      : "",
+    context.sharedSession?.moduleBlueprintSummary?.length
+      ? `${isCn ? "关键模块" : "Key modules"}: ${context.sharedSession.moduleBlueprintSummary.join(" / ")}`
+      : "",
+    context.sharedSession?.activeModuleSummary
+      ? `${isCn ? "当前模块摘要" : "Active module summary"}: ${context.sharedSession.activeModuleSummary}`
+      : "",
+    context.sharedSession?.entityBlueprintSummary?.length
+      ? `${isCn ? "关键实体" : "Key entities"}: ${context.sharedSession.entityBlueprintSummary.join(" / ")}`
+      : "",
+    context.sharedSession?.activeEntitySummary
+      ? `${isCn ? "当前实体摘要" : "Active entity summary"}: ${context.sharedSession.activeEntitySummary}`
+      : "",
     context.sharedSession?.selectedPlanName
       ? `${isCn ? "当前套餐" : "Current plan"}: ${context.sharedSession.selectedPlanName}`
       : "",
@@ -2763,7 +3160,7 @@ export async function POST(req: Request) {
           requestContext.currentFileSymbols = inferSymbolsFromContent(changedDraft.content)
         }
       }
-      const rebuiltContext = rebuildEditorFocus(requestContext, effectiveRegion, workspaceRoutes)
+      const rebuiltContext = rebuildEditorFocus(requestContext, effectiveRegion, workspaceRoutes, projectSpec)
       requestContext.currentRoute = rebuiltContext.currentRoute
       requestContext.currentPage = rebuiltContext.currentPage
       requestContext.currentModule = rebuiltContext.currentModule
