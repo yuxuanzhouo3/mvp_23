@@ -6,10 +6,7 @@ const googleClientId =
   process.env.GOOGLE_CLIENT_ID ?? process.env.GOOGLE_OAUTH_CLIENT_ID ?? ""
 const googleClientSecret =
   process.env.GOOGLE_CLIENT_SECRET ?? process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? ""
-
-if (!googleClientId || !googleClientSecret) {
-  throw new Error("Missing Google OAuth environment variables")
-}
+const googleConfigured = Boolean(googleClientId && googleClientSecret)
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
@@ -17,19 +14,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
   },
-  providers: [
-    Google({
-      clientId: googleClientId,
-      clientSecret: googleClientSecret,
-      authorization: {
-        params: {
-          prompt: "select_account",
-          access_type: "offline",
-          response_type: "code",
-        },
-      },
-    }),
-  ],
+  providers: googleConfigured
+    ? [
+        Google({
+          clientId: googleClientId,
+          clientSecret: googleClientSecret,
+          authorization: {
+            params: {
+              prompt: "select_account",
+              access_type: "offline",
+              response_type: "code",
+            },
+          },
+        }),
+      ]
+    : [],
   events: {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google" || !user.email) {
