@@ -1,6 +1,5 @@
 import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
-import { setCurrentSession } from "@/lib/auth"
 import { upsertExternalUser } from "@/lib/auth-store"
 
 const googleClientId =
@@ -31,28 +30,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
+  events: {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google" || !user.email) {
-        return true
+        return
       }
 
-      const externalUser = await upsertExternalUser({
+      await upsertExternalUser({
         id: String(profile?.sub ?? user.email),
         email: user.email,
         name: user.name || user.email,
         region: "intl",
       })
-
-      await setCurrentSession({
-        id: externalUser.id,
-        email: externalUser.email,
-        name: externalUser.name,
-        region: externalUser.region,
-      })
-
-      return true
     },
+  },
+  callbacks: {
     async jwt({ token, profile, user }) {
       if (profile?.sub) {
         token.id = profile.sub
