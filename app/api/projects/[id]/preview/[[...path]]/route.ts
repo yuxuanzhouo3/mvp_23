@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { Agent as HttpAgent } from "undici"
 import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
 import { buildCanonicalPreviewUrl, isRuntimePreviewRootSegment } from "@/lib/preview-url"
 import { buildProjectPresentation } from "@/lib/project-presentation"
@@ -9,8 +8,6 @@ import { normalizeRuntimeStatus } from "@/lib/workspace-bootstrap"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
-
-const localPreviewDispatcher = new HttpAgent({ connect: { proxy: undefined } })
 
 function buildTargetUrl(req: Request, projectId: string, port: number) {
   const incoming = new URL(req.url)
@@ -287,7 +284,6 @@ export async function handleProjectPreviewRequest(req: Request, projectIdRaw: st
       body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),
       redirect: "manual",
       cache: "no-store",
-      dispatcher: localPreviewDispatcher,
       duplex: "half",
     } as RequestInit)
   } catch (error) {
