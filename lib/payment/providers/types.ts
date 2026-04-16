@@ -1,3 +1,4 @@
+import type { BillingCycle } from "@/lib/plan-catalog"
 import type { PaymentProvider } from "@/lib/payment-adapter"
 
 export type PaymentCreateContext = {
@@ -9,6 +10,7 @@ export type PaymentCreateContext = {
   planName: string
   amountLabel: string
   method: string
+  cycle: BillingCycle
 }
 
 export type ProviderCreateResult = {

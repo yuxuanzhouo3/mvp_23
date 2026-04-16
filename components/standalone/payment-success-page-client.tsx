@@ -21,6 +21,7 @@ type PaymentData = {
 function PaymentSuccessPageContent() {
   const searchParams = useSearchParams()
   const paymentId = searchParams.get("paymentId") || ""
+  const sessionId = searchParams.get("session_id") || ""
   const [payment, setPayment] = useState<PaymentData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -32,7 +33,13 @@ function PaymentSuccessPageContent() {
       return
     }
 
-    fetch(`/api/payment/status?paymentId=${encodeURIComponent(paymentId)}`)
+    const statusUrl = new URL(`/api/payment/status`, window.location.origin)
+    statusUrl.searchParams.set("paymentId", paymentId)
+    if (sessionId) {
+      statusUrl.searchParams.set("session_id", sessionId)
+    }
+
+    fetch(statusUrl.toString())
       .then(async (res) => {
         const json = await res.json().catch(() => ({}))
         if (!res.ok) {
@@ -42,7 +49,7 @@ function PaymentSuccessPageContent() {
       })
       .catch((err: any) => setError(err?.message || "Payment not found"))
       .finally(() => setLoading(false))
-  }, [paymentId])
+  }, [paymentId, sessionId])
 
   const isCn = payment?.region === "cn" || error === "missing-payment-id"
 

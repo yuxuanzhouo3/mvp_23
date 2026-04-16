@@ -50,6 +50,7 @@ export async function POST(req: Request) {
     planName,
     amountLabel,
     method,
+    cycle,
   })
   return NextResponse.json({
     ok: true,
