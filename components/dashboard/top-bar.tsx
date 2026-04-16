@@ -39,7 +39,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const [authResolved, setAuthResolved] = useState(false)
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    fetch("/api/auth/runtime-session")
       .then((res) => res.json())
       .then((json) => setUser(json?.authenticated ? json.user : null))
       .catch(() => setUser(null))

@@ -36,7 +36,7 @@ export function ProtectedRouteGate({ enabled, children }: ProtectedRouteGateProp
     let active = true
     setState("checking")
 
-    fetch("/api/auth/session", { cache: "no-store" })
+    fetch("/api/auth/runtime-session", { cache: "no-store" })
       .then((res) => res.json())
       .then((json: SessionResp) => {
         if (!active) return

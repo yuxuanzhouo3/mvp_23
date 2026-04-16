@@ -20,7 +20,7 @@ export function PlanCapabilityPanel() {
   const [currentTier, setCurrentTier] = useState<PlanTier>("free")
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    fetch("/api/auth/runtime-session")
       .then((res) => res.json())
       .then((json: SessionResponse) => {
         const tier = json?.subscription?.tier

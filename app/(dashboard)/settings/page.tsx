@@ -45,7 +45,7 @@ export default function SettingsPage() {
   }, [])
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    fetch("/api/auth/runtime-session")
       .then((res) => (res.ok ? res.json() : null))
       .then((json: SessionResp | null) => {
         if (json?.authenticated && json.user) {

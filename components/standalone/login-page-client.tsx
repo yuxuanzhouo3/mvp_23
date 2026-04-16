@@ -77,7 +77,7 @@ function LoginPageContent() {
   }, [])
 
   useEffect(() => {
-    fetch("/api/auth/session", { cache: "no-store" })
+    fetch("/api/auth/runtime-session", { cache: "no-store" })
       .then((res) => res.json())
       .then((json: SessionResp) => {
         setRuntimeMode((isCn ? json?.authRuntime?.cnMode : json?.authRuntime?.intlMode) ?? "demo")

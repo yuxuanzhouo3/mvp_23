@@ -41,7 +41,7 @@ export function AiInputPanel() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    fetch("/api/auth/runtime-session")
       .then((res) => res.json())
       .then((json) => {
         const tier = json?.subscription?.tier

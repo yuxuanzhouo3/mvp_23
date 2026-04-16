@@ -68,7 +68,7 @@ function CheckoutPageContent() {
   }, [searchParams])
 
   useEffect(() => {
-    fetch("/api/auth/session")
+    fetch("/api/auth/runtime-session")
       .then((res) => res.json())
       .then((json: SessionResp) => {
         setAuthenticated(Boolean(json?.authenticated))
