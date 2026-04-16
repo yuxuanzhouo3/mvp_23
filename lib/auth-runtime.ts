@@ -33,11 +33,16 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
     hasEnv("NEXT_PUBLIC_WECHAT_APP_ID") &&
     hasEnv("WECHAT_APP_SECRET")
   const phoneOtpConfigured =
-    hasEnv("SMS_PROVIDER_NAME") &&
-    hasEnv("SMS_API_KEY") &&
-    hasEnv("SMS_API_SECRET") &&
-    hasEnv("SMS_SIGN_NAME") &&
-    hasEnv("SMS_TEMPLATE_ID")
+    (hasEnv("SMS_PROVIDER_NAME") &&
+      hasEnv("SMS_API_KEY") &&
+      hasEnv("SMS_API_SECRET") &&
+      hasEnv("SMS_SIGN_NAME") &&
+      hasEnv("SMS_TEMPLATE_ID")) ||
+    (hasEnv("TENCENT_SMS_APP_ID") &&
+      hasEnv("TENCENT_SMS_SIGN_NAME") &&
+      hasEnv("TENCENT_SMS_TEMPLATE_ID") &&
+      hasEnv("TENCENT_SMS_SECRET_ID") &&
+      hasEnv("TENCENT_SMS_SECRET_KEY"))
 
   const intlFallback: AuthMode = supabaseConfigured ? "supabase" : "password"
   const cnFallback: AuthMode = "phone"
@@ -46,8 +51,8 @@ export function resolveAuthRuntimeConfig(): AuthRuntimeConfig {
   const googleEnabled = String(process.env.AUTH_ENABLE_GOOGLE ?? "true").trim() !== "false"
   const facebookEnabled = String(process.env.AUTH_ENABLE_FACEBOOK ?? "false").trim() === "true"
   const googleConfigured =
-    hasEnv("GOOGLE_OAUTH_CLIENT_ID") &&
-    hasEnv("GOOGLE_OAUTH_CLIENT_SECRET")
+    (hasEnv("GOOGLE_CLIENT_ID") && hasEnv("GOOGLE_CLIENT_SECRET")) ||
+    (hasEnv("GOOGLE_OAUTH_CLIENT_ID") && hasEnv("GOOGLE_OAUTH_CLIENT_SECRET"))
   const facebookConfigured =
     hasEnv("FACEBOOK_APP_ID") &&
     hasEnv("FACEBOOK_APP_SECRET")

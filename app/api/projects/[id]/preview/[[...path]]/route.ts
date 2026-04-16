@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server"
+import { Agent as HttpAgent } from "undici"
 import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
 import { buildCanonicalPreviewUrl, isRuntimePreviewRootSegment } from "@/lib/preview-url"
 import { buildProjectPresentation } from "@/lib/project-presentation"
 import { readProjectSpec } from "@/lib/project-spec"
-import { getProject, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
+import { getProject, isPidAlive, resolveProjectPath, safeProjectId } from "@/lib/project-workspace"
+import { normalizeRuntimeStatus } from "@/lib/workspace-bootstrap"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+const localPreviewDispatcher = new HttpAgent({ connect: { proxy: undefined } })
 
 function buildTargetUrl(req: Request, projectId: string, port: number) {
   const incoming = new URL(req.url)
@@ -28,6 +32,36 @@ function buildTargetUrl(req: Request, projectId: string, port: number) {
 
 function buildPreviewBase(projectId: string) {
   return `/api/projects/${encodeURIComponent(projectId)}/preview`
+}
+
+function normalizePreviewPathSegments(pathSegments: string[]) {
+  if (pathSegments.length === 0) return []
+  if (pathSegments.length === 1 && isRuntimePreviewRootSegment(pathSegments[0])) {
+    return []
+  }
+  return pathSegments.filter(Boolean)
+}
+
+function describeRuntimeState(runtimeState?: {
+  status?: string
+  pid?: number
+  port?: number
+  url?: string
+  lastError?: string
+}) {
+  if (!runtimeState) return null
+  return {
+    status: runtimeState.status,
+    pidAlive: Boolean(runtimeState.pid) ? isPidAlive(runtimeState.pid) : false,
+    port: runtimeState.port,
+    url: runtimeState.url,
+    hasError: Boolean(runtimeState.lastError),
+  }
+}
+
+function logPreviewDecision(label: string, details: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "production") return
+  console.info(`[preview:${label}]`, details)
 }
 
 function isHtmlLikeRequest(req: Request, pathSegments: string[]) {
@@ -189,23 +223,58 @@ function rewriteHtmlForPreview(html: string, projectId: string) {
   return next
 }
 
-export async function handleProjectPreviewRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
-  const lookup = await resolveProjectLookup(projectIdRaw)
-  if (process.env.NODE_ENV !== "production") {
-    console.info("[preview:api-lookup]", buildProjectLookupLogPayload(lookup))
+async function resolvePreviewProject(projectIdRaw: string) {
+  let lookup: Awaited<ReturnType<typeof resolveProjectLookup>> | null = null
+  try {
+    lookup = await resolveProjectLookup(projectIdRaw)
+    logPreviewDecision("api-lookup", buildProjectLookupLogPayload(lookup))
+  } catch (error) {
+    logPreviewDecision("lookup-error", {
+      projectIdRaw,
+      error: error instanceof Error ? error.message : String(error),
+    })
   }
-  const projectId = lookup.projectId ?? safeProjectId(projectIdRaw)
-  const project = lookup.project ?? (projectId ? await getProject(projectId) : null)
-  const runtimeState = project?.runtime
-  const wantsHtml = isHtmlLikeRequest(req, pathSegments)
-  const normalizedPathSegments =
-    pathSegments.length === 1 && isRuntimePreviewRootSegment(pathSegments[0]) ? [] : pathSegments
-  const publicProjectKey = lookup.projectSlug || project?.projectSlug || projectId
+
+  const projectId = lookup?.projectId ?? safeProjectId(projectIdRaw)
+  let project = lookup?.project ?? null
+  if (!project && projectId) {
+    try {
+      project = await getProject(projectId)
+    } catch (error) {
+      logPreviewDecision("project-read-error", {
+        projectId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  const publicProjectKey = lookup?.projectSlug || project?.projectSlug || projectId
+  return { lookup, projectId, project, publicProjectKey }
+}
+
+export async function handleProjectPreviewRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
+  const normalizedPathSegments = normalizePreviewPathSegments(pathSegments)
+  const wantsHtml = isHtmlLikeRequest(req, normalizedPathSegments)
+
+  const { projectId, project, publicProjectKey } = await resolvePreviewProject(projectIdRaw)
   const fallbackUrl = buildCanonicalPreviewUrl(publicProjectKey, normalizedPathSegments.join("/"))
 
-  if (!project || !runtimeState?.port) {
+  const runtimeState = await normalizeRuntimeStatus(project?.runtime)
+  const runtimeUnavailable = !project || runtimeState?.status !== "running" || !runtimeState?.port
+
+  logPreviewDecision("routing", {
+    projectIdRaw,
+    projectId,
+    normalizedPath: normalizedPathSegments.join("/") || "/",
+    wantsHtml,
+    fallbackUrl,
+    runtime: describeRuntimeState(runtimeState),
+    runtimeUnavailable,
+  })
+
+  if (runtimeUnavailable) {
     return wantsHtml
-      ? NextResponse.redirect(new URL(fallbackUrl, req.url))
+      ? await renderFallbackPreview(publicProjectKey)
       : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
   }
 
@@ -218,16 +287,29 @@ export async function handleProjectPreviewRequest(req: Request, projectIdRaw: st
       body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),
       redirect: "manual",
       cache: "no-store",
+      dispatcher: localPreviewDispatcher,
       duplex: "half",
     } as RequestInit)
-  } catch {
+  } catch (error) {
+    logPreviewDecision("upstream-unavailable", {
+      projectId,
+      target: String(target),
+      normalizedPath: normalizedPathSegments.join("/") || "/",
+      error: error instanceof Error ? error.message : String(error),
+    })
     return wantsHtml
-      ? NextResponse.redirect(new URL(fallbackUrl, req.url))
+      ? await renderFallbackPreview(publicProjectKey)
       : NextResponse.json({ error: "Preview upstream unavailable" }, { status: 502 })
   }
 
   if (!upstream.ok && req.method === "GET" && wantsHtml) {
-    return NextResponse.redirect(new URL(fallbackUrl, req.url))
+    logPreviewDecision("upstream-fallback", {
+      projectId,
+      target: String(target),
+      status: upstream.status,
+      normalizedPath: normalizedPathSegments.join("/") || "/",
+    })
+    return await renderFallbackPreview(publicProjectKey)
   }
 
   const headers = new Headers(upstream.headers)
@@ -257,6 +339,11 @@ export async function handleProjectPreviewRequest(req: Request, projectIdRaw: st
 }
 
 export async function GET(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
+  const { id, path } = await context.params
+  return handleProjectPreviewRequest(req, id, path ?? [])
+}
+
+export async function HEAD(req: Request, context: { params: Promise<{ id: string; path?: string[] }> }) {
   const { id, path } = await context.params
   return handleProjectPreviewRequest(req, id, path ?? [])
 }

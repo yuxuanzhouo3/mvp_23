@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import { signIn, useSession } from "next-auth/react"
 import { ArrowRight, Chrome, LoaderCircle, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,6 +40,7 @@ function BrandMark() {
 function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: nextAuthSession, status: nextAuthStatus } = useSession()
   const redirectTo = searchParams.get("redirect") || "/projects"
   const switchAccount = searchParams.get("switch") === "1"
   const registerRequested = searchParams.get("mode") === "register"
@@ -52,6 +54,9 @@ function LoginPageContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
+  const [emailCode, setEmailCode] = useState("")
+  const [emailCodeSent, setEmailCodeSent] = useState(false)
+  const [emailPurpose, setEmailPurpose] = useState<"register" | "reset">("register")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [authStep, setAuthStep] = useState<"entry" | "password" | "register" | "authenticated">(
@@ -93,9 +98,19 @@ function LoginPageContent() {
   }, [isCn, registerRequested, switchAccount])
 
   useEffect(() => {
-    if (!isCn) return
-    setCnLoginMethod(runtimeMode === "phone" ? "phone" : "email")
-  }, [isCn, runtimeMode])
+    if (nextAuthStatus !== "authenticated" || !nextAuthSession?.user?.email || switchAccount) {
+      return
+    }
+
+    setSessionUser({
+      id: nextAuthSession.user.id || nextAuthSession.user.email,
+      email: nextAuthSession.user.email,
+      name: nextAuthSession.user.name || nextAuthSession.user.email,
+      region: isCn ? "cn" : "intl",
+    })
+    setAuthStep("authenticated")
+    setAuthResolved(true)
+  }, [isCn, nextAuthSession, nextAuthStatus, switchAccount])
 
   async function handleSwitchAccount() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
@@ -131,20 +146,76 @@ function LoginPageContent() {
     setSubmitting(true)
     setError("")
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/email/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, region, name }),
+        body: JSON.stringify({ email, password, region, name, code: emailCode, purpose: "register" }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(String(json?.error ?? "Register failed"))
       }
+      setEmailCodeSent(false)
       setSessionUser(json?.user ?? null)
       setAuthStep("authenticated")
     } catch (err: any) {
       const message = err?.message || (isCn ? "注册失败" : "Register failed")
       setError(message === "User already exists" ? (isCn ? "该邮箱已注册，请直接登录。" : "This email already exists. Sign in instead.") : message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleSendEmailCode(purpose: "register" | "reset") {
+    setSubmitting(true)
+    setError("")
+    setPhoneHint("")
+    try {
+      const res = await fetch("/api/auth/email/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, region, purpose }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(String(json?.error ?? "Send verification email failed"))
+      }
+      setEmailPurpose(purpose)
+      setEmailCodeSent(true)
+      setPhoneHint(
+        purpose === "reset"
+          ? isCn
+            ? "找回密码验证码已发送到邮箱，请查收。"
+            : "Password reset code sent to your inbox."
+          : isCn
+            ? "注册验证码已发送到邮箱，请查收。"
+            : "Sign-up code sent to your inbox."
+      )
+    } catch (err: any) {
+      setError(err?.message || (isCn ? "发送邮箱验证码失败" : "Failed to send verification email"))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleResetPassword() {
+    setSubmitting(true)
+    setError("")
+    try {
+      const res = await fetch("/api/auth/email/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, region, code: emailCode, purpose: "reset" }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(String(json?.error ?? "Reset password failed"))
+      }
+      setEmailCodeSent(false)
+      setSessionUser(json?.user ?? null)
+      setAuthStep("authenticated")
+    } catch (err: any) {
+      setError(err?.message || (isCn ? "重置密码失败" : "Reset password failed"))
     } finally {
       setSubmitting(false)
     }
@@ -204,6 +275,10 @@ function LoginPageContent() {
 
   function handleContinue() {
     setError("")
+    setPhoneHint("")
+    setEmailCodeSent(false)
+    setEmailCode("")
+    setEmailPurpose("register")
     if (!email.trim()) {
       setError(isCn ? "请输入邮箱地址。" : "Enter your email address.")
       return
@@ -228,6 +303,11 @@ function LoginPageContent() {
             code: "验证码",
             password: "密码",
             name: "昵称（可选）",
+            emailCodePlaceholder: "输入邮箱收到的6位验证码",
+            sendEmailCode: "发送邮箱验证码",
+            sendResetCode: "发送找回验证码",
+            resetPassword: "重置密码并继续",
+            forgotPassword: "找回密码",
             emailPlaceholder: "输入你的邮箱地址",
             phonePlaceholder: "输入中国大陆手机号",
             codePlaceholder: "输入6位验证码",
@@ -274,6 +354,11 @@ function LoginPageContent() {
             code: "Code",
             password: "Password",
             name: "Name (optional)",
+            emailCodePlaceholder: "Enter the 6-digit code from your email",
+            sendEmailCode: "Send email code",
+            sendResetCode: "Send reset code",
+            resetPassword: "Reset password",
+            forgotPassword: "Forgot password",
             emailPlaceholder: "Enter your email address",
             phonePlaceholder: "Enter phone number",
             codePlaceholder: "Enter verification code",
@@ -326,9 +411,14 @@ function LoginPageContent() {
   const showAuthForm = authStep !== "authenticated"
   const isRegisterMode = authStep === "register"
   const isPasswordMode = authStep === "password"
+  const isResetMode = isPasswordMode && emailPurpose === "reset"
   const cnPhoneFlow = isCn && cnLoginMethod === "phone"
   const showGoogleEntry = !isCn && googleEnabled
-  const googleRedirect = `/api/auth/google/start?redirect=${encodeURIComponent(redirectTo)}`
+
+  async function handleGoogleSignIn() {
+    setError("")
+    await signIn("google", { callbackUrl: redirectTo })
+  }
 
   return (
     <div className="min-h-screen bg-[#fcfbf7] text-slate-950">
@@ -389,7 +479,7 @@ function LoginPageContent() {
                           className="h-14 w-full rounded-2xl border-[#ffb272] bg-white text-lg font-medium text-slate-900 hover:bg-[#fff8f1]"
                           disabled={!authResolved || submitting}
                           onClick={() => {
-                            router.push(googleRedirect)
+                            void handleGoogleSignIn()
                           }}
                         >
                           <Chrome className="mr-3 h-5 w-5" />
@@ -525,6 +615,18 @@ function LoginPageContent() {
                           </div>
                         ) : null}
 
+                        {isRegisterMode || isResetMode ? (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-900">{copy.code}</label>
+                            <Input
+                              value={emailCode}
+                              onChange={(event) => setEmailCode(event.target.value)}
+                              placeholder={copy.emailCodePlaceholder}
+                              className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                            />
+                          </div>
+                        ) : null}
+
                         {isRegisterMode ? (
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-900">{copy.name}</label>
@@ -538,35 +640,73 @@ function LoginPageContent() {
                         ) : null}
 
                         {showAuthForm ? (
-                          <Button
-                            type="button"
-                            className="h-14 w-full rounded-2xl bg-slate-500 text-lg font-medium text-white hover:bg-slate-600 disabled:opacity-80"
-                            disabled={submitting || !authResolved}
-                            onClick={() => {
-                              if (authStep === "entry") {
-                                handleContinue()
-                                return
-                              }
-                              if (authStep === "register") {
-                                void handleRegister()
-                                return
-                              }
-                              void handlePasswordLogin()
-                            }}
-                          >
-                            {submitting ? (
-                              <>
-                                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                                {isRegisterMode ? copy.create : copy.signIn}
-                              </>
-                            ) : authStep === "entry" ? (
-                              copy.continue
-                            ) : authStep === "register" ? (
-                              copy.create
-                            ) : (
-                              copy.signIn
-                            )}
-                          </Button>
+                          <>
+                            {isRegisterMode || isResetMode ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-14 w-full rounded-2xl border-slate-200 bg-white text-base text-slate-900 hover:bg-slate-50"
+                                disabled={submitting || !authResolved}
+                                onClick={() => void handleSendEmailCode(isResetMode ? "reset" : "register")}
+                              >
+                                {submitting ? (
+                                  <>
+                                    <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                    {isResetMode ? copy.sendResetCode : copy.sendEmailCode}
+                                  </>
+                                ) : isResetMode ? (
+                                  copy.sendResetCode
+                                ) : emailCodeSent ? (
+                                  isCn ? "重新发送验证码" : "Resend code"
+                                ) : (
+                                  copy.sendEmailCode
+                                )}
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-14 w-full rounded-2xl bg-slate-500 text-lg font-medium text-white hover:bg-slate-600 disabled:opacity-80"
+                              disabled={submitting || !authResolved}
+                              onClick={() => {
+                                if (authStep === "entry") {
+                                  handleContinue()
+                                  return
+                                }
+                                if (authStep === "register") {
+                                  if (!emailCodeSent) {
+                                    setError(isCn ? "请先发送邮箱验证码。" : "Send the email verification code first.")
+                                    return
+                                  }
+                                  void handleRegister()
+                                  return
+                                }
+                                if (isResetMode) {
+                                  if (!emailCodeSent) {
+                                    setError(isCn ? "请先发送找回验证码。" : "Send the reset code first.")
+                                    return
+                                  }
+                                  void handleResetPassword()
+                                  return
+                                }
+                                void handlePasswordLogin()
+                              }}
+                            >
+                              {submitting ? (
+                                <>
+                                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                                  {isRegisterMode ? copy.create : isResetMode ? copy.resetPassword : copy.signIn}
+                                </>
+                              ) : authStep === "entry" ? (
+                                copy.continue
+                              ) : authStep === "register" ? (
+                                copy.create
+                              ) : isResetMode ? (
+                                copy.resetPassword
+                              ) : (
+                                copy.signIn
+                              )}
+                            </Button>
+                          </>
                         ) : null}
                       </>
                     )}
@@ -578,21 +718,62 @@ function LoginPageContent() {
                     {cnPhoneFlow ? (
                       <p>{isCn ? "验证码通过后会自动登录或创建账号。" : "Verification will sign you in automatically."}</p>
                     ) : authStep === "entry" ? (
-                      <p>
-                        {copy.noAccount}{" "}
-                        <button type="button" className="font-semibold text-slate-950 underline underline-offset-4" onClick={() => setAuthStep("register")}>
-                          {copy.signUp}
+                      <>
+                        <p>
+                          {copy.noAccount}{" "}
+                          <button
+                            type="button"
+                            className="font-semibold text-slate-950 underline underline-offset-4"
+                            onClick={() => {
+                              setEmailPurpose("register")
+                              setEmailCode("")
+                              setEmailCodeSent(false)
+                              setAuthStep("register")
+                            }}
+                          >
+                            {copy.signUp}
+                          </button>
+                        </p>
+                        <button
+                          type="button"
+                          className="font-medium text-slate-500 underline underline-offset-4"
+                          onClick={() => {
+                            setEmailPurpose("reset")
+                            setEmailCode("")
+                            setEmailCodeSent(false)
+                            setAuthStep("password")
+                          }}
+                        >
+                          {copy.forgotPassword}
                         </button>
-                      </p>
+                      </>
                     ) : authStep === "register" ? (
                       <>
                         <p>
                           {copy.hasAccount}{" "}
-                          <button type="button" className="font-semibold text-slate-950 underline underline-offset-4" onClick={() => setAuthStep("password")}>
+                          <button
+                            type="button"
+                            className="font-semibold text-slate-950 underline underline-offset-4"
+                            onClick={() => {
+                              setEmailPurpose("register")
+                              setEmailCode("")
+                              setEmailCodeSent(false)
+                              setAuthStep("password")
+                            }}
+                          >
                             {copy.signInLink}
                           </button>
                         </p>
-                        <button type="button" className="font-medium text-slate-500 underline underline-offset-4" onClick={() => setAuthStep("entry")}>
+                        <button
+                          type="button"
+                          className="font-medium text-slate-500 underline underline-offset-4"
+                          onClick={() => {
+                            setEmailPurpose("register")
+                            setEmailCode("")
+                            setEmailCodeSent(false)
+                            setAuthStep("entry")
+                          }}
+                        >
                           {copy.changeEmail}
                         </button>
                       </>
@@ -600,13 +781,45 @@ function LoginPageContent() {
                       <>
                         <p>
                           {copy.noAccount}{" "}
-                          <button type="button" className="font-semibold text-slate-950 underline underline-offset-4" onClick={() => setAuthStep("register")}>
+                          <button
+                            type="button"
+                            className="font-semibold text-slate-950 underline underline-offset-4"
+                            onClick={() => {
+                              setEmailPurpose("register")
+                              setEmailCode("")
+                              setEmailCodeSent(false)
+                              setAuthStep("register")
+                            }}
+                          >
                             {copy.signUp}
                           </button>
                         </p>
-                        <button type="button" className="font-medium text-slate-500 underline underline-offset-4" onClick={() => setAuthStep("entry")}>
-                          {copy.changeEmail}
-                        </button>
+                        <div className="flex items-center justify-center gap-4">
+                          <button
+                            type="button"
+                            className="font-medium text-slate-500 underline underline-offset-4"
+                            onClick={() => {
+                              setEmailPurpose("register")
+                              setEmailCode("")
+                              setEmailCodeSent(false)
+                              setAuthStep("entry")
+                            }}
+                          >
+                            {copy.changeEmail}
+                          </button>
+                          <button
+                            type="button"
+                            className="font-medium text-slate-500 underline underline-offset-4"
+                            onClick={() => {
+                              setEmailPurpose("reset")
+                              setEmailCode("")
+                              setEmailCodeSent(false)
+                              setAuthStep("password")
+                            }}
+                          >
+                            {copy.forgotPassword}
+                          </button>
+                        </div>
                       </>
                     )}
                   </div>

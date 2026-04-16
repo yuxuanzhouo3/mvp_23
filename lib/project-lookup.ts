@@ -65,16 +65,33 @@ export async function resolveProjectLookup(routeParamRaw: string): Promise<Proje
   }
 
   const allProjects = await listProjects()
-  const candidates = allProjects.map((record) => ({
-    record,
-    slug: record.projectSlug || slugify(record.projectId) || record.projectId,
-  }))
+  const candidates = await Promise.all(
+    allProjects.map(async (record) => {
+      const presentation = await getPresentation(record)
+      const derivedSlug = slugify(presentation.displayName) || record.projectId
+      return {
+        record,
+        slug: record.projectSlug || derivedSlug || record.projectId,
+        derivedSlug,
+      }
+    })
+  )
 
   const matched =
     candidates.find((item) => item.record.projectId === routeParam || item.record.projectId === safeParam) ||
     candidates.find((item) => safeProjectId(item.record.projectId) === safeParam) ||
-    candidates.find((item) => item.slug === routeParam || item.slug === safeParam) ||
-    candidates.find((item) => safeProjectId(item.slug) === safeParam)
+    candidates.find(
+      (item) =>
+        item.slug === routeParam ||
+        item.slug === safeParam ||
+        item.derivedSlug === routeParam ||
+        item.derivedSlug === safeParam
+    ) ||
+    candidates.find(
+      (item) =>
+        safeProjectId(item.slug) === safeParam ||
+        safeProjectId(item.derivedSlug) === safeParam
+    )
 
   if (!matched) {
     return {

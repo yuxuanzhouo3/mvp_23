@@ -62,6 +62,12 @@ type DiscussPlan = {
     | "api_platform"
     | "community"
     | "website_landing_download"
+    | "healthcare"
+    | "education"
+    | "finance"
+    | "recruiting"
+    | "support"
+    | "commerce_ops"
     | "admin_ops_internal_tool"
   summary: string
   routeMap: string[]
@@ -2386,6 +2392,12 @@ function resolveDiscussionArchetype(prompt: string, context: EditorRequestContex
   if (explicitArchetype === "crm") return "crm" as const
   if (explicitArchetype === "api_platform") return "api_platform" as const
   if (explicitArchetype === "community") return "community" as const
+  if (explicitArchetype === "healthcare") return "healthcare" as const
+  if (explicitArchetype === "education") return "education" as const
+  if (explicitArchetype === "finance") return "finance" as const
+  if (explicitArchetype === "recruiting") return "recruiting" as const
+  if (explicitArchetype === "support") return "support" as const
+  if (explicitArchetype === "commerce_ops") return "commerce_ops" as const
   if (explicitArchetype === "marketing_admin" || explicitArchetype === "content") {
     return "website_landing_download" as const
   }
@@ -2418,6 +2430,24 @@ function resolveDiscussionArchetype(prompt: string, context: EditorRequestContex
   if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档|品牌|增长/.test(text)) {
     return "website_landing_download" as const
   }
+  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|门诊|患者|医生|医院|预约|病历|护理|复诊|随访|分诊/.test(text)) {
+    return "healthcare" as const
+  }
+  if (/education|course|student|assignment|school|learning|class|lesson|teacher|课程|学生|作业|学校|学习|排课|教务|班级|老师|教学/.test(text)) {
+    return "education" as const
+  }
+  if (/finance|financial|bank|ledger|transaction|reconciliation|invoice|expense|portfolio|金融|财务|银行|账本|交易|对账|发票|账务|费用|投资组合/.test(text)) {
+    return "finance" as const
+  }
+  if (/recruit|hiring|candidate|interview|job role|talent|offer|ats|resume|招聘|候选人|面试|岗位|人才|录用|简历/.test(text)) {
+    return "recruiting" as const
+  }
+  if (/support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|售后|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+    return "support" as const
+  }
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|merchant|retail|电商|商城|店铺|库存|商品|履约|仓库|订单|零售|商家/.test(text)) {
+    return "commerce_ops" as const
+  }
   return "admin_ops_internal_tool" as const
 }
 
@@ -2438,6 +2468,12 @@ function getDiscussionRouteMap(
   if (archetype === "api_platform") return ["/dashboard", "/endpoints", "/logs", "/auth", "/environments"]
   if (archetype === "community") return ["/", "/events", "/feedback", "/pricing"]
   if (archetype === "website_landing_download") return ["/", "/downloads", "/docs", "/pricing"]
+  if (archetype === "healthcare") return ["/dashboard", "/patients", "/appointments", "/care", "/billing"]
+  if (archetype === "education") return ["/dashboard", "/courses", "/students", "/assignments", "/feedback"]
+  if (archetype === "finance") return ["/dashboard", "/accounts", "/transactions", "/reconciliation", "/exceptions"]
+  if (archetype === "recruiting") return ["/dashboard", "/candidates", "/jobs", "/interviews", "/offers"]
+  if (archetype === "support") return ["/dashboard", "/tickets", "/cases", "/knowledge", "/sla"]
+  if (archetype === "commerce_ops") return ["/dashboard", "/products", "/inventory", "/orders", "/fulfillment"]
   return ["/dashboard", "/users", "/data", "/analytics", "/settings"]
 }
 

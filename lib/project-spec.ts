@@ -353,45 +353,43 @@ export function getRegionDefaults(region: Region): RegionDefaults {
   }
 }
 
-export function deriveProjectHeadline(prompt: string) {
+export function deriveProjectHeadline(prompt: string, region: Region = "intl") {
   const explicitName = extractProductNameFromPrompt(prompt)
   if (explicitName) return explicitName
-  const clean = sanitizeUiText(prompt)
-  if (!clean) return "Generated Task Workspace"
-  return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean
+  return buildRequirementSummaryTitle(prompt, region)
 }
 
 function looksLikeApiPlatformPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|开放平台|接口平台|开发者门户|接口|端点|监控|日志|鉴权|令牌|环境|用量|计费|限流|网关|回调|调用量/.test(
     text
   )
 }
 
 function looksLikeAdminOpsPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|运营后台|内部工具|审批|工单|控制台|权限|角色|审计|告警|故障|合规|安全/.test(
+  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|后台系统|运维后台|运营后台|内部工具|内控平台|审批|审批流|工单|控制台|权限|角色|审计|告警|故障|合规|安全|策略|风控/.test(
     text
   )
 }
 
 function looksLikeMarketingDistributionPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|落地页|下载|文档|设备|分发|安装包|桌面端/.test(
+  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|产品官网|产品站|落地页|下载|下载中心|下载站|文档|帮助中心|设备|分发|安装包|安装说明|桌面端|更新日志|发布页/.test(
     text
   )
 }
 
 function looksLikeCommunityPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|社区|社团|社交|公告|活动|反馈|路线图|审核|治理|成员|投票/.test(
+  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|forum|forums|post|posts|comment|comments|社区|社团|社交|论坛|帖子|评论|公告|活动|反馈|建议箱|路线图|审核|治理|成员|投票/.test(
     text
   )
 }
 
 function looksLikeSpecializedWorkspacePrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(
+  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|门诊|患者|医生|医院|预约|病历|护理|复诊|随访|分诊|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|排课|教务|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|账务|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|简历|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|售后|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库|订单/.test(
     text
   )
 }
@@ -402,32 +400,95 @@ function shouldPreferAdminOpsOverCrm(prompt: string) {
   if (looksLikeMarketingDistributionPrompt(text)) return false
   if (looksLikeCommunityPrompt(text)) return false
   if (looksLikeSpecializedWorkspacePrompt(text)) return false
-  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|商机|报价|续约/.test(
+  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|线索|商机|报价|报价单|订单审批|续约|客户成功/.test(
     text
   )
+}
+
+function buildRequirementSummaryTitle(prompt: string, region: Region = "intl") {
+  const clean = sanitizeUiText(prompt)
+  const isCn = region === "cn" || /[\u4e00-\u9fa5]/.test(clean)
+  const text = String(prompt ?? "").toLowerCase()
+  const archetype = inferScaffoldArchetypeFromPrompt(prompt)
+  const domainFlavor = inferDomainFlavor(prompt)
+  const isAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(text)
+
+  if (isAdminOps) {
+    return isCn ? "内部管理控制台" : "Internal Control Plane"
+  }
+
+  if (archetype === "code_platform") {
+    if (/cursor|copilot|assistant|agent|助手|智能体/.test(text)) return isCn ? "AI 编码工作台" : "AI Coding Workspace"
+    if (/publish|release|deploy|preview|运行|发布|预览/.test(text)) return isCn ? "应用交付工作台" : "App Delivery Workspace"
+    return isCn ? "AI 代码平台" : "AI Code Platform"
+  }
+
+  if (archetype === "crm") {
+    if (/renewal|success|account health|续约|客户成功|健康度/.test(text)) return isCn ? "客户续约工作台" : "Customer Renewal Workspace"
+    if (/quote|approval|order|invoice|报价|审批|订单|发票/.test(text)) return isCn ? "销售成交工作台" : "Revenue Operations Workspace"
+    return isCn ? "客户销售工作台" : "CRM Workspace"
+  }
+
+  if (archetype === "api_platform") {
+    if (/webhook|callback|delivery|retry|回调|投递|重试/.test(text)) return isCn ? "Webhook 交付平台" : "Webhook Delivery Platform"
+    if (/docs|sdk|guide|reference|文档|指南|参考/.test(text)) return isCn ? "开发者接口平台" : "Developer API Platform"
+    if (/security|auth|token|oauth|安全|鉴权|令牌/.test(text)) return isCn ? "接口安全控制台" : "API Security Console"
+    return isCn ? "API 运行平台" : "API Runtime Platform"
+  }
+
+  if (archetype === "community") {
+    if (/event|events|meetup|webinar|registration|agenda|活动|报名|议程/.test(text)) return isCn ? "社区活动中枢" : "Community Events Hub"
+    if (/feedback|roadmap|vote|wishlist|反馈|路线图|投票/.test(text)) return isCn ? "社区反馈平台" : "Community Feedback Platform"
+    return isCn ? "社区运营平台" : "Community Operations Platform"
+  }
+
+  if (archetype === "marketing_admin" || archetype === "content") {
+    if (/download|downloads|distribution|installer|ios|android|mac|windows|下载|分发|安装/.test(text)) return isCn ? "产品下载中心" : "Product Download Hub"
+    if (/docs|documentation|guide|faq|文档|指南|faq/.test(text)) return isCn ? "产品文档官网" : "Product Docs Site"
+    return isCn ? "产品增长官网" : "Product Growth Site"
+  }
+
+  if (domainFlavor === "healthcare") return isCn ? "医疗运营工作台" : "Healthcare Operations Workspace"
+  if (domainFlavor === "education") return isCn ? "教学运营工作台" : "Learning Operations Workspace"
+  if (domainFlavor === "finance") return isCn ? "财务对账控制台" : "Finance Reconciliation Console"
+  if (domainFlavor === "recruiting") return isCn ? "招聘协同工作台" : "Recruiting Operations Workspace"
+  if (domainFlavor === "support") return isCn ? "客服工单工作台" : "Support Operations Workspace"
+  if (domainFlavor === "commerce_ops") return isCn ? "履约运营工作台" : "Fulfillment Operations Workspace"
+
+  if (!clean) return isCn ? "生成应用" : "Generated App"
+  return isCn ? "业务运营工作台" : "Operations Workspace"
 }
 
 function looksLikeCodePlatformPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
   const explicitApiSignals = looksLikeApiPlatformPrompt(text)
   const explicitCodeSignals =
-    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
+    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|开发者工作台|开发者平台|全栈平台|全栈应用生成器|应用生成器|代码助手|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
       text
     )
-  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制/.test(text)
+  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制|代码标签|代码预览/.test(text)
   if (explicitApiSignals && !ideSignals && !explicitCodeSignals) return false
   return explicitCodeSignals || ideSignals
+}
+
+function shouldUseSpecializedWorkspaceTemplateIsolation(prompt: string) {
+  return (
+    looksLikeSpecializedWorkspacePrompt(prompt) &&
+    !looksLikeMarketingDistributionPrompt(prompt) &&
+    !looksLikeApiPlatformPrompt(prompt) &&
+    !looksLikeCodePlatformPrompt(prompt)
+  )
 }
 
 export function inferAppKind(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
   if (looksLikeApiPlatformPrompt(text)) return "task"
   if (looksLikeCodePlatformPrompt(text)) return "code_platform"
-  if (looksLikeCommunityPrompt(text)) return "community"
   if (looksLikeSpecializedWorkspacePrompt(text)) return "task"
+  if (looksLikeCommunityPrompt(text)) return "community"
   if (shouldPreferAdminOpsOverCrm(text)) return "task"
-  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) return "crm"
-  if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) return "blog"
+  if (/crm|customer|sales|pipeline|lead|lead management|customer success|renewal|quote|quotes|客户|销售|线索|跟进|商机|客户成功|续约|报价/.test(text)) return "crm"
+  if (/website|landing|homepage|download|docs|documentation|官网|产品官网|产品站|落地页|下载页|下载中心|文档/.test(text)) return "blog"
   if (/blog|article|post|博客|文章|内容/.test(text)) return "blog"
   return "task"
 }
@@ -443,19 +504,19 @@ function inferTemplateIdFromPrompt(prompt: string) {
   if (looksLikeMarketingDistributionPrompt(text)) {
     return "launchpad"
   }
-  if (looksLikeCommunityPrompt(text)) {
-    return "orbital"
-  }
   if (looksLikeSpecializedWorkspacePrompt(text)) {
     return undefined
+  }
+  if (looksLikeCommunityPrompt(text)) {
+    return "orbital"
   }
   if (shouldPreferAdminOpsOverCrm(text)) {
     return undefined
   }
-  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+  if (/crm|customer|sales|pipeline|lead|lead management|customer success|renewal|quote|quotes|客户|销售|线索|跟进|商机|客户成功|续约|报价/.test(text)) {
     return "opsdesk"
   }
-  if (/website|landing|homepage|download|docs|documentation|官网|落地页|下载页|文档/.test(text)) {
+  if (/website|landing|homepage|download|docs|documentation|官网|产品官网|产品站|落地页|下载页|下载中心|文档/.test(text)) {
     return "launchpad"
   }
   if (/admin|ops|internal tool|backoffice|back office|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
@@ -476,16 +537,16 @@ function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
   if (looksLikeMarketingDistributionPrompt(text)) {
     return "marketing_admin"
   }
-  if (looksLikeCommunityPrompt(text)) {
-    return "community"
-  }
   if (looksLikeSpecializedWorkspacePrompt(text)) {
     return "task"
+  }
+  if (looksLikeCommunityPrompt(text)) {
+    return "community"
   }
   if (shouldPreferAdminOpsOverCrm(text)) {
     return "task"
   }
-  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+  if (/crm|customer|sales|pipeline|lead|lead management|customer success|renewal|quote|quotes|客户|销售|线索|跟进|商机|客户成功|续约|报价/.test(text)) {
     return "crm"
   }
   if (looksLikeApiPlatformPrompt(text)) {
@@ -494,7 +555,7 @@ function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
   if (looksLikeCodePlatformPrompt(text)) {
     return "code_platform"
   }
-  if (/website|landing|homepage|download|docs|documentation|marketing|brand|官网|落地页|下载页|文档|品牌|增长/.test(text)) {
+  if (/website|landing|homepage|download|docs|documentation|marketing|brand|官网|产品官网|产品站|落地页|下载页|下载中心|文档|品牌|增长/.test(text)) {
     return "marketing_admin"
   }
   if (/blog|article|post|博客|文章|内容/.test(text)) {
@@ -505,6 +566,7 @@ function inferScaffoldArchetypeFromPrompt(prompt: string): ScaffoldArchetype {
 
 export function getScaffoldArchetype(spec: Pick<AppSpec, "kind" | "templateId" | "prompt">): ScaffoldArchetype {
   if (spec.kind === "code_platform") return "code_platform"
+  if (shouldUseSpecializedWorkspaceTemplateIsolation(spec.prompt)) return "task"
   if (spec.kind === "crm" || spec.templateId === "opsdesk") return "crm"
   if (spec.kind === "community" || spec.templateId === "orbital") return "community"
   if (spec.templateId === "taskflow") return "api_platform"
@@ -537,6 +599,42 @@ function pushFeature(features: SpecFeature[], feature: SpecFeature) {
 function pushModule(modules: string[], module: string) {
   const safe = sanitizeUiText(module)
   if (safe && !modules.includes(safe)) modules.push(safe)
+}
+
+function getSpecializedWorkspaceModules(prompt: string, region: Region, layer: "core" | "surface" | "delivery") {
+  const flavor = inferDomainFlavor(prompt)
+  const isCn = region === "cn"
+  if (flavor === "healthcare") {
+    if (layer === "core") return isCn ? ["患者队列", "预约排程", "护理计划", "风险预警"] : ["Patient queue", "Appointment scheduling", "Care plans", "Risk alerts"]
+    if (layer === "surface") return isCn ? ["分诊视图", "复诊提醒", "护理任务", "账单状态"] : ["Triage view", "Follow-up reminders", "Care tasks", "Billing status"]
+    return isCn ? ["首版医务台", "今日预约流", "护理随访节奏"] : ["First clinic workspace", "Today appointment flow", "Care follow-up rhythm"]
+  }
+  if (flavor === "education") {
+    if (layer === "core") return isCn ? ["课程目录", "学生进度", "作业流", "学习反馈"] : ["Course catalog", "Student progress", "Assignment flow", "Learning feedback"]
+    if (layer === "surface") return isCn ? ["班级排课", "课程卡片", "作业批改", "通知提醒"] : ["Class scheduling", "Course cards", "Assignment review", "Learning notices"]
+    return isCn ? ["首版教务台", "学习进度看板", "课程运营节奏"] : ["First learning workspace", "Student progress board", "Course operations rhythm"]
+  }
+  if (flavor === "finance") {
+    if (layer === "core") return isCn ? ["账本视图", "交易流水", "对账队列", "异常处理"] : ["Ledger view", "Transaction feed", "Reconciliation queue", "Exception handling"]
+    if (layer === "surface") return isCn ? ["账户分层", "凭证匹配", "差异复核", "报表导出"] : ["Account segments", "Receipt matching", "Variance review", "Report export"]
+    return isCn ? ["首版财务台", "对账状态流", "异常处理节奏"] : ["First finance console", "Reconciliation status flow", "Exception handling rhythm"]
+  }
+  if (flavor === "recruiting") {
+    if (layer === "core") return isCn ? ["候选人池", "岗位需求", "面试排程", "Offer 审批"] : ["Candidate pool", "Role planning", "Interview scheduling", "Offer approvals"]
+    if (layer === "surface") return isCn ? ["简历筛选", "面试反馈", "招聘漏斗", "团队目标"] : ["Resume screening", "Interview feedback", "Hiring funnel", "Team targets"]
+    return isCn ? ["首版招聘台", "候选人推进流", "面试协同节奏"] : ["First hiring workspace", "Candidate progression flow", "Interview coordination rhythm"]
+  }
+  if (flavor === "support") {
+    if (layer === "core") return isCn ? ["工单队列", "客户案例", "SLA 升级", "知识库"] : ["Ticket queue", "Customer cases", "SLA escalation", "Knowledge base"]
+    if (layer === "surface") return isCn ? ["售后处理", "升级规则", "解决时长", "客服报表"] : ["After-sales handling", "Escalation rules", "Resolution time", "Support reporting"]
+    return isCn ? ["首版客服台", "工单解决流", "知识沉淀节奏"] : ["First support desk", "Ticket resolution flow", "Knowledge capture rhythm"]
+  }
+  if (flavor === "commerce_ops") {
+    if (layer === "core") return isCn ? ["SKU 管理", "库存水位", "履约订单", "补货预警"] : ["SKU management", "Inventory levels", "Fulfillment orders", "Reorder alerts"]
+    if (layer === "surface") return isCn ? ["仓库分配", "供应商协同", "异常订单", "发货节奏"] : ["Warehouse allocation", "Supplier coordination", "Order exceptions", "Shipping rhythm"]
+    return isCn ? ["首版履约台", "库存补货流", "订单异常节奏"] : ["First fulfillment desk", "Inventory replenishment flow", "Order exception rhythm"]
+  }
+  return []
 }
 
 function hasFeature(spec: AppSpec, feature: SpecFeature) {
@@ -575,6 +673,8 @@ function getStatusConfig(spec: AppSpec): Array<{ key: string; label: string }> {
 function getKindModules(kind: AppKind, region: Region, archetype?: ScaffoldArchetype, prompt?: string) {
   const promptText = String(prompt ?? "").toLowerCase()
   const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
+  const specializedModules = archetype === "task" ? getSpecializedWorkspaceModules(promptText, region, "core") : []
+  if (specializedModules.length) return specializedModules
   if (archetype === "api_platform") {
     return region === "cn"
       ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
@@ -618,6 +718,8 @@ function getKindModules(kind: AppKind, region: Region, archetype?: ScaffoldArche
 function getArchetypeModules(archetype: ScaffoldArchetype, region: Region, prompt?: string) {
   const promptText = String(prompt ?? "").toLowerCase()
   const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
+  const specializedModules = archetype === "task" ? getSpecializedWorkspaceModules(promptText, region, "surface") : []
+  if (specializedModules.length) return specializedModules
   if (archetype === "api_platform") {
     return region === "cn"
       ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
@@ -649,7 +751,9 @@ function getArchetypeModules(archetype: ScaffoldArchetype, region: Region, promp
 function getPlanModules(planTier: PlanTier, region: Region, archetype?: ScaffoldArchetype, prompt?: string) {
   const promptText = String(prompt ?? "").toLowerCase()
   const prefersAdminOps = archetype === "task" && shouldPreferAdminOpsOverCrm(promptText)
+  const specializedModules = archetype === "task" ? getSpecializedWorkspaceModules(promptText, region, "delivery") : []
   if (planTier === "elite") {
+    if (specializedModules.length) return specializedModules
     if (archetype === "code_platform") {
       return region === "cn"
         ? ["多工作区切换", "发布审计轨道", "团队编码协同"]
@@ -675,6 +779,7 @@ function getPlanModules(planTier: PlanTier, region: Region, archetype?: Scaffold
       : ["Multi-page workspace", "Showcase visual system", "Team collaboration modules"]
   }
   if (planTier === "pro") {
+    if (specializedModules.length) return specializedModules
     if (archetype === "code_platform") {
       return region === "cn"
         ? ["运行分析总览", "导出交付流程", "持续改码面板"]
@@ -700,6 +805,7 @@ function getPlanModules(planTier: PlanTier, region: Region, archetype?: Scaffold
       : ["Analytics overview", "Export flow", "Continuous iteration panel"]
   }
   if (planTier === "builder") {
+    if (specializedModules.length) return specializedModules
     if (archetype === "code_platform") {
       return region === "cn"
         ? ["分屏代码预览", "文件筛选器", "运行指标卡"]
@@ -730,6 +836,7 @@ function getPlanModules(planTier: PlanTier, region: Region, archetype?: Scaffold
       : ["Board and list views", "Grouped filtering", "Metric cards"]
   }
   if (planTier === "starter" || planTier === "free") {
+    if (specializedModules.length) return specializedModules
     if (archetype === "code_platform") {
       return region === "cn"
         ? ["首版编码工作台", "快速生成入口", "运行状态流转"]
@@ -956,6 +1063,17 @@ function getDomainFlavorCategory(flavor: DomainFlavor, region: Region) {
     general: isCn ? "内部工作台" : "Internal workspace",
   }
   return labels[flavor]
+}
+
+function getSpecCategoryLabel(spec: Pick<AppSpec, "prompt" | "title" | "kind" | "templateId" | "region">, archetype: ScaffoldArchetype) {
+  if (isAdminOpsTaskSpec(spec)) {
+    return spec.region === "cn" ? "内部管理与控制平面" : "Internal admin and control plane"
+  }
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  if (archetype === "task" && domainFlavor !== "general") {
+    return getDomainFlavorCategory(domainFlavor, spec.region)
+  }
+  return getArchetypeCategoryLabel(archetype, spec.region)
 }
 
 function getDomainFlavorIntent(flavor: DomainFlavor, region: Region) {
@@ -2081,6 +2199,84 @@ function getArchetypeModuleBlueprintSeeds(spec: AppSpec, routeBlueprint: RouteBl
   const isCn = spec.region === "cn"
   const availableRouteIds = new Set(routeBlueprint.map((item) => item.id))
   const includeRoutes = (ids: string[]) => ids.filter((item) => availableRouteIds.has(item))
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
+  const isSpecializedTask = getScaffoldArchetype(spec) === "task" && domainFlavor !== "general" && !shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? ""))
+  const specializedTaskSeeds: ModuleBlueprint[] | null =
+    !isSpecializedTask
+      ? null
+      : domainFlavor === "healthcare"
+        ? [
+            {
+              id: "patient_flow",
+              label: isCn ? "患者队列与分诊" : "Patient queue and triage",
+              summary: isCn ? "把患者档案、风险分层和分诊状态连成诊疗入口。" : "Connects patient profiles, risk tiers, and triage state into the care entry point.",
+              routeIds: includeRoutes(["dashboard", "patients"]),
+              capabilityIds: isCn ? ["查看患者", "标记风险", "安排分诊"] : ["review patients", "flag risk", "triage"],
+            },
+            {
+              id: "care_schedule",
+              label: isCn ? "预约与护理计划" : "Appointments and care plans",
+              summary: isCn ? "承接预约排班、复诊提醒和护理任务闭环。" : "Owns scheduling, follow-up reminders, and care-plan task loops.",
+              routeIds: includeRoutes(["appointments", "care", "dashboard"]),
+              capabilityIds: isCn ? ["确认预约", "更新护理计划", "发送提醒"] : ["confirm appointment", "update care plan", "send reminder"],
+            },
+          ]
+        : domainFlavor === "education"
+          ? [
+              {
+                id: "learning_catalog",
+                label: isCn ? "课程目录与学习路径" : "Course catalog and learning path",
+                summary: isCn ? "把课程、章节和作业设计成教学产品骨架。" : "Shapes courses, lessons, and assignments into a learning-product structure.",
+                routeIds: includeRoutes(["dashboard", "courses", "assignments"]),
+                capabilityIds: isCn ? ["发布课程", "布置作业", "跟踪进度"] : ["publish course", "assign work", "track progress"],
+              },
+              {
+                id: "student_success",
+                label: isCn ? "学生画像与反馈" : "Student profile and feedback",
+                summary: isCn ? "维护学生分班、学习状态和反馈动作。" : "Tracks cohorts, learning state, and feedback actions.",
+                routeIds: includeRoutes(["students", "dashboard"]),
+                capabilityIds: isCn ? ["查看学生", "调整分班", "同步反馈"] : ["review students", "adjust cohort", "sync feedback"],
+              },
+            ]
+          : domainFlavor === "finance"
+            ? [
+                {
+                  id: "ledger_reconciliation",
+                  label: isCn ? "账本与对账轨道" : "Ledger and reconciliation rail",
+                  summary: isCn ? "把账户、交易和对账差异组织成财务控制台。" : "Organizes accounts, transactions, and variance handling into a finance console.",
+                  routeIds: includeRoutes(["dashboard", "accounts", "transactions", "reconciliation"]),
+                  capabilityIds: isCn ? ["查看流水", "匹配凭证", "处理差异"] : ["review transactions", "match receipts", "resolve variance"],
+                },
+              ]
+            : domainFlavor === "recruiting"
+              ? [
+                  {
+                    id: "candidate_pipeline",
+                    label: isCn ? "候选人与岗位漏斗" : "Candidate and role pipeline",
+                    summary: isCn ? "串联候选人池、岗位需求、面试和 offer 决策。" : "Connects candidate pools, roles, interviews, and offer decisions.",
+                    routeIds: includeRoutes(["dashboard", "candidates", "jobs", "interviews"]),
+                    capabilityIds: isCn ? ["推进候选人", "安排面试", "推进 offer"] : ["advance candidate", "schedule interview", "advance offer"],
+                  },
+                ]
+              : domainFlavor === "support"
+                ? [
+                    {
+                      id: "support_resolution",
+                      label: isCn ? "工单与知识库闭环" : "Ticket and knowledge loop",
+                      summary: isCn ? "把工单、客户案例、SLA 升级和知识库沉淀做成支持工作流。" : "Turns tickets, customer cases, SLA escalation, and knowledge capture into a support workflow.",
+                      routeIds: includeRoutes(["dashboard", "tickets", "cases", "knowledge"]),
+                      capabilityIds: isCn ? ["处理工单", "升级 SLA", "沉淀知识"] : ["resolve ticket", "escalate SLA", "capture knowledge"],
+                    },
+                  ]
+                : [
+                    {
+                      id: "commerce_fulfillment",
+                      label: isCn ? "商品库存与履约" : "Product inventory and fulfillment",
+                      summary: isCn ? "把商品 SKU、库存水位和履约订单组织成电商运营流。" : "Organizes SKUs, inventory levels, and fulfillment orders into a commerce ops flow.",
+                      routeIds: includeRoutes(["dashboard", "products", "inventory", "orders"]),
+                      capabilityIds: isCn ? ["查看库存", "创建补货", "推进履约"] : ["review inventory", "create restock", "advance fulfillment"],
+                    },
+                  ]
   const seeds: ModuleBlueprint[] =
     getScaffoldArchetype(spec) === "code_platform"
       ? [
@@ -2286,7 +2482,9 @@ function getArchetypeModuleBlueprintSeeds(spec: AppSpec, routeBlueprint: RouteBl
                     capabilityIds: isCn ? ["修改套餐", "检查后台", "同步状态"] : ["update plans", "check admin", "sync status"],
                   },
                 ]
-              : shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? "").toLowerCase())
+              : specializedTaskSeeds
+                ? specializedTaskSeeds
+                : shouldPreferAdminOpsOverCrm(String(spec.prompt ?? spec.title ?? "").toLowerCase())
                 ? [
                     {
                       id: "approval_control",
@@ -2477,7 +2675,7 @@ function buildAppIdentity(spec: AppSpec): AppIdentity {
       ? `已生成 ${getArchetypeCategoryLabel(archetype, spec.region)}，包含 ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")} 等核心入口。`
       : `Generated ${getArchetypeCategoryLabel(archetype, spec.region)} with core routes such as ${extractPlannedRouteNames(spec).slice(0, 4).join(" / ")}.`)
   return {
-    displayName: spec.title,
+    displayName: deriveProjectHeadline(spec.prompt ?? spec.title, spec.region),
     shortDescription,
     archetypeLabel: isAdminOps
       ? spec.region === "cn"
@@ -2749,11 +2947,7 @@ function finalizeAppIntentWithBlueprint(
 
 function buildBlueprintsForSpec(spec: AppSpec) {
   const archetype = getScaffoldArchetype(spec)
-  const categoryLabel = isAdminOpsTaskSpec(spec)
-    ? spec.region === "cn"
-      ? "内部管理与控制平面"
-      : "Internal admin and control plane"
-    : getArchetypeCategoryLabel(archetype, spec.region)
+  const categoryLabel = getSpecCategoryLabel(spec, archetype)
   const pageDefinitions = sortPageDefinitionsByPlannedRoutes(getArchetypePageDefinitions(spec), spec)
   const routes = pageDefinitions.length
     ? pageDefinitions.map((page) => page.route)
@@ -3023,7 +3217,7 @@ function isGenericTaskModuleBlueprintSet(moduleBlueprint: ModuleBlueprint[] | un
   return ids.includes("task_ops") || ids.every((id) => id.endsWith("_surface"))
 }
 
-function sanitizeModulesForArchetype(modules: string[], archetype: ScaffoldArchetype, region: Region) {
+function sanitizeModulesForArchetype(modules: string[], archetype: ScaffoldArchetype, region: Region, prompt?: string) {
   const normalizedModules = modules.filter((item) => {
     const text = String(item ?? "").trim()
     if (!text) return false
@@ -3072,10 +3266,29 @@ function sanitizeModulesForArchetype(modules: string[], archetype: ScaffoldArche
     return normalizedModules.filter((item) => !blocked.has(item))
   }
   if (archetype === "task") {
+    const specializedModules = getSpecializedWorkspaceModules(String(prompt ?? ""), region, "core")
+    const isSpecializedWorkspace = specializedModules.length > 0
     const blocked = new Set(
       region === "cn"
-        ? ["首版销售驾驶舱", "线索快速录入", "成交状态流转", "浅色运营后台", "快捷操作", "项目总览", "多彩指标卡"]
+        ? [
+            ...(isSpecializedWorkspace ? ["任务看板", "优先级管理", "负责人协同", "首版工作台", "快速录入", "状态流转"] : []),
+            "首版销售驾驶舱",
+            "线索快速录入",
+            "成交状态流转",
+            "浅色运营后台",
+            "快捷操作",
+            "项目总览",
+            "多彩指标卡",
+            "未来感英雄区",
+            "功能亮点",
+            "价格方案",
+            "强视觉主屏",
+            "反馈分流工作台",
+            "成员信任分层",
+            "公告与活动节奏",
+          ]
         : [
+            ...(isSpecializedWorkspace ? ["Task board", "Priority management", "Assignee collaboration", "First version workspace", "Quick create", "Status workflow"] : []),
             "First sales cockpit",
             "Quick lead capture",
             "Deal status workflow",
@@ -3083,9 +3296,20 @@ function sanitizeModulesForArchetype(modules: string[], archetype: ScaffoldArche
             "Quick actions",
             "Project overview",
             "Colorful metrics",
+            "Futuristic hero",
+            "Feature blocks",
+            "Pricing plans",
+            "Immersive surface",
+            "Feedback triage workspace",
+            "Member trust segments",
+            "Announcement and event rhythm",
           ]
     )
-    return normalizedModules.filter((item) => !blocked.has(item))
+    const cleaned = normalizedModules.filter((item) => !blocked.has(item))
+    if (isSpecializedWorkspace && cleaned.length < specializedModules.length) {
+      return uniqueStrings([...cleaned, ...specializedModules])
+    }
+    return cleaned
   }
   return normalizedModules
 }
@@ -3448,7 +3672,7 @@ export function finalizeAppSpec(spec: AppSpec): AppSpec {
   const archetype = getScaffoldArchetype(spec)
   const isAdminOps = isAdminOpsTaskSpec(spec)
   const visualSeed = shouldRefreshVisualSeed(spec, spec.visualSeed, archetype) ? inferVisualSeed(spec) : (spec.visualSeed ?? inferVisualSeed(spec))
-  const normalizedModules = sanitizeModulesForArchetype(spec.modules, archetype, spec.region)
+  const normalizedModules = sanitizeModulesForArchetype(spec.modules, archetype, spec.region, spec.prompt)
   const normalizedSeedItems =
     isGenericSeedItemSet(spec.seedItems) && ["api_platform", "community", "marketing_admin"].includes(archetype)
       ? getSeedItems(spec.kind, spec.region, spec.features, spec.planTier, archetype)
@@ -3776,10 +4000,13 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
   const now = new Date().toISOString()
   const intentArchetype = existing?.appIntent?.archetype
   const inferredKind = inferAppKind(prompt)
+  const isolateSpecializedTemplate = shouldUseSpecializedWorkspaceTemplateIsolation(prompt)
   const inferredTemplateId =
-    existing?.templateId ??
-    (intentArchetype ? getDefaultTemplateIdForArchetype(intentArchetype) : undefined) ??
-    inferTemplateIdFromPrompt(prompt)
+    isolateSpecializedTemplate
+      ? undefined
+      : existing?.templateId ??
+        (intentArchetype ? getDefaultTemplateIdForArchetype(intentArchetype) : undefined) ??
+        inferTemplateIdFromPrompt(prompt)
   const explicitName = extractProductNameFromPrompt(prompt)
   const template = getTemplateById(inferredTemplateId)
   const templateKind =
@@ -3795,12 +4022,14 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
               ? "task"
         : undefined
   const kind =
-    existing?.kind ??
-    (intentArchetype
-      ? scaffoldArchetypeToKind(intentArchetype)
-      : inferredKind !== "task"
-        ? inferredKind
-        : templateKind ?? "task")
+    isolateSpecializedTemplate
+      ? "task"
+      : existing?.kind ??
+        (intentArchetype
+          ? scaffoldArchetypeToKind(intentArchetype)
+          : inferredKind !== "task"
+            ? inferredKind
+            : templateKind ?? "task")
   const archetype = getScaffoldArchetype({ kind, templateId: inferredTemplateId, prompt })
   const planTier = existing?.planTier ?? "free"
   const features = uniqueStrings([
@@ -3822,7 +4051,7 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
     title:
       existing?.title ??
       explicitName ??
-      (template ? (region === "cn" ? template.titleZh : template.titleEn) : deriveProjectHeadline(prompt)),
+      (template ? (region === "cn" ? template.titleZh : template.titleEn) : deriveProjectHeadline(prompt, region)),
     prompt,
     kind,
     planTier,
@@ -3880,6 +4109,7 @@ function extractTitleFromPrompt(prompt: string) {
 
 function extractProductNameFromPrompt(prompt: string) {
   const patterns = [
+    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|叫|名为)\s*["“'`]?([\u4e00-\u9fa5A-Za-z0-9][\u4e00-\u9fa5A-Za-z0-9 _-]{1,40}?)(?=\s*(?:的|，|。|,|\.|包含|包括|要求|并且|用于|供|给|with|for|$))["”'`]?/iu,
     /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|要求|并且|用于|for)\b|[,.，。]|$)["”'`]?/i,
     /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|for|that)\b|[,.，。]|$)["”'`]?/i,
   ]
@@ -4081,10 +4311,16 @@ function mergeEnv(
     assignedDomain?: string | null
   }
 ) {
-  const dbMatch = existing?.match(/^DATABASE_URL=.*$/m)
-  const dbLine = dbMatch?.[0] ?? `DATABASE_URL="file:./${spec.region === "cn" ? "cn" : "intl"}.db"`
-  const deployment = getDeploymentOption(spec.deploymentTarget)
   const database = getDatabaseOption(spec.databaseTarget)
+  const dbMatch = existing?.match(/^DATABASE_URL=.*$/m)
+  const dbLine =
+    dbMatch?.[0] ??
+    (database.engine === "postgres"
+      ? `DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/${spec.region === "cn" ? "mornstack_cn" : "mornstack_intl"}?schema=public"`
+      : database.engine === "sqlite"
+        ? `DATABASE_URL="file:./${spec.region === "cn" ? "cn" : "intl"}.db"`
+        : `DATABASE_URL="file:./${spec.region === "cn" ? "cn" : "intl"}.db"`)
+  const deployment = getDeploymentOption(spec.deploymentTarget)
   const planPolicy = getPlanPolicy(spec.planTier)
   const assignedDomainValue =
     options?.assignedDomain ||
@@ -6685,6 +6921,7 @@ function renderArchetypeConsolePage(spec: AppSpec, route: string) {
   const isCn = spec.region === "cn"
   const brand = spec.appIdentity?.displayName ?? spec.title
   const archetype = getScaffoldArchetype(spec)
+  const domainFlavor = inferDomainFlavor(spec.prompt ?? spec.title)
   const routeBlueprint =
     spec.routeBlueprint?.find((item) => item.path === `/${route}` || item.id === toBlueprintId(route)) ?? null
   const relatedModules = (spec.moduleBlueprint ?? [])
@@ -6705,9 +6942,80 @@ function renderArchetypeConsolePage(spec: AppSpec, route: string) {
   const surface = archetype === "api_platform" ? "rgba(15,23,42,0.78)" : "#f8fafc"
   const border = archetype === "api_platform" ? "1px solid rgba(148,163,184,0.12)" : "1px solid rgba(148,163,184,0.16)"
   const isAdminOps = isAdminOpsTaskSpec(spec)
+  const isSpecializedTask = archetype === "task" && !isAdminOps && domainFlavor !== "general"
+  const specializedTaskModel = isSpecializedTask
+    ? domainFlavor === "healthcare"
+      ? {
+          eyebrow: isCn ? "临床工作流" : "Clinical workflow",
+          title: isCn ? "患者、预约和护理计划共用一条医疗路径" : "Patients, appointments, and care plans share one care path",
+          summary: isCn ? "这不是审批后台换标题，而是围绕诊所运营、护理随访和风险提醒组织的真实医疗面。" : "This is not an approval dashboard with a new title. It is a clinic-native surface built around care ops, follow-up, and risk management.",
+          actionA: isCn ? "打开患者队列" : "Open patients",
+          actionB: isCn ? "查看今日预约" : "View appointments",
+          routeA: "patients",
+          routeB: "appointments",
+          layout: "healthcare",
+        }
+      : domainFlavor === "education"
+        ? {
+            eyebrow: isCn ? "教务与学习" : "Learning operations",
+            title: isCn ? "课程、学生、作业和班级反馈不再挤进通用任务板" : "Courses, students, assignments, and classes no longer collapse into one task board",
+            summary: isCn ? "教育场景会直接生成课程卡片、班级节奏、作业看板和学习反馈，而不是审批面板。" : "Education prompts now generate course cards, class rhythm, assignment boards, and learning feedback instead of approval rails.",
+            actionA: isCn ? "打开课程表" : "Open courses",
+            actionB: isCn ? "查看学生进度" : "View students",
+            routeA: "courses",
+            routeB: "students",
+            layout: "education",
+          }
+        : domainFlavor === "finance"
+          ? {
+              eyebrow: isCn ? "财务与对账" : "Finance and reconciliation",
+              title: isCn ? "账户、交易、对账和风险复核形成独立财务控制台" : "Accounts, transactions, reconciliation, and risk review form a dedicated finance console",
+              summary: isCn ? "财务场景会使用对账、异常、账本和报表结构，而不是销售管道或审批壳。" : "Finance prompts now use reconciliation, exception, ledger, and reporting structure instead of sales or approval shells.",
+              actionA: isCn ? "打开交易台账" : "Open transactions",
+              actionB: isCn ? "查看对账" : "Open reconciliation",
+              routeA: "transactions",
+              routeB: "reconciliation",
+              layout: "finance",
+            }
+          : domainFlavor === "recruiting"
+            ? {
+                eyebrow: isCn ? "招聘流水线" : "Hiring pipeline",
+                title: isCn ? "候选人、岗位、面试和 Offer 审批是一条招聘路径" : "Candidates, roles, interviews, and offers become one hiring path",
+                summary: isCn ? "招聘场景直接生成 ATS 风格界面，不再复用 CRM 或内部后台框架。" : "Recruiting prompts now generate ATS-style structure instead of reusing CRM or internal admin frames.",
+                actionA: isCn ? "打开候选人池" : "Open candidates",
+                actionB: isCn ? "安排面试" : "Schedule interviews",
+                routeA: "candidates",
+                routeB: "interviews",
+                layout: "recruiting",
+              }
+            : domainFlavor === "support"
+              ? {
+                  eyebrow: isCn ? "客服与知识库" : "Support and knowledge",
+                  title: isCn ? "工单、SLA、升级和知识沉淀是一条完整解决闭环" : "Tickets, SLAs, escalations, and knowledge updates form one resolution loop",
+                  summary: isCn ? "客服场景会生成工单流、知识库和升级轨道，不再退回成通用后台。" : "Support prompts now generate ticket flows, knowledge surfaces, and escalation rails instead of a generic ops console.",
+                  actionA: isCn ? "打开工单队列" : "Open tickets",
+                  actionB: isCn ? "查看知识库" : "Open knowledge",
+                  routeA: "tickets",
+                  routeB: "knowledge",
+                  layout: "support",
+                }
+              : {
+                  eyebrow: isCn ? "库存与履约" : "Inventory and fulfillment",
+                  title: isCn ? "商品、库存、履约和供应商形成真正的电商运营面" : "Products, inventory, fulfillment, and suppliers form a real commerce operations surface",
+                  summary: isCn ? "电商运营场景直接生成 SKU、库存、补货和履约轨道，不再只是控制台卡片。" : "Commerce operations prompts now generate SKU, inventory, reorder, and fulfillment rails instead of generic control cards.",
+                  actionA: isCn ? "打开库存" : "Open inventory",
+                  actionB: isCn ? "查看履约" : "Open fulfillment",
+                  routeA: "inventory",
+                  routeB: "fulfillment",
+                  layout: "commerce_ops",
+                }
+    : null
 
   return `// @ts-nocheck
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 export default function GeneratedConsolePage() {
   const isCn = ${isCn ? "true" : "false"};
@@ -6728,6 +7036,43 @@ export default function GeneratedConsolePage() {
   const isDashboard = current.route === "dashboard";
   const archetype = ${JSON.stringify(archetype)};
   const isAdminOps = ${isAdminOps ? "true" : "false"};
+  const isSpecializedTask = ${isSpecializedTask ? "true" : "false"};
+  const specializedTaskModel = ${JSON.stringify(specializedTaskModel, null, 2)} as const;
+  const focusCards = [
+    ...(routeBlueprint?.primaryActions ?? []).slice(0, 3).map((item, index) => ({
+      label: item,
+      note: isCn ? "点击即可切换控制焦点" : "Click to switch the control focus",
+      tone: index === 0 ? accent : index === 1 ? "#14b8a6" : "#f59e0b",
+    })),
+    ...relatedModules.slice(0, 2).map((item, index) => ({
+      label: item.label,
+      note: item.summary || (isCn ? "关联模块" : "Linked module"),
+      tone: index === 0 ? accent : "#8b5cf6",
+    })),
+    ...relatedEntities.slice(0, 2).map((item, index) => ({
+      label: item.label,
+      note: item.workflows.join(" / ") || (isCn ? "关联实体" : "Linked entity"),
+      tone: index === 0 ? "#2563eb" : "#0ea5e9",
+    })),
+    ...(workflowSteps.length ? workflowSteps.slice(0, 2).map((item, index) => ({
+      label: item,
+      note: isCn ? "工作流步骤" : "Workflow step",
+      tone: index === 0 ? "#7c3aed" : "#16a34a",
+    })) : []),
+  ];
+  const [activeFocus, setActiveFocus] = useState(focusCards[0]?.label ?? current.label);
+  const [quickNote, setQuickNote] = useState("");
+  const [focusNotes, setFocusNotes] = useState<string[]>(
+    () =>
+      [
+        current.summary,
+        routeBlueprint?.purpose || current.subheadline,
+      ].filter((item): item is string => Boolean(item))
+  );
+  const activeFocusDetail = useMemo(() => {
+    const hit = focusCards.find((item) => item.label === activeFocus);
+    return hit ?? { label: current.label, note: current.summary, tone: accent };
+  }, [activeFocus, accent, current.label, current.summary, focusCards]);
 
   const renderProgressRail = (value, tone = accent) => (
     <div style={{ marginTop: 12, height: 10, borderRadius: 999, background: ${JSON.stringify(archetype === "api_platform" ? "rgba(255,255,255,0.08)" : "#e2e8f0")}, overflow: "hidden" }}>
@@ -6736,6 +7081,102 @@ export default function GeneratedConsolePage() {
   );
 
   const renderDashboardShell = () => {
+    if (isSpecializedTask && specializedTaskModel) {
+      const accentTone =
+        specializedTaskModel.layout === "healthcare"
+          ? "#0f766e"
+          : specializedTaskModel.layout === "education"
+            ? "#2563eb"
+            : specializedTaskModel.layout === "finance"
+              ? "#0891b2"
+              : specializedTaskModel.layout === "recruiting"
+                ? "#14b8a6"
+                : specializedTaskModel.layout === "support"
+                  ? "#38bdf8"
+                  : "#a16207";
+      const altTone =
+        specializedTaskModel.layout === "healthcare"
+          ? "#2563eb"
+          : specializedTaskModel.layout === "education"
+            ? "#8b5cf6"
+            : specializedTaskModel.layout === "finance"
+              ? "#22c55e"
+              : specializedTaskModel.layout === "recruiting"
+                ? "#8b5cf6"
+                : specializedTaskModel.layout === "support"
+                  ? "#f97316"
+                  : "#22c55e";
+      return (
+        <section style={{ display: "grid", gap: 16 }}>
+          <section style={{ display: "grid", gridTemplateColumns: specializedTaskModel.layout === "support" ? "0.92fr 1.08fr" : "1.08fr 0.92fr", gap: 16 }}>
+            <div style={{ borderRadius: 28, border, background: specializedTaskModel.layout === "healthcare" ? "linear-gradient(180deg,#f8fffd 0%,#ecfeff 100%)" : specializedTaskModel.layout === "education" ? "linear-gradient(180deg,#f8fbff 0%,#eef2ff 100%)" : specializedTaskModel.layout === "finance" ? "linear-gradient(180deg,#f5fbff 0%,#eefdf5 100%)" : specializedTaskModel.layout === "recruiting" ? "linear-gradient(180deg,#f8fffc 0%,#f5f3ff 100%)" : specializedTaskModel.layout === "support" ? "linear-gradient(180deg,#f8fbff 0%,#fff7ed 100%)" : "linear-gradient(180deg,#fffaf0 0%,#f0fdf4 100%)", padding: 24, color: "#0f172a", boxShadow: "0 24px 60px rgba(15,23,42,0.08)" }}>
+              <div style={{ fontSize: 12, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(15,23,42,0.48)", fontWeight: 800 }}>{specializedTaskModel.eyebrow}</div>
+              <h2 style={{ margin: "16px 0 0", fontSize: 52, lineHeight: 1.08, fontWeight: 900, maxWidth: 780 }}>{specializedTaskModel.title}</h2>
+              <p style={{ margin: "18px 0 0", maxWidth: 760, lineHeight: 1.8, color: "rgba(15,23,42,0.68)", fontSize: 16 }}>{specializedTaskModel.summary}</p>
+              <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <Link href={"/" + specializedTaskModel.routeA} style={{ textDecoration: "none", borderRadius: 18, padding: "14px 18px", background: "linear-gradient(135deg, " + accentTone + ", " + altTone + ")", color: "#fff", fontWeight: 800, boxShadow: "0 18px 34px " + accentTone + "44" }}>
+                  {specializedTaskModel.actionA}
+                </Link>
+                <Link href={"/" + specializedTaskModel.routeB} style={{ textDecoration: "none", borderRadius: 18, padding: "14px 18px", background: "#ffffff", color: "#0f172a", fontWeight: 800, border: "1px solid rgba(148,163,184,0.2)" }}>
+                  {specializedTaskModel.actionB}
+                </Link>
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 14 }}>
+              {dashboardWidgets.laneItems.map((item, index) => (
+                <div key={item.label} style={{ borderRadius: 20, border, background: panelBackground, padding: "18px 20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{item.label}</div>
+                      <div style={{ marginTop: 6, color: mutedText, fontSize: 12 }}>{item.note}</div>
+                    </div>
+                    <div style={{ borderRadius: 999, padding: "6px 10px", background: index === 0 ? accentTone + "18" : altTone + "18", color: index === 0 ? accentTone : altTone, fontSize: 12, fontWeight: 800 }}>{item.value}</div>
+                  </div>
+                  {renderProgressRail(item.progress, index === 0 ? accentTone : altTone)}
+                </div>
+              ))}
+            </div>
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: specializedTaskModel.layout === "healthcare" ? "1.05fr 0.95fr 0.95fr" : specializedTaskModel.layout === "support" ? "0.95fr 1.05fr 0.95fr" : "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {dashboardWidgets.heroStats.map((item, index) => (
+              <div key={item.label} style={{ borderRadius: 22, border, background: panelBackground, padding: 22, overflow: "hidden", position: "relative" }}>
+                <div style={{ position: "absolute", right: -26, bottom: -32, width: 122, height: 122, borderRadius: "50%", background: (index === 0 ? accentTone : index === 1 ? altTone : item.tone) + "18" }} />
+                <div style={{ color: mutedText, fontSize: 13, position: "relative" }}>{item.label}</div>
+                <div style={{ marginTop: 12, fontSize: 36, fontWeight: 900, color: index === 0 ? accentTone : index === 1 ? altTone : item.tone, position: "relative" }}>{item.value}</div>
+                <div style={{ marginTop: 12, color: mutedText, fontSize: 13, lineHeight: 1.7, position: "relative" }}>{item.note}</div>
+              </div>
+            ))}
+          </section>
+          <section style={{ display: "grid", gridTemplateColumns: specializedTaskModel.layout === "finance" ? "0.88fr 1.12fr" : "1.12fr 0.88fr", gap: 16 }}>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.spotlightTitle}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {dashboardWidgets.spotlightItems.map((item, index) => (
+                  <div key={item} style={{ borderRadius: 16, padding: "13px 15px", background: index === 0 ? accentTone + "12" : surface, border, color: panelText, fontSize: 13, fontWeight: 700 }}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, border, background: panelBackground, padding: 22 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{dashboardWidgets.rightTitle}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {dashboardWidgets.rightItems.map((item) => (
+                  <div key={item.title} style={{ borderRadius: 16, padding: "14px 16px", background: surface, border }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                      <div style={{ fontWeight: 800 }}>{item.title}</div>
+                      <div style={{ width: 10, height: 10, borderRadius: 999, background: item.accent }} />
+                    </div>
+                    <div style={{ marginTop: 8, color: mutedText, fontSize: 13, lineHeight: 1.7 }}>{item.note}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </section>
+      );
+    }
+
     if (archetype === "crm") {
       return (
         <section style={{ display: "grid", gridTemplateColumns: "280px minmax(0,1fr)", gap: 16 }}>
@@ -7138,12 +7579,34 @@ export default function GeneratedConsolePage() {
   };
 
   return (
-    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: ${JSON.stringify(archetype === "api_platform" ? "linear-gradient(180deg,#07111f 0%,#0b1220 100%)" : "linear-gradient(180deg,#f6f8fc 0%,#ffffff 52%,#eef4ff 100%)")}, color: panelText }}>
+    <main style={{ minHeight: "100vh", padding: 28, fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", background: ${JSON.stringify(
+      archetype === "api_platform"
+        ? "linear-gradient(180deg,#07111f 0%,#0b1220 100%)"
+        : isSpecializedTask && domainFlavor === "healthcare"
+          ? "radial-gradient(circle at top left, rgba(209,250,229,0.76), transparent 26%), linear-gradient(180deg,#f8fffd 0%,#eefbf6 42%,#ecfeff 100%)"
+          : isSpecializedTask && domainFlavor === "education"
+            ? "radial-gradient(circle at top right, rgba(219,234,254,0.86), transparent 28%), linear-gradient(180deg,#f8fbff 0%,#eef2ff 54%,#f5f3ff 100%)"
+            : isSpecializedTask && domainFlavor === "finance"
+              ? "radial-gradient(circle at top left, rgba(186,230,253,0.66), transparent 24%), linear-gradient(180deg,#f5fbff 0%,#eff6ff 45%,#eefdf5 100%)"
+              : isSpecializedTask && domainFlavor === "recruiting"
+                ? "radial-gradient(circle at top right, rgba(221,214,254,0.78), transparent 24%), linear-gradient(180deg,#f8fffc 0%,#f0fdfa 48%,#f5f3ff 100%)"
+                : isSpecializedTask && domainFlavor === "support"
+                  ? "radial-gradient(circle at top left, rgba(224,242,254,0.82), transparent 26%), linear-gradient(180deg,#f8fbff 0%,#eff6ff 42%,#fff7ed 100%)"
+                  : isSpecializedTask && domainFlavor === "commerce_ops"
+                    ? "radial-gradient(circle at top right, rgba(254,249,195,0.74), transparent 24%), linear-gradient(180deg,#fffdf5 0%,#fffbeb 44%,#f0fdf4 100%)"
+                    : "linear-gradient(180deg,#f6f8fc 0%,#ffffff 52%,#eef4ff 100%)"
+    )}, color: panelText }}>
       <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gap: 18 }}>
         <section style={{ borderRadius: 26, border, background: panelBackground, padding: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <div>
-              <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: ${JSON.stringify(archetype === "api_platform" ? "rgba(6,182,212,0.16)" : "rgba(15,23,42,0.06)")}, color: accent, fontSize: 12, fontWeight: 800 }}>
+                <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: ${JSON.stringify(
+                  archetype === "api_platform"
+                    ? "rgba(6,182,212,0.16)"
+                    : isSpecializedTask
+                      ? "rgba(255,255,255,0.7)"
+                      : "rgba(15,23,42,0.06)"
+                )}, color: accent, fontSize: 12, fontWeight: 800 }}>
                 {brand}
               </div>
               <h1 style={{ margin: "14px 0 8px", fontSize: 34, fontWeight: 900 }}>{current.headline}</h1>
@@ -7232,6 +7695,128 @@ export default function GeneratedConsolePage() {
             </div>
           </section>
         )}
+        <section style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "可操作焦点" : "Interactive focus"}</div>
+            <p style={{ marginTop: 10, color: mutedText, lineHeight: 1.8, fontSize: 13 }}>
+              {isCn
+                ? "这里不是静态说明，而是可点、可切换、可记录的工作焦点。你可以直接把当前应用的模块、实体和流程切到眼前。"
+                : "This is not a static summary. It is a live focus rail where modules, entities, and workflows can be switched in place."}
+            </p>
+            <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {focusCards.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => setActiveFocus(item.label)}
+                  style={{
+                    borderRadius: 999,
+                    border: item.label === activeFocus ? "none" : border,
+                    background: item.label === activeFocus ? item.tone : surface,
+                    color: item.label === activeFocus ? "#ffffff" : panelText,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 16, borderRadius: 18, background: surface, border, padding: 16 }}>
+              <div style={{ fontSize: 12, color: mutedText, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                {isCn ? "当前焦点" : "Current focus"}
+              </div>
+              <div style={{ marginTop: 8, fontWeight: 900, fontSize: 20 }}>{activeFocusDetail.label}</div>
+              <div style={{ marginTop: 8, color: mutedText, lineHeight: 1.8, fontSize: 13 }}>{activeFocusDetail.note}</div>
+            </div>
+            <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+              {focusNotes.map((item) => (
+                <div key={item} style={{ borderRadius: 16, background: surface, border, padding: "12px 14px", color: panelText, fontSize: 13 }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ borderRadius: 24, border, background: panelBackground, padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "快速修改" : "Quick edit"}</div>
+            <div style={{ marginTop: 12, color: mutedText, lineHeight: 1.8, fontSize: 13 }}>
+              {isCn ? "模拟 AI 继续迭代当前工作区的地方。输入一句需求，按下按钮就会把它记到当前焦点上。" : "This simulates the AI iteration surface. Type a request and attach it to the current focus."}
+            </div>
+            <textarea
+              value={quickNote}
+              onChange={(event) => setQuickNote(event.target.value)}
+              placeholder={isCn ? "例如：把当前模块切成更深色的控制台并加上审批队列" : "e.g. switch this module to a darker control panel and add an approval queue"}
+              style={{
+                marginTop: 14,
+                width: "100%",
+                minHeight: 120,
+                borderRadius: 18,
+                border,
+                background: surface,
+                color: panelText,
+                padding: 16,
+                fontFamily: "inherit",
+                resize: "vertical",
+                outline: "none",
+              }}
+            />
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const value = quickNote.trim()
+                  if (!value) return
+                  setFocusNotes((prev) => [value, ...prev].slice(0, 4))
+                  setQuickNote("")
+                }}
+                style={{
+                  borderRadius: 14,
+                  border: "none",
+                  background: accent,
+                  color: "#fff",
+                  padding: "10px 14px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {isCn ? "应用到当前焦点" : "Apply to focus"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFocusNotes((prev) => prev.slice(0, 1))}
+                style={{
+                  borderRadius: 14,
+                  border,
+                  background: surface,
+                  color: panelText,
+                  padding: "10px 14px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {isCn ? "重置" : "Reset"}
+              </button>
+              {current.route !== "dashboard" ? (
+                <Link
+                  href={current.route === "dashboard" ? "/dashboard" : "/" + current.route}
+                  style={{
+                    textDecoration: "none",
+                    borderRadius: 14,
+                    border,
+                    background: "transparent",
+                    color: accent,
+                    padding: "10px 14px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {isCn ? "打开当前页" : "Open current page"}
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );
@@ -11451,6 +12036,7 @@ export default function EditorPage() {
   const [commandQuery, setCommandQuery] = useState("");
   const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal");
   const [runtimeState, setRuntimeState] = useState<"idle" | "running" | "failed" | "ready">("ready");
+  const [codeAiRunCount, setCodeAiRunCount] = useState(iterationSeed.mode === "generate" ? 2 : 1);
   const [activeTemplate, setActiveTemplate] = useState(initialTemplate);
   const [activeRouteId, setActiveRouteId] = useState(iterationSeed.routeId || (routeManifest[0]?.id ?? "dashboard"));
   const [activeSymbolName, setActiveSymbolName] = useState(iterationSeed.symbolName);
@@ -11555,6 +12141,38 @@ export default function EditorPage() {
     (isCn ? "元素" : "Element") + ": " + activeElement,
     (isCn ? "模板" : "Template") + ": " + activeTemplate.name,
     (isCn ? "套餐" : "Plan") + ": " + (workspaceSession.selectedPlanName || defaultPlanName),
+  ];
+  const aiWorkflowStats = [
+    {
+      label: isCn ? "AI 改动次数" : "AI edits",
+      value: String(codeAiRunCount),
+      note: isCn ? "已写入当前代码轨道" : "Applied into the current code rail",
+    },
+    {
+      label: isCn ? "目标文件" : "Target file",
+      value: aiTargetFile.name,
+      note: activeRoute?.label ?? routeManifest[0]?.label ?? "",
+    },
+    {
+      label: isCn ? "运行状态" : "Runtime",
+      value:
+        runtimeState === "running"
+          ? isCn
+            ? "运行中"
+            : "Running"
+          : runtimeState === "failed"
+            ? isCn
+              ? "失败"
+              : "Failed"
+            : runtimeState === "idle"
+              ? isCn
+                ? "空闲"
+                : "Idle"
+              : isCn
+                ? "就绪"
+                : "Ready",
+      note: isCn ? "AI 改动后会同步刷新终端与预览" : "Terminal and preview update after each AI action",
+    },
   ];
   const contextBundle = [
     { label: isCn ? "页面" : "Page", value: activeRoute?.label ?? routeManifest[0]?.label ?? "" },
@@ -11895,20 +12513,37 @@ export default function EditorPage() {
             : isCn
               ? "// Refactor: 已整理 " + targetFile.name + " 与 " + targetSymbol + " 的边界"
               : "// Refactor: boundaries reorganized for " + targetFile.name + " / " + targetSymbol;
+    const workflowNote =
+      mode === aiModes[0]
+        ? isCn
+          ? "AI 正在解释现有文件结构，方便继续拆分与改写。"
+          : "AI is explaining the current file structure so the next change can stay grounded."
+        : mode === aiModes[1]
+          ? isCn
+            ? "AI 已补运行守卫并把修复信息同步到 Problems / Output。"
+            : "AI added runtime guards and synced the fix details into Problems / Output."
+          : mode === aiModes[2]
+            ? isCn
+              ? "AI 已把新的交互状态和执行轨道写进目标文件。"
+              : "AI wrote new interaction state and execution rails into the target file."
+            : isCn
+              ? "AI 已整理模块边界，便于继续做生成器演进。"
+              : "AI reorganized the module boundaries for the next generator step.";
 
     setActiveMode(mode);
     setActiveRail(activityBarItems[4].label);
     setRuntimeState(mode === aiModes[1] ? "running" : "ready");
     setTerminalTab(mode === aiModes[1] ? "problems" : "output");
+    setCodeAiRunCount((count) => count + 1);
     openFile(targetFile.id);
     setDrafts((current) => ({
       ...current,
       [targetFile.id]: current[targetFile.id].includes(tag)
         ? current[targetFile.id]
         : current[targetFile.id] +
-          "\\n\\n" +
+          "\n\n" +
           tag +
-          "\\n" +
+          "\n" +
           (isCn
             ? "// Intent: " + aiInput
             : "// Intent: " + aiInput),
@@ -11921,6 +12556,7 @@ export default function EditorPage() {
       (isCn ? "模板轨道: " : "Template rail: ") + activeTemplate.name,
     ]);
     setAssistantTrail((current) => [
+      (isCn ? "AI：" : "AI: ") + workflowNote,
       (isCn ? "AI：" : "AI: ") + mode + (isCn ? " 已作用到 " : " applied to ") + targetFile.fullPath + " / " + targetSymbol,
       (isCn ? "用户：" : "User: ") + aiInput,
       ...current,
@@ -12136,6 +12772,15 @@ export default function EditorPage() {
                   {aiContextChips.map((item) => (
                     <div key={item} style={{ borderRadius: 999, padding: "6px 10px", background: "rgba(124,58,237,0.16)", color: "#ddd6fe", fontSize: 11, fontWeight: 700 }}>
                       {item}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+                  {aiWorkflowStats.map((item) => (
+                    <div key={item.label} style={{ borderRadius: 12, background: "#232533", padding: "10px 12px" }}>
+                      <div style={{ color: "rgba(255,255,255,0.42)", fontSize: 11 }}>{item.label}</div>
+                      <div style={{ marginTop: 6, fontSize: 18, fontWeight: 900, color: "#f8fafc" }}>{item.value}</div>
+                      <div style={{ marginTop: 4, color: "rgba(255,255,255,0.52)", fontSize: 11, lineHeight: 1.5 }}>{item.note}</div>
                     </div>
                   ))}
                 </div>
@@ -14427,58 +15072,1177 @@ export default function SettingsPage() {
 `
 }
 
+type TaskWorkbenchScene =
+  | "task_manager"
+  | "crm"
+  | "admin_ops"
+  | "support"
+  | "education"
+  | "finance"
+  | "recruiting"
+  | "commerce_ops"
+
+type TaskWorkbenchProfile = {
+  scene: TaskWorkbenchScene
+  heroEyebrow: string
+  heroTitle: string
+  heroSubtitle: string
+  nav: { overview: string; tasks: string; analytics: string }
+  stats: Array<{ label: string; value: string; note: string }>
+  searchPlaceholder: string
+  boardLabel: string
+  listLabel: string
+  addButton: string
+  titlePlaceholder: string
+  ownerPlaceholder: string
+  descPlaceholder: string
+  progressTitle: string
+  progressItems: string[]
+  currentObjectLabel: string
+  currentObjectTitle: string
+  currentObjectNote: string
+  currentObjectTag: string
+  pageRoleTitle: string
+  pageRoleBody: string
+  backLabel: string
+  chartTitle: string
+  chartSubtitle: string
+  chartModes: {
+    primary: string
+    secondary: string
+    tertiary: string
+    quaternary: string
+  }
+  chartSeriesLabel: string
+  chartBreakdownLabel: string
+  chartProgressLabel: string
+  chartHierarchyLabel: string
+  chartSummary: {
+    primaryMetricLabel: string
+    secondaryMetricLabel: string
+    tertiaryMetricLabel: string
+    quaternaryMetricLabel: string
+  }
+  workflowLabels: {
+    create: string
+    progress: string
+    done: string
+    focus: string
+  }
+  initialRows: Array<{
+    id: string
+    title: string
+    desc: string
+    status: "todo" | "doing" | "done"
+    owner: string
+    priority: "low" | "medium" | "high"
+  }>
+}
+
+function shouldRenderTaskWorkbench(spec: Pick<AppSpec, "prompt" | "title" | "kind" | "templateId">) {
+  if (spec.kind === "code_platform") return false
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  if (looksLikeCodePlatformPrompt(text) || looksLikeMarketingDistributionPrompt(text) || looksLikeCommunityPrompt(text) || looksLikeApiPlatformPrompt(text)) {
+    return false
+  }
+  if (spec.templateId === "opsdesk" || spec.templateId === "taskflow") return true
+  if (isAdminOpsTaskSpec(spec)) return true
+  if (inferDomainFlavor(text) !== "general") return true
+  return /\btask\b|\btasks\b|todo|to-do|workflow|kanban|board|queue|任务|待办|看板|工单|事项|流程|进度/.test(text)
+}
+
+function getTaskWorkbenchScene(spec: AppSpec): TaskWorkbenchScene {
+  const text = String(spec.prompt ?? spec.title ?? "").toLowerCase()
+  if (isAdminOpsTaskSpec(spec)) return "admin_ops"
+  const flavor = inferDomainFlavor(text)
+  if (flavor === "support") return "support"
+  if (flavor === "education") return "education"
+  if (flavor === "finance") return "finance"
+  if (flavor === "recruiting") return "recruiting"
+  if (flavor === "commerce_ops") return "commerce_ops"
+  if (getScaffoldArchetype(spec) === "crm") return "crm"
+  return "task_manager"
+}
+
+function getTaskWorkbenchProfile(spec: AppSpec): TaskWorkbenchProfile {
+  const isCn = spec.region === "cn"
+  const scene = getTaskWorkbenchScene(spec)
+  const profiles: Record<TaskWorkbenchScene, Omit<TaskWorkbenchProfile, "scene">> = {
+    task_manager: isCn
+      ? {
+          heroEyebrow: "任务管理工作台",
+          heroTitle: "把任务、进度和责任人放进同一个可操作工作台。",
+          heroSubtitle: "这一页可以直接新建任务、切换看板与列表、推进状态，不再只是演示卡片。",
+          nav: { overview: "概览", tasks: "任务", analytics: "分析" },
+          stats: [
+            { label: "待处理", value: "18", note: "还有 6 条任务今天需要推进" },
+            { label: "进行中", value: "9", note: "跨团队协作正在推进" },
+            { label: "已完成", value: "14", note: "本周已收尾的工作项" },
+          ],
+          searchPlaceholder: "搜索任务、负责人或标签...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建任务",
+          titlePlaceholder: "输入任务标题...",
+          ownerPlaceholder: "负责人",
+          descPlaceholder: "添加任务描述...",
+          progressTitle: "推进路径",
+          progressItems: ["收集需求", "拆分任务", "推进执行", "复盘交付"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "任务流",
+          currentObjectNote: "任务可以直接从看板推进到完成，不再只是展示。",
+          currentObjectTag: "Tasks",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页现在支持新建任务、切换看板与列表、推进状态和筛选搜索。",
+          backLabel: "返回总览",
+          chartTitle: "任务推进图谱",
+          chartSubtitle: "看新增任务、状态分布、负责人负载和整体完成度是否一起变化。",
+          chartModes: {
+            primary: "进度条",
+            secondary: "饼图",
+            tertiary: "柱状图",
+            quaternary: "树状分布",
+          },
+          chartSeriesLabel: "任务走势",
+          chartBreakdownLabel: "状态分布",
+          chartProgressLabel: "完成进度",
+          chartHierarchyLabel: "负责人负载",
+          chartSummary: {
+            primaryMetricLabel: "新增任务",
+            secondaryMetricLabel: "完成率",
+            tertiaryMetricLabel: "高优先级",
+            quaternaryMetricLabel: "负责人",
+          },
+          workflowLabels: {
+            create: "新建任务",
+            progress: "推进状态",
+            done: "标记完成",
+            focus: "聚焦阻塞任务",
+          },
+          initialRows: [
+            { id: "t1", title: "完成产品原型", desc: "把新需求拆成可执行任务", status: "doing", owner: "李雷", priority: "high" },
+            { id: "t2", title: "整理 API 文档", desc: "补充接口说明和示例", status: "todo", owner: "王芳", priority: "medium" },
+            { id: "t3", title: "用户调研回收", desc: "汇总访谈并输出结论", status: "done", owner: "赵敏", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Task management workspace",
+          heroTitle: "Keep tasks, progress, and owners in one working surface.",
+          heroSubtitle: "This page can create tasks, switch between board and list, and move status instead of staying a static mock.",
+          nav: { overview: "Overview", tasks: "Tasks", analytics: "Analytics" },
+          stats: [
+            { label: "Queued", value: "18", note: "6 items need action today" },
+            { label: "In progress", value: "9", note: "Cross-team work is moving" },
+            { label: "Completed", value: "14", note: "Work items closed this week" },
+          ],
+          searchPlaceholder: "Search tasks, owners, or tags...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Owner",
+          descPlaceholder: "Task description...",
+          progressTitle: "Progress path",
+          progressItems: ["Collect needs", "Split tasks", "Execute", "Review"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Task flow",
+          currentObjectNote: "Tasks can move from the board to done instead of staying decorative.",
+          currentObjectTag: "Tasks",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page now supports task creation, board/list toggles, status movement, and filtering.",
+          backLabel: "Back to overview",
+          chartTitle: "Task execution map",
+          chartSubtitle: "Watch incoming work, status mix, owner load, and completion move together.",
+          chartModes: {
+            primary: "Progress",
+            secondary: "Pie",
+            tertiary: "Bar",
+            quaternary: "Tree",
+          },
+          chartSeriesLabel: "Task flow",
+          chartBreakdownLabel: "Status mix",
+          chartProgressLabel: "Completion",
+          chartHierarchyLabel: "Owner load",
+          chartSummary: {
+            primaryMetricLabel: "Incoming",
+            secondaryMetricLabel: "Completion rate",
+            tertiaryMetricLabel: "High priority",
+            quaternaryMetricLabel: "Owners",
+          },
+          workflowLabels: {
+            create: "Create task",
+            progress: "Move status",
+            done: "Mark done",
+            focus: "Focus blocked work",
+          },
+          initialRows: [
+            { id: "t1", title: "Finish product prototype", desc: "Break the new request into actionable tasks", status: "doing", owner: "Liam", priority: "high" },
+            { id: "t2", title: "Document the API", desc: "Add endpoints and examples", status: "todo", owner: "Emma", priority: "medium" },
+            { id: "t3", title: "Collect user research", desc: "Summarize interviews and findings", status: "done", owner: "Noah", priority: "low" },
+          ],
+        },
+    crm: isCn
+      ? {
+          heroEyebrow: "销售任务工作台",
+          heroTitle: "把跟进、报价、回访和交付衔接成一条销售任务流。",
+          heroSubtitle: "这不是普通待办板，而是销售推进里的任务执行层。",
+          nav: { overview: "概览", tasks: "任务", analytics: "分析" },
+          stats: [
+            { label: "待跟进", value: "24", note: "首轮沟通与复盘安排" },
+            { label: "报价中", value: "11", note: "需要补齐方案与预算" },
+            { label: "已签约", value: "7", note: "已进入交付和回访" },
+          ],
+          searchPlaceholder: "搜索线索、任务或负责人...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建销售任务",
+          titlePlaceholder: "输入销售任务...",
+          ownerPlaceholder: "销售负责人",
+          descPlaceholder: "添加跟进说明...",
+          progressTitle: "推进路径",
+          progressItems: ["线索识别", "首次沟通", "方案报价", "签约回访"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "销售推进",
+          currentObjectNote: "任务会围绕客户推进、报价和回访展开。",
+          currentObjectTag: "CRM",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接销售任务、看板推进和回访节奏，不只是通用待办。",
+          backLabel: "返回总览",
+          chartTitle: "销售推进图谱",
+          chartSubtitle: "线索跟进更适合看漏斗、阶段占比、团队负载和推进趋势。",
+          chartModes: {
+            primary: "漏斗条",
+            secondary: "折线图",
+            tertiary: "柱状图",
+            quaternary: "饼图",
+          },
+          chartSeriesLabel: "跟进趋势",
+          chartBreakdownLabel: "阶段占比",
+          chartProgressLabel: "签约进度",
+          chartHierarchyLabel: "负责人负载",
+          chartSummary: {
+            primaryMetricLabel: "新增线索",
+            secondaryMetricLabel: "签约率",
+            tertiaryMetricLabel: "高优先客户",
+            quaternaryMetricLabel: "销售负责人",
+          },
+          workflowLabels: {
+            create: "创建跟进",
+            progress: "推进商机",
+            done: "完成签约",
+            focus: "聚焦高意向客户",
+          },
+          initialRows: [
+            { id: "t1", title: "跟进重点客户", desc: "安排本周的首轮电话与演示", status: "doing", owner: "张伟", priority: "high" },
+            { id: "t2", title: "整理报价方案", desc: "补齐版本、价格与交付说明", status: "todo", owner: "王芳", priority: "medium" },
+            { id: "t3", title: "签约回访", desc: "确认合同和下一步交付", status: "done", owner: "李雷", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Sales task workspace",
+          heroTitle: "Turn follow-ups, pricing, and handoff into one sales task flow.",
+          heroSubtitle: "This is an execution rail for sales motions, not a generic todo board.",
+          nav: { overview: "Overview", tasks: "Tasks", analytics: "Analytics" },
+          stats: [
+            { label: "To follow up", value: "24", note: "First-touch and review calls" },
+            { label: "Pricing", value: "11", note: "Needs proposal and budget work" },
+            { label: "Closed", value: "7", note: "Now in delivery and follow-up" },
+          ],
+          searchPlaceholder: "Search leads, tasks, or owners...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New sales task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Sales owner",
+          descPlaceholder: "Add follow-up notes...",
+          progressTitle: "Progress path",
+          progressItems: ["Lead qualification", "First touch", "Proposal", "Close and handoff"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Sales motion",
+          currentObjectNote: "Tasks are organized around customer motion, pricing, and handoff.",
+          currentObjectTag: "CRM",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries sales tasks, board movement, and follow-up cadence instead of a generic todo list.",
+          backLabel: "Back to overview",
+          chartTitle: "Sales motion board",
+          chartSubtitle: "Track funnel progression, stage mix, owner load, and close trend from the same workflow state.",
+          chartModes: {
+            primary: "Funnel",
+            secondary: "Line",
+            tertiary: "Bar",
+            quaternary: "Pie",
+          },
+          chartSeriesLabel: "Pipeline trend",
+          chartBreakdownLabel: "Stage mix",
+          chartProgressLabel: "Close progress",
+          chartHierarchyLabel: "Owner load",
+          chartSummary: {
+            primaryMetricLabel: "New leads",
+            secondaryMetricLabel: "Win rate",
+            tertiaryMetricLabel: "Priority accounts",
+            quaternaryMetricLabel: "Sales owners",
+          },
+          workflowLabels: {
+            create: "Create follow-up",
+            progress: "Advance deal",
+            done: "Mark closed",
+            focus: "Focus high-intent accounts",
+          },
+          initialRows: [
+            { id: "t1", title: "Follow key accounts", desc: "Plan the first call and demo this week", status: "doing", owner: "Mia", priority: "high" },
+            { id: "t2", title: "Prepare proposal", desc: "Add pricing, tier, and handoff notes", status: "todo", owner: "Alex", priority: "medium" },
+            { id: "t3", title: "Closed-won follow-up", desc: "Confirm contract and next delivery step", status: "done", owner: "Jordan", priority: "low" },
+          ],
+        },
+    admin_ops: isCn
+      ? {
+          heroEyebrow: "治理任务工作台",
+          heroTitle: "把审批、权限、审计和告警同步到一条执行轨道里。",
+          heroSubtitle: "这页更像内部控制面的任务执行层，而不是普通待办板。",
+          nav: { overview: "概览", tasks: "任务", analytics: "分析" },
+          stats: [
+            { label: "待处理", value: "18", note: "审批与治理任务待推进" },
+            { label: "审计事件", value: "92", note: "需要复核的留痕记录" },
+            { label: "规则", value: "11", note: "权限与策略配置项" },
+          ],
+          searchPlaceholder: "搜索治理任务、审批或告警...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建治理任务",
+          titlePlaceholder: "输入治理任务...",
+          ownerPlaceholder: "负责人",
+          descPlaceholder: "补充任务说明...",
+          progressTitle: "当前推进",
+          progressItems: ["审批", "审计", "自动化", "复盘"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "控制平面",
+          currentObjectNote: "审批、审计和团队治理已经放在同一条工作流里。",
+          currentObjectTag: "Admin",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接治理任务、状态推进和权限协同，不是静态展示。",
+          backLabel: "返回总览",
+          chartTitle: "治理执行图谱",
+          chartSubtitle: "审批、审计和告警更适合看规则覆盖、事件趋势、恢复进度和责任人分布。",
+          chartModes: {
+            primary: "柱状图",
+            secondary: "折线图",
+            tertiary: "进度条",
+            quaternary: "饼图",
+          },
+          chartSeriesLabel: "审计趋势",
+          chartBreakdownLabel: "规则分布",
+          chartProgressLabel: "恢复进度",
+          chartHierarchyLabel: "责任归属",
+          chartSummary: {
+            primaryMetricLabel: "待审批",
+            secondaryMetricLabel: "事件关闭率",
+            tertiaryMetricLabel: "高风险",
+            quaternaryMetricLabel: "治理负责人",
+          },
+          workflowLabels: {
+            create: "创建治理动作",
+            progress: "推进审批",
+            done: "关闭事件",
+            focus: "聚焦高风险策略",
+          },
+          initialRows: [
+            { id: "t1", title: "复核访问策略", desc: "检查新环境的权限边界", status: "doing", owner: "张伟", priority: "high" },
+            { id: "t2", title: "导出审计留痕", desc: "生成合规报表并归档", status: "todo", owner: "王芳", priority: "medium" },
+            { id: "t3", title: "整理事件演练", desc: "补充告警和恢复步骤", status: "done", owner: "李雷", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Governance task workspace",
+          heroTitle: "Keep approvals, access, audit, and alerts in one execution rail.",
+          heroSubtitle: "This page feels like an internal control-plane task surface instead of a generic todo board.",
+          nav: { overview: "Overview", tasks: "Tasks", analytics: "Analytics" },
+          stats: [
+            { label: "Queued", value: "18", note: "Governance items waiting to move" },
+            { label: "Audit events", value: "92", note: "Records needing review" },
+            { label: "Rules", value: "11", note: "Policy and access settings" },
+          ],
+          searchPlaceholder: "Search governance tasks, approvals, or alerts...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New governance task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Owner",
+          descPlaceholder: "Add task details...",
+          progressTitle: "Current progress",
+          progressItems: ["Approval", "Audit", "Automation", "Review"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Control plane",
+          currentObjectNote: "Approvals, audits, and team governance are now in the same workflow.",
+          currentObjectTag: "Admin",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries governance tasks, status movement, and permission collaboration instead of a static showcase.",
+          backLabel: "Back to overview",
+          chartTitle: "Governance execution board",
+          chartSubtitle: "Use incident trend, rule coverage, recovery progress, and ownership mix to run the control plane.",
+          chartModes: {
+            primary: "Bar",
+            secondary: "Line",
+            tertiary: "Progress",
+            quaternary: "Pie",
+          },
+          chartSeriesLabel: "Audit trend",
+          chartBreakdownLabel: "Rule mix",
+          chartProgressLabel: "Recovery progress",
+          chartHierarchyLabel: "Ownership",
+          chartSummary: {
+            primaryMetricLabel: "Pending approvals",
+            secondaryMetricLabel: "Closure rate",
+            tertiaryMetricLabel: "High risk",
+            quaternaryMetricLabel: "Governance owners",
+          },
+          workflowLabels: {
+            create: "Create governance action",
+            progress: "Advance approval",
+            done: "Close incident",
+            focus: "Focus risky policy",
+          },
+          initialRows: [
+            { id: "t1", title: "Review access policy", desc: "Check permission boundaries for the new environment", status: "doing", owner: "Lena", priority: "high" },
+            { id: "t2", title: "Export audit trail", desc: "Generate the compliance report and archive it", status: "todo", owner: "Mason", priority: "medium" },
+            { id: "t3", title: "Incident drill prep", desc: "Add alert and recovery steps", status: "done", owner: "Sofia", priority: "low" },
+          ],
+        },
+    support: isCn
+      ? {
+          heroEyebrow: "客服工单工作台",
+          heroTitle: "把工单、升级和知识库处理放在同一个服务台里。",
+          heroSubtitle: "任务不是普通待办，而是围绕客户问题和 SLA 的处理流。",
+          nav: { overview: "概览", tasks: "工单", analytics: "分析" },
+          stats: [
+            { label: "待处理", value: "21", note: "需要优先响应的工单" },
+            { label: "升级", value: "5", note: "需要团队协作处理" },
+            { label: "已解决", value: "38", note: "本周关闭的客户请求" },
+          ],
+          searchPlaceholder: "搜索工单、客户或关键字...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建工单",
+          titlePlaceholder: "输入工单标题...",
+          ownerPlaceholder: "处理人",
+          descPlaceholder: "添加处理说明...",
+          progressTitle: "处理路径",
+          progressItems: ["收件", "分诊", "处理", "回访"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "服务台",
+          currentObjectNote: "工单流、升级和知识沉淀要在同一页里完成。",
+          currentObjectTag: "Support",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接工单处理、状态推进和客户回访，不只是列表演示。",
+          backLabel: "返回总览",
+          chartTitle: "工单处理图谱",
+          chartSubtitle: "SLA 更适合看队列、升级趋势、解决进度和问题分类。",
+          chartModes: {
+            primary: "柱状图",
+            secondary: "折线图",
+            tertiary: "饼图",
+            quaternary: "进度条",
+          },
+          chartSeriesLabel: "工单走势",
+          chartBreakdownLabel: "问题分类",
+          chartProgressLabel: "解决进度",
+          chartHierarchyLabel: "SLA 覆盖",
+          chartSummary: {
+            primaryMetricLabel: "新增工单",
+            secondaryMetricLabel: "解决率",
+            tertiaryMetricLabel: "升级工单",
+            quaternaryMetricLabel: "响应人",
+          },
+          workflowLabels: {
+            create: "创建工单",
+            progress: "推进处理",
+            done: "标记已解决",
+            focus: "聚焦升级问题",
+          },
+          initialRows: [
+            { id: "t1", title: "客户无法登录", desc: "排查账号和验证码状态", status: "doing", owner: "小王", priority: "high" },
+            { id: "t2", title: "导出账单失败", desc: "检查权限和报表接口", status: "todo", owner: "小陈", priority: "medium" },
+            { id: "t3", title: "问题已解决回访", desc: "确认工单关闭并记录知识库", status: "done", owner: "小李", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Support desk workspace",
+          heroTitle: "Keep tickets, escalation, and knowledge in one service lane.",
+          heroSubtitle: "Tasks here are support flows, not generic todos.",
+          nav: { overview: "Overview", tasks: "Tickets", analytics: "Analytics" },
+          stats: [
+            { label: "Open", value: "21", note: "Tickets needing response" },
+            { label: "Escalations", value: "5", note: "Need team collaboration" },
+            { label: "Solved", value: "38", note: "Closed this week" },
+          ],
+          searchPlaceholder: "Search tickets, customers, or keywords...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New ticket",
+          titlePlaceholder: "Ticket title",
+          ownerPlaceholder: "Agent",
+          descPlaceholder: "Add resolution notes...",
+          progressTitle: "Resolution path",
+          progressItems: ["Intake", "Triage", "Resolve", "Follow up"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Service desk",
+          currentObjectNote: "Ticket flow, escalation, and knowledge capture live together here.",
+          currentObjectTag: "Support",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries ticket handling, status movement, and customer follow-up instead of a demo list.",
+          backLabel: "Back to overview",
+          chartTitle: "Support operations map",
+          chartSubtitle: "Run support from queue mix, escalation trend, issue categories, and resolution progress.",
+          chartModes: {
+            primary: "Bar",
+            secondary: "Line",
+            tertiary: "Pie",
+            quaternary: "Progress",
+          },
+          chartSeriesLabel: "Ticket trend",
+          chartBreakdownLabel: "Issue categories",
+          chartProgressLabel: "Resolution progress",
+          chartHierarchyLabel: "SLA coverage",
+          chartSummary: {
+            primaryMetricLabel: "New tickets",
+            secondaryMetricLabel: "Resolution rate",
+            tertiaryMetricLabel: "Escalations",
+            quaternaryMetricLabel: "Agents",
+          },
+          workflowLabels: {
+            create: "Create ticket",
+            progress: "Advance resolution",
+            done: "Mark solved",
+            focus: "Focus escalations",
+          },
+          initialRows: [
+            { id: "t1", title: "Customer login issue", desc: "Check account and OTP state", status: "doing", owner: "Ava", priority: "high" },
+            { id: "t2", title: "Billing export failed", desc: "Inspect permission and report API", status: "todo", owner: "Ben", priority: "medium" },
+            { id: "t3", title: "Solved issue follow-up", desc: "Confirm closure and capture knowledge", status: "done", owner: "Cora", priority: "low" },
+          ],
+        },
+    education: isCn
+      ? {
+          heroEyebrow: "教务任务工作台",
+          heroTitle: "把课程、作业和学生进度放在一条教务任务流里。",
+          heroSubtitle: "每一个任务都对应课程推进、作业收集或学习反馈。",
+          nav: { overview: "概览", tasks: "教务", analytics: "分析" },
+          stats: [
+            { label: "待批改", value: "17", note: "本周作业和测验" },
+            { label: "课程中", value: "9", note: "正在推进的课程" },
+            { label: "已完成", value: "28", note: "已归档的教务事项" },
+          ],
+          searchPlaceholder: "搜索课程、任务或学生...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建教务任务",
+          titlePlaceholder: "输入教务任务...",
+          ownerPlaceholder: "教师/助教",
+          descPlaceholder: "添加任务说明...",
+          progressTitle: "推进路径",
+          progressItems: ["排课", "布置作业", "批改反馈", "总结复盘"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "教务台",
+          currentObjectNote: "课程推进、作业流转和学生反馈要一体化。",
+          currentObjectTag: "Education",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接教务任务、状态推进和课程协同，不只是通用待办。",
+          backLabel: "返回总览",
+          chartTitle: "教务推进图谱",
+          chartSubtitle: "课程进度更适合看学习趋势、任务分布、完成进度和班级负载。",
+          chartModes: {
+            primary: "折线图",
+            secondary: "柱状图",
+            tertiary: "进度条",
+            quaternary: "饼图",
+          },
+          chartSeriesLabel: "课程趋势",
+          chartBreakdownLabel: "任务分布",
+          chartProgressLabel: "学习进度",
+          chartHierarchyLabel: "班级负载",
+          chartSummary: {
+            primaryMetricLabel: "课程任务",
+            secondaryMetricLabel: "完成率",
+            tertiaryMetricLabel: "待反馈",
+            quaternaryMetricLabel: "教师",
+          },
+          workflowLabels: {
+            create: "创建教务任务",
+            progress: "推进课程",
+            done: "标记已完成",
+            focus: "聚焦待反馈班级",
+          },
+          initialRows: [
+            { id: "t1", title: "安排课程进度", desc: "确认本周的授课安排", status: "doing", owner: "王老师", priority: "high" },
+            { id: "t2", title: "批改作业", desc: "完成学生作业反馈", status: "todo", owner: "李老师", priority: "medium" },
+            { id: "t3", title: "整理学情报告", desc: "输出班级学习总结", status: "done", owner: "赵老师", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Education task workspace",
+          heroTitle: "Keep course work, assignments, and student progress in one flow.",
+          heroSubtitle: "Tasks here map to class operations, assignments, or learning feedback.",
+          nav: { overview: "Overview", tasks: "Classes", analytics: "Analytics" },
+          stats: [
+            { label: "To grade", value: "17", note: "Assignments and quizzes this week" },
+            { label: "In course", value: "9", note: "Classes in motion" },
+            { label: "Closed", value: "28", note: "Archived school ops" },
+          ],
+          searchPlaceholder: "Search courses, tasks, or students...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New school task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Teacher / TA",
+          descPlaceholder: "Add task details...",
+          progressTitle: "Progress path",
+          progressItems: ["Schedule", "Assign work", "Feedback", "Review"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Academic ops",
+          currentObjectNote: "Course work, assignments, and student feedback stay in one place.",
+          currentObjectTag: "Education",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries school tasks, status movement, and class coordination instead of a generic todo list.",
+          backLabel: "Back to overview",
+          chartTitle: "Academic operations board",
+          chartSubtitle: "Track class progress, workload mix, completion progress, and teacher coverage from one state model.",
+          chartModes: {
+            primary: "Line",
+            secondary: "Bar",
+            tertiary: "Progress",
+            quaternary: "Pie",
+          },
+          chartSeriesLabel: "Class trend",
+          chartBreakdownLabel: "Workload mix",
+          chartProgressLabel: "Learning progress",
+          chartHierarchyLabel: "Class coverage",
+          chartSummary: {
+            primaryMetricLabel: "Course tasks",
+            secondaryMetricLabel: "Completion rate",
+            tertiaryMetricLabel: "Pending feedback",
+            quaternaryMetricLabel: "Teachers",
+          },
+          workflowLabels: {
+            create: "Create school task",
+            progress: "Advance class work",
+            done: "Mark complete",
+            focus: "Focus pending feedback",
+          },
+          initialRows: [
+            { id: "t1", title: "Plan the course schedule", desc: "Confirm this week's teaching plan", status: "doing", owner: "Ms. Wang", priority: "high" },
+            { id: "t2", title: "Grade assignments", desc: "Complete student feedback", status: "todo", owner: "Mr. Li", priority: "medium" },
+            { id: "t3", title: "Summarize learning report", desc: "Publish the class learning summary", status: "done", owner: "Ms. Zhao", priority: "low" },
+          ],
+        },
+    finance: isCn
+      ? {
+          heroEyebrow: "财务任务工作台",
+          heroTitle: "把对账、审核和异常处理放在同一条财务任务流里。",
+          heroSubtitle: "任务对应账本、交易、对账和异常，而不是普通待办。",
+          nav: { overview: "概览", tasks: "财务", analytics: "分析" },
+          stats: [
+            { label: "待对账", value: "15", note: "需要核对的交易" },
+            { label: "异常", value: "4", note: "差异待复核" },
+            { label: "已完成", value: "31", note: "本周财务事项" },
+          ],
+          searchPlaceholder: "搜索账目、任务或异常...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建财务任务",
+          titlePlaceholder: "输入财务任务...",
+          ownerPlaceholder: "财务负责人",
+          descPlaceholder: "添加核对说明...",
+          progressTitle: "推进路径",
+          progressItems: ["收集单据", "核对差异", "审批确认", "归档报表"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "财务台",
+          currentObjectNote: "任务要围绕账本、交易与对账节奏展开。",
+          currentObjectTag: "Finance",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接财务任务、状态推进和异常处理，不是装饰性的报表页。",
+          backLabel: "返回总览",
+          chartTitle: "财务执行图谱",
+          chartSubtitle: "财务流更适合看异常趋势、任务分布、核对进度和责任归属。",
+          chartModes: {
+            primary: "柱状图",
+            secondary: "折线图",
+            tertiary: "饼图",
+            quaternary: "进度条",
+          },
+          chartSeriesLabel: "异常趋势",
+          chartBreakdownLabel: "账目分布",
+          chartProgressLabel: "核对进度",
+          chartHierarchyLabel: "责任归属",
+          chartSummary: {
+            primaryMetricLabel: "待核对",
+            secondaryMetricLabel: "完成率",
+            tertiaryMetricLabel: "差异项目",
+            quaternaryMetricLabel: "财务负责人",
+          },
+          workflowLabels: {
+            create: "创建财务任务",
+            progress: "推进核对",
+            done: "归档完成",
+            focus: "聚焦异常账目",
+          },
+          initialRows: [
+            { id: "t1", title: "核对付款流水", desc: "检查当日入账和出账差异", status: "doing", owner: "周财务", priority: "high" },
+            { id: "t2", title: "整理报销单", desc: "补齐附件并审批", status: "todo", owner: "林财务", priority: "medium" },
+            { id: "t3", title: "输出月报", desc: "完成月度财务总结", status: "done", owner: "孙财务", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Finance task workspace",
+          heroTitle: "Keep reconciliation, review, and exception handling in one finance flow.",
+          heroSubtitle: "Tasks here map to ledger work, transactions, reconciliation, and exceptions.",
+          nav: { overview: "Overview", tasks: "Finance", analytics: "Analytics" },
+          stats: [
+            { label: "To reconcile", value: "15", note: "Transactions to verify" },
+            { label: "Exceptions", value: "4", note: "Variance review needed" },
+            { label: "Closed", value: "31", note: "This week's finance ops" },
+          ],
+          searchPlaceholder: "Search ledger items, tasks, or exceptions...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New finance task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Finance owner",
+          descPlaceholder: "Add verification notes...",
+          progressTitle: "Progress path",
+          progressItems: ["Collect docs", "Match differences", "Approve", "Archive"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Finance desk",
+          currentObjectNote: "Tasks should follow ledger, transaction, and reconciliation rhythm.",
+          currentObjectTag: "Finance",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries finance tasks, status movement, and exception handling rather than decorative reporting.",
+          backLabel: "Back to overview",
+          chartTitle: "Finance execution board",
+          chartSubtitle: "Run reconciliation from variance trend, task mix, exception load, and archive progress.",
+          chartModes: {
+            primary: "Bar",
+            secondary: "Line",
+            tertiary: "Pie",
+            quaternary: "Progress",
+          },
+          chartSeriesLabel: "Variance trend",
+          chartBreakdownLabel: "Ledger mix",
+          chartProgressLabel: "Reconciliation progress",
+          chartHierarchyLabel: "Ownership",
+          chartSummary: {
+            primaryMetricLabel: "To reconcile",
+            secondaryMetricLabel: "Completion rate",
+            tertiaryMetricLabel: "Exception items",
+            quaternaryMetricLabel: "Finance owners",
+          },
+          workflowLabels: {
+            create: "Create finance task",
+            progress: "Advance reconciliation",
+            done: "Archive complete",
+            focus: "Focus exceptions",
+          },
+          initialRows: [
+            { id: "t1", title: "Match payment feed", desc: "Check today’s incoming and outgoing differences", status: "doing", owner: "Finance Ops", priority: "high" },
+            { id: "t2", title: "Process reimbursements", desc: "Attach receipts and route approval", status: "todo", owner: "Finance Ops", priority: "medium" },
+            { id: "t3", title: "Publish monthly report", desc: "Finish the monthly finance summary", status: "done", owner: "Finance Ops", priority: "low" },
+          ],
+        },
+    recruiting: isCn
+      ? {
+          heroEyebrow: "招聘任务工作台",
+          heroTitle: "把候选人、面试和录用动作放进同一条招聘任务流。",
+          heroSubtitle: "任务不是待办，而是招聘流程里的动作执行层。",
+          nav: { overview: "概览", tasks: "招聘", analytics: "分析" },
+          stats: [
+            { label: "候选人", value: "23", note: "正在推进面试" },
+            { label: "待安排", value: "8", note: "面试和反馈要同步" },
+            { label: "已录用", value: "4", note: "本周完成录用" },
+          ],
+          searchPlaceholder: "搜索候选人、任务或岗位...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建招聘任务",
+          titlePlaceholder: "输入招聘任务...",
+          ownerPlaceholder: "招聘负责人",
+          descPlaceholder: "添加面试说明...",
+          progressTitle: "推进路径",
+          progressItems: ["筛选简历", "安排面试", "发放 Offer", "入职跟进"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "招聘台",
+          currentObjectNote: "候选人推进、面试协同和录用动作需要一页完成。",
+          currentObjectTag: "Recruiting",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接招聘任务、状态推进和协同安排，不只是一个列表。",
+          backLabel: "返回总览",
+          chartTitle: "招聘推进图谱",
+          chartSubtitle: "招聘流程更适合看候选人漏斗、阶段负载、推进趋势和入职进度。",
+          chartModes: {
+            primary: "漏斗条",
+            secondary: "柱状图",
+            tertiary: "折线图",
+            quaternary: "进度条",
+          },
+          chartSeriesLabel: "候选人趋势",
+          chartBreakdownLabel: "阶段负载",
+          chartProgressLabel: "录用进度",
+          chartHierarchyLabel: "岗位分布",
+          chartSummary: {
+            primaryMetricLabel: "候选人",
+            secondaryMetricLabel: "录用率",
+            tertiaryMetricLabel: "待安排面试",
+            quaternaryMetricLabel: "招聘负责人",
+          },
+          workflowLabels: {
+            create: "创建招聘任务",
+            progress: "推进候选人",
+            done: "完成录用",
+            focus: "聚焦关键岗位",
+          },
+          initialRows: [
+            { id: "t1", title: "筛选简历", desc: "整理本周候选人池", status: "doing", owner: "HR 小张", priority: "high" },
+            { id: "t2", title: "安排面试", desc: "同步面试官和时间", status: "todo", owner: "HR 小王", priority: "medium" },
+            { id: "t3", title: "录用回访", desc: "确认入职和首周安排", status: "done", owner: "HR 小李", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Hiring task workspace",
+          heroTitle: "Keep candidates, interviews, and offers in one hiring flow.",
+          heroSubtitle: "Tasks here are hiring motions, not a plain todo list.",
+          nav: { overview: "Overview", tasks: "Hiring", analytics: "Analytics" },
+          stats: [
+            { label: "Candidates", value: "23", note: "In interview motion" },
+            { label: "Pending", value: "8", note: "Interviews and feedback sync" },
+            { label: "Hired", value: "4", note: "Closed this week" },
+          ],
+          searchPlaceholder: "Search candidates, tasks, or roles...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New hiring task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Hiring owner",
+          descPlaceholder: "Add interview notes...",
+          progressTitle: "Progress path",
+          progressItems: ["Screen resumes", "Schedule interviews", "Make offer", "Onboard"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Hiring desk",
+          currentObjectNote: "Candidate motion, interview coordination, and hiring actions belong on one page.",
+          currentObjectTag: "Recruiting",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries hiring tasks, status movement, and scheduling coordination instead of a plain list.",
+          backLabel: "Back to overview",
+          chartTitle: "Hiring motion board",
+          chartSubtitle: "Run recruiting from candidate funnel, stage load, offer progress, and hiring trend.",
+          chartModes: {
+            primary: "Funnel",
+            secondary: "Bar",
+            tertiary: "Line",
+            quaternary: "Progress",
+          },
+          chartSeriesLabel: "Candidate trend",
+          chartBreakdownLabel: "Stage load",
+          chartProgressLabel: "Offer progress",
+          chartHierarchyLabel: "Role mix",
+          chartSummary: {
+            primaryMetricLabel: "Candidates",
+            secondaryMetricLabel: "Hire rate",
+            tertiaryMetricLabel: "Pending interviews",
+            quaternaryMetricLabel: "Hiring owners",
+          },
+          workflowLabels: {
+            create: "Create hiring task",
+            progress: "Advance candidate",
+            done: "Mark hired",
+            focus: "Focus key roles",
+          },
+          initialRows: [
+            { id: "t1", title: "Screen resumes", desc: "Organize this week's candidate pool", status: "doing", owner: "HR", priority: "high" },
+            { id: "t2", title: "Schedule interviews", desc: "Sync interviewers and time slots", status: "todo", owner: "HR", priority: "medium" },
+            { id: "t3", title: "Offer follow-up", desc: "Confirm onboarding and first-week plan", status: "done", owner: "HR", priority: "low" },
+          ],
+        },
+    commerce_ops: isCn
+      ? {
+          heroEyebrow: "履约任务工作台",
+          heroTitle: "把库存、补货和发货动作放进同一条履约任务流。",
+          heroSubtitle: "任务围绕订单履约、仓储和补货，而不是通用待办。",
+          nav: { overview: "概览", tasks: "履约", analytics: "分析" },
+          stats: [
+            { label: "待发货", value: "12", note: "今天需要处理的订单" },
+            { label: "补货", value: "5", note: "库存低位提醒" },
+            { label: "已完成", value: "28", note: "已出库的履约动作" },
+          ],
+          searchPlaceholder: "搜索订单、任务或 SKU...",
+          boardLabel: "看板",
+          listLabel: "列表",
+          addButton: "新建履约任务",
+          titlePlaceholder: "输入履约任务...",
+          ownerPlaceholder: "仓配负责人",
+          descPlaceholder: "添加履约说明...",
+          progressTitle: "推进路径",
+          progressItems: ["拣货", "打包", "发货", "签收"],
+          currentObjectLabel: "当前对象",
+          currentObjectTitle: "履约台",
+          currentObjectNote: "库存、补货和发货要在同一页协同处理。",
+          currentObjectTag: "Commerce",
+          pageRoleTitle: "页面角色",
+          pageRoleBody: "这一页承接履约任务、状态推进和仓配协作，不只是静态列表。",
+          backLabel: "返回总览",
+          chartTitle: "履约执行图谱",
+          chartSubtitle: "履约更适合看库存压力、发货趋势、状态分布和交付进度。",
+          chartModes: {
+            primary: "柱状图",
+            secondary: "折线图",
+            tertiary: "饼图",
+            quaternary: "进度条",
+          },
+          chartSeriesLabel: "发货趋势",
+          chartBreakdownLabel: "状态分布",
+          chartProgressLabel: "交付进度",
+          chartHierarchyLabel: "SKU 负载",
+          chartSummary: {
+            primaryMetricLabel: "待发货",
+            secondaryMetricLabel: "完成率",
+            tertiaryMetricLabel: "低库存",
+            quaternaryMetricLabel: "仓配负责人",
+          },
+          workflowLabels: {
+            create: "创建履约任务",
+            progress: "推进出库",
+            done: "标记已签收",
+            focus: "聚焦低库存 SKU",
+          },
+          initialRows: [
+            { id: "t1", title: "处理今日订单", desc: "安排优先发货和跟踪", status: "doing", owner: "仓配", priority: "high" },
+            { id: "t2", title: "检查库存低位", desc: "确认补货和供应商协同", status: "todo", owner: "仓配", priority: "medium" },
+            { id: "t3", title: "出库复盘", desc: "完成出库记录和异常处理", status: "done", owner: "仓配", priority: "low" },
+          ],
+        }
+      : {
+          heroEyebrow: "Fulfillment task workspace",
+          heroTitle: "Keep inventory, replenishment, and shipping in one fulfillment flow.",
+          heroSubtitle: "Tasks here are fulfillment motions rather than generic todos.",
+          nav: { overview: "Overview", tasks: "Fulfillment", analytics: "Analytics" },
+          stats: [
+            { label: "To ship", value: "12", note: "Orders to process today" },
+            { label: "Replenishment", value: "5", note: "Low-stock alerts" },
+            { label: "Closed", value: "28", note: "Fulfillment actions completed" },
+          ],
+          searchPlaceholder: "Search orders, tasks, or SKUs...",
+          boardLabel: "Board",
+          listLabel: "List",
+          addButton: "New fulfillment task",
+          titlePlaceholder: "Task title",
+          ownerPlaceholder: "Ops owner",
+          descPlaceholder: "Add fulfillment notes...",
+          progressTitle: "Progress path",
+          progressItems: ["Pick", "Pack", "Ship", "Delivered"],
+          currentObjectLabel: "Current object",
+          currentObjectTitle: "Fulfillment desk",
+          currentObjectNote: "Inventory, replenishment, and shipping should all live on one page.",
+          currentObjectTag: "Commerce",
+          pageRoleTitle: "Page role",
+          pageRoleBody: "This page carries fulfillment tasks, status movement, and warehouse collaboration instead of a static list.",
+          backLabel: "Back to overview",
+          chartTitle: "Fulfillment operations board",
+          chartSubtitle: "Track shipment trend, stock pressure, status mix, and delivery progress from live fulfillment state.",
+          chartModes: {
+            primary: "Bar",
+            secondary: "Line",
+            tertiary: "Pie",
+            quaternary: "Progress",
+          },
+          chartSeriesLabel: "Shipment trend",
+          chartBreakdownLabel: "Status mix",
+          chartProgressLabel: "Delivery progress",
+          chartHierarchyLabel: "SKU load",
+          chartSummary: {
+            primaryMetricLabel: "To ship",
+            secondaryMetricLabel: "Completion rate",
+            tertiaryMetricLabel: "Low stock",
+            quaternaryMetricLabel: "Ops owners",
+          },
+          workflowLabels: {
+            create: "Create fulfillment task",
+            progress: "Advance shipment",
+            done: "Mark delivered",
+            focus: "Focus low-stock SKUs",
+          },
+          initialRows: [
+            { id: "t1", title: "Process today's orders", desc: "Prioritize shipping and tracking", status: "doing", owner: "Ops", priority: "high" },
+            { id: "t2", title: "Check low stock", desc: "Confirm replenishment and vendor sync", status: "todo", owner: "Ops", priority: "medium" },
+            { id: "t3", title: "Outbound review", desc: "Finish logs and exceptions", status: "done", owner: "Ops", priority: "low" },
+          ],
+        },
+  }
+  return { scene, ...profiles[scene] }
+}
+
 function renderTasksPage(spec: AppSpec) {
-  if (spec.templateId === "opsdesk") {
-    return `import Link from "next/link";
+  if (shouldRenderTaskWorkbench(spec)) {
+    return `// @ts-nocheck
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+
+type TaskRow = {
+  id: string;
+  title: string;
+  desc: string;
+  status: "todo" | "doing" | "done";
+  owner: string;
+  priority: "low" | "medium" | "high";
+};
 
 export default function TasksEntryPage() {
   const isCn = ${spec.region === "cn" ? "true" : "false"};
-  const rows = ${JSON.stringify(
-    spec.region === "cn"
-      ? [
-          { title: "待跟进客户", desc: "需要本周完成首轮沟通" },
-          { title: "报价推进中", desc: "等待客户确认预算与版本" },
-          { title: "已成交交付", desc: "同步升级权限与交付节奏" },
-        ]
-      : [
-          { title: "Follow-up queue", desc: "Prospects needing first-touch this week" },
-          { title: "Pricing review", desc: "Waiting on budget and tier confirmation" },
-          { title: "Closed and onboarding", desc: "Sync upgraded access and rollout cadence" },
-        ],
-    null,
-    2
-  )} as const;
+  const profile = ${JSON.stringify(getTaskWorkbenchProfile(spec), null, 2)} as const;
+  const initialRows = profile.initialRows as TaskRow[];
+  const [rows, setRows] = useState<TaskRow[]>(initialRows);
+  const [view, setView] = useState<"board" | "list">("board");
+  const [query, setQuery] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftDesc, setDraftDesc] = useState("");
+  const [draftOwner, setDraftOwner] = useState("");
+  const [draftPriority, setDraftPriority] = useState<TaskRow["priority"]>("medium");
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return rows.filter((row) => {
+      const haystack = [row.title, row.desc, row.owner, row.status, row.priority].join(" ").toLowerCase();
+      return !needle || haystack.includes(needle);
+    });
+  }, [query, rows]);
+
+  const grouped = useMemo(() => {
+    return {
+      todo: visible.filter((row) => row.status === "todo"),
+      doing: visible.filter((row) => row.status === "doing"),
+      done: visible.filter((row) => row.status === "done"),
+    } as const;
+  }, [visible]);
+
+  const metrics = useMemo(() => {
+    const done = rows.filter((row) => row.status === "done").length;
+    const doing = rows.filter((row) => row.status === "doing").length;
+    const todo = rows.filter((row) => row.status === "todo").length;
+    const highPriority = rows.filter((row) => row.priority === "high").length;
+    const owners = Array.from(new Set(rows.map((row) => row.owner.trim() || (isCn ? "未分配" : "Unassigned"))));
+    const completionRate = rows.length ? Math.round((done / rows.length) * 100) : 0;
+    return {
+      done,
+      doing,
+      todo,
+      highPriority,
+      owners: owners.length,
+      completionRate,
+      activeFocus: rows.find((row) => row.priority === "high" && row.status !== "done") ?? rows[0] ?? null,
+      timeline: [
+        {
+          label: isCn ? "新增" : "Incoming",
+          value: rows.length,
+          note: profile.chartSummary.primaryMetricLabel,
+        },
+        {
+          label: isCn ? "已完成" : "Completed",
+          value: done,
+          note: profile.chartSummary.secondaryMetricLabel,
+        },
+        {
+          label: isCn ? "高优先级" : "High priority",
+          value: highPriority,
+          note: profile.chartSummary.tertiaryMetricLabel,
+        },
+        {
+          label: isCn ? "负责人" : "Owners",
+          value: owners.length,
+          note: profile.chartSummary.quaternaryMetricLabel,
+        },
+      ],
+      ownerLoad: owners.map((owner) => {
+        const count = rows.filter((row) => (row.owner.trim() || (isCn ? "未分配" : "Unassigned")) === owner).length;
+        return {
+          owner,
+          count,
+          share: rows.length ? Math.round((count / rows.length) * 100) : 0,
+        };
+      }),
+    };
+  }, [isCn, profile.chartSummary.primaryMetricLabel, profile.chartSummary.quaternaryMetricLabel, profile.chartSummary.secondaryMetricLabel, profile.chartSummary.tertiaryMetricLabel, rows]);
+
+  const chartRows = useMemo(
+    () => [
+      {
+        label: isCn ? "待办" : "Todo",
+        count: grouped.todo.length,
+        tone: "#94a3b8",
+      },
+      {
+        label: isCn ? "进行中" : "Doing",
+        count: grouped.doing.length,
+        tone: "#2563eb",
+      },
+      {
+        label: isCn ? "已完成" : "Done",
+        count: grouped.done.length,
+        tone: "#16a34a",
+      },
+    ],
+    [grouped.doing.length, grouped.done.length, grouped.todo.length, isCn]
+  );
+
+  const moveRow = (id: string, direction: -1 | 1) => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+        const order: TaskRow["status"][] = ["todo", "doing", "done"];
+        const nextIndex = Math.max(0, Math.min(order.length - 1, order.indexOf(row.status) + direction));
+        return { ...row, status: order[nextIndex] };
+      })
+    );
+  };
+
+  const addTask = () => {
+    const title = draftTitle.trim();
+    if (!title) return;
+    setRows((prev) => [
+      {
+        id: \`task_\${Date.now()}\`,
+        title,
+        desc: draftDesc.trim() || (isCn ? "新建的任务项" : "New task item"),
+        status: "todo",
+        owner: draftOwner.trim() || (isCn ? "未分配" : "Unassigned"),
+        priority: draftPriority,
+      },
+      ...prev,
+    ]);
+    setDraftTitle("");
+    setDraftDesc("");
+    setDraftOwner("");
+    setDraftPriority("medium");
+  };
+
   return (
     <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#f6f8fc 0%,#eef4ff 100%)", color: "#0f172a", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 28 }}>
-      <div style={{ maxWidth: 1080, margin: "0 auto", display: "grid", gap: 16 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gap: 16 }}>
         <section style={{ borderRadius: 28, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 24 }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             {[
-              { href: "/", label: isCn ? "销售总览" : "Overview" },
-              { href: "/leads", label: isCn ? "线索池" : "Leads" },
-              { href: "/tasks", label: isCn ? "跟进任务" : "Tasks", active: true },
-              { href: "/analytics", label: isCn ? "分析" : "Analytics" },
+              { href: "/", label: profile.nav.overview },
+              { href: "/tasks", label: profile.nav.tasks, active: true },
+              { href: "/analytics", label: profile.nav.analytics },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "#2563eb" : "#eff6ff", color: item.active ? "#ffffff" : "#2563eb", fontSize: 13, fontWeight: 700 }}>
                 {item.label}
               </Link>
             ))}
           </div>
-          <h1 style={{ marginTop: 0, fontSize: 34, fontWeight: 900 }}>{isCn ? "销售任务与线索入口" : "Sales tasks and lead entry"}</h1>
-          <p style={{ color: "#64748b", lineHeight: 1.8 }}>{isCn ? "CRM 类型项目在这个入口页里应该承接线索分组、阶段推进和交付衔接。" : "CRM projects should use this entry point for grouped leads, stage transitions, and delivery handoff."}</p>
+          <div style={{ color: "#64748b", fontSize: 13, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase" }}>{profile.heroEyebrow}</div>
+          <h1 style={{ marginTop: 10, marginBottom: 12, fontSize: 34, fontWeight: 900, lineHeight: 1.15 }}>{profile.heroTitle}</h1>
+          <p style={{ color: "#64748b", lineHeight: 1.8, marginBottom: 0 }}>{profile.heroSubtitle}</p>
         </section>
+
         <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
-          {(isCn
-            ? [
-                { label: "今日待办", value: "9", note: "首轮跟进和 demo 安排" },
-                { label: "报价推进", value: "4", note: "等待版本和预算确认" },
-                { label: "交付同步", value: "3", note: "付款完成后同步权限升级" },
-              ]
-            : [
-                { label: "Today", value: "9", note: "First-touch follow-ups and demos" },
-                { label: "Pricing", value: "4", note: "Waiting on version and budget alignment" },
-                { label: "Delivery", value: "3", note: "Sync access after completed billing" },
-              ]).map((item) => (
+          {profile.stats.map((item) => (
             <div key={item.label} style={{ borderRadius: 20, background: "#ffffff", border: "1px solid rgba(148,163,184,0.14)", padding: 18 }}>
               <div style={{ color: "#64748b", fontSize: 13 }}>{item.label}</div>
               <div style={{ marginTop: 10, fontSize: 30, fontWeight: 900 }}>{item.value}</div>
@@ -14486,34 +16250,237 @@ export default function TasksEntryPage() {
             </div>
           ))}
         </section>
-        <section style={{ display: "grid", gap: 12 }}>
-          {rows.map((row) => (
-            <div key={row.title} style={{ borderRadius: 20, background: "#ffffff", border: "1px solid rgba(148,163,184,0.14)", padding: 18 }}>
-              <div style={{ fontWeight: 800 }}>{row.title}</div>
-              <div style={{ marginTop: 8, color: "#64748b" }}>{row.desc}</div>
+
+        <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20, display: "grid", gap: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{profile.chartTitle}</div>
+                <div style={{ marginTop: 8, color: "#64748b", lineHeight: 1.7, fontSize: 13 }}>{profile.chartSubtitle}</div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {[profile.chartModes.primary, profile.chartModes.secondary, profile.chartModes.tertiary, profile.chartModes.quaternary].map((label) => (
+                  <span key={label} style={{ borderRadius: 999, padding: "7px 10px", background: "#eff6ff", color: "#2563eb", fontSize: 12, fontWeight: 700 }}>
+                    {label}
+                  </span>
+                ))}
+              </div>
             </div>
-          ))}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
+              {metrics.timeline.map((item, index) => (
+                <div key={item.label} style={{ borderRadius: 16, background: index === 0 ? "#eff6ff" : "#f8fafc", padding: "14px 12px" }}>
+                  <div style={{ color: "#64748b", fontSize: 12 }}>{item.note}</div>
+                  <div style={{ marginTop: 8, fontSize: 24, fontWeight: 900 }}>{item.value}</div>
+                  <div style={{ marginTop: 6, color: "#334155", fontSize: 12 }}>{item.label}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ borderRadius: 18, background: "#f8fafc", padding: 16 }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>{profile.chartSeriesLabel}</div>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {chartRows.map((item) => (
+                    <div key={item.label} style={{ display: "grid", gap: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                        <span style={{ color: "#334155", fontWeight: 700 }}>{item.label}</span>
+                        <span style={{ color: item.tone, fontWeight: 800 }}>{item.count}</span>
+                      </div>
+                      <div style={{ height: 10, borderRadius: 999, background: "rgba(148,163,184,0.18)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: String(rows.length ? Math.max(10, Math.round((item.count / rows.length) * 100)) : 0) + "%", borderRadius: 999, background: item.tone }}></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ borderRadius: 18, background: "#f8fafc", padding: 16, display: "grid", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>{profile.chartBreakdownLabel}</div>
+                  <div style={{ marginTop: 8, display: "flex", gap: 12, alignItems: "center", justifyContent: "center" }}>
+                    <div
+                      style={{
+                        width: 150,
+                        height: 150,
+                        borderRadius: "50%",
+                        background: "conic-gradient(#94a3b8 0 " + String(rows.length ? Math.round((grouped.todo.length / rows.length) * 360) : 0) + "deg, #2563eb " + String(rows.length ? Math.round((grouped.todo.length / rows.length) * 360) : 0) + "deg " + String(rows.length ? Math.round(((grouped.todo.length + grouped.doing.length) / rows.length) * 360) : 0) + "deg, #16a34a " + String(rows.length ? Math.round(((grouped.todo.length + grouped.doing.length) / rows.length) * 360) : 0) + "deg 360deg)",
+                        display: "grid",
+                        placeItems: "center",
+                        margin: "0 auto",
+                      }}
+                    >
+                      <div style={{ width: 86, height: 86, borderRadius: "50%", background: "#ffffff", display: "grid", placeItems: "center", textAlign: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 22, fontWeight: 900 }}>{metrics.completionRate}%</div>
+                          <div style={{ fontSize: 11, color: "#64748b" }}>{profile.chartProgressLabel}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {chartRows.map((item) => (
+                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 13 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: item.tone, display: "inline-block" }} />
+                        <span style={{ color: "#334155", fontWeight: 700 }}>{item.label}</span>
+                      </div>
+                      <span style={{ color: "#64748b" }}>{item.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ borderRadius: 24, background: "#0f172a", color: "#e2e8f0", padding: 20, display: "grid", gap: 14 }}>
+            <div>
+              <div style={{ color: "#93c5fd", fontSize: 13, fontWeight: 800 }}>{profile.currentObjectLabel}</div>
+              <div style={{ marginTop: 10, fontSize: 26, fontWeight: 900 }}>{profile.currentObjectTitle}</div>
+              <div style={{ marginTop: 10, color: "#94a3b8", lineHeight: 1.7 }}>{profile.currentObjectNote}</div>
+            </div>
+            <div style={{ borderRadius: 18, background: "rgba(37,99,235,0.16)", padding: 16 }}>
+              <div style={{ fontSize: 13, color: "#bfdbfe", fontWeight: 700 }}>{profile.workflowLabels.focus}</div>
+              <div style={{ marginTop: 10, fontWeight: 800 }}>{metrics.activeFocus?.title ?? (isCn ? "暂无焦点任务" : "No focused item")}</div>
+              <div style={{ marginTop: 8, color: "#cbd5e1", fontSize: 13, lineHeight: 1.7 }}>{metrics.activeFocus?.desc ?? profile.pageRoleBody}</div>
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {[
+                { label: profile.workflowLabels.create, value: rows.length },
+                { label: profile.workflowLabels.progress, value: metrics.doing },
+                { label: profile.workflowLabels.done, value: metrics.done },
+                { label: profile.chartHierarchyLabel, value: metrics.owners },
+              ].map((item) => (
+                <div key={item.label} style={{ borderRadius: 14, background: "rgba(255,255,255,0.06)", padding: "12px 14px", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <span style={{ color: "#cbd5e1", fontSize: 13 }}>{item.label}</span>
+                  <span style={{ fontWeight: 800 }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
+
+        <section style={{ borderRadius: 24, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20, display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12 }}>
+            <input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} placeholder={profile.titlePlaceholder} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,0.18)" }} />
+            <input value={draftOwner} onChange={(event) => setDraftOwner(event.target.value)} placeholder={profile.ownerPlaceholder} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,0.18)" }} />
+          </div>
+          <textarea value={draftDesc} onChange={(event) => setDraftDesc(event.target.value)} placeholder={profile.descPlaceholder} style={{ minHeight: 92, padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,0.18)", resize: "vertical", fontFamily: "inherit" }} />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select value={draftPriority} onChange={(event) => setDraftPriority(event.target.value as TaskRow["priority"])} style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,0.18)" }}>
+              <option value="low">{isCn ? "低" : "Low"}</option>
+              <option value="medium">{isCn ? "中" : "Medium"}</option>
+              <option value="high">{isCn ? "高" : "High"}</option>
+            </select>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={profile.searchPlaceholder} style={{ flex: 1, minWidth: 240, padding: 12, borderRadius: 14, border: "1px solid rgba(148,163,184,0.18)" }} />
+            <button type="button" onClick={() => setView("board")} style={{ borderRadius: 999, border: "1px solid rgba(37,99,235,0.16)", background: view === "board" ? "#2563eb" : "#eff6ff", color: view === "board" ? "#fff" : "#2563eb", padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>
+              {profile.boardLabel}
+            </button>
+            <button type="button" onClick={() => setView("list")} style={{ borderRadius: 999, border: "1px solid rgba(37,99,235,0.16)", background: view === "list" ? "#2563eb" : "#eff6ff", color: view === "list" ? "#fff" : "#2563eb", padding: "9px 14px", fontWeight: 700, cursor: "pointer" }}>
+              {profile.listLabel}
+            </button>
+            <button type="button" onClick={addTask} style={{ borderRadius: 999, border: "none", background: "#2563eb", color: "#fff", padding: "10px 16px", fontWeight: 800, cursor: "pointer" }}>
+              {profile.addButton}
+            </button>
+          </div>
+        </section>
+
+        {view === "board" ? (
+          <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 14 }}>
+            {([
+              { key: "todo", label: isCn ? "待办" : "Todo", tone: "#64748b" },
+              { key: "doing", label: isCn ? "进行中" : "Doing", tone: "#2563eb" },
+              { key: "done", label: isCn ? "已完成" : "Done", tone: "#16a34a" },
+            ] as const).map((column) => (
+              <div key={column.key} style={{ borderRadius: 20, background: "#ffffff", border: "1px solid rgba(148,163,184,0.14)", padding: 16, minHeight: 260 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontWeight: 800, color: column.tone }}>{column.label}</div>
+                  <div style={{ borderRadius: 999, padding: "4px 10px", background: "#eff6ff", color: column.tone, fontSize: 12, fontWeight: 800 }}>
+                    {grouped[column.key].length}
+                  </div>
+                </div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {grouped[column.key].map((row) => (
+                    <div key={row.id} style={{ borderRadius: 16, border: "1px solid rgba(148,163,184,0.14)", background: "#f8fafc", padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <div style={{ fontWeight: 800 }}>{row.title}</div>
+                        <div style={{ fontSize: 12, color: "#f97316", fontWeight: 800 }}>{row.priority}</div>
+                      </div>
+                      <div style={{ marginTop: 8, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>{row.desc}</div>
+                      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => moveRow(row.id, -1)} style={{ borderRadius: 999, border: "1px solid rgba(148,163,184,0.18)", background: "#fff", padding: "6px 10px", cursor: "pointer" }}>
+                          {isCn ? "上移" : "Back"}
+                        </button>
+                        <button type="button" onClick={() => moveRow(row.id, 1)} style={{ borderRadius: 999, border: "1px solid rgba(148,163,184,0.18)", background: "#fff", padding: "6px 10px", cursor: "pointer" }}>
+                          {isCn ? "推进" : "Advance"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        ) : (
+          <section style={{ borderRadius: 20, background: "#ffffff", border: "1px solid rgba(148,163,184,0.14)", overflow: "hidden" }}>
+            {visible.map((row) => (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "1.4fr 0.7fr 0.7fr 0.5fr auto", gap: 12, padding: "16px 18px", borderBottom: "1px solid rgba(148,163,184,0.12)", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{row.title}</div>
+                  <div style={{ marginTop: 6, color: "#64748b", fontSize: 13 }}>{row.desc}</div>
+                </div>
+                <div style={{ color: "#2563eb", fontWeight: 700 }}>{row.owner}</div>
+                <div style={{ color: "#f97316", fontWeight: 700 }}>{row.priority}</div>
+                <div style={{ color: "#475569" }}>{row.status}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => moveRow(row.id, -1)} style={{ borderRadius: 999, border: "1px solid rgba(148,163,184,0.18)", background: "#fff", padding: "6px 10px", cursor: "pointer" }}>
+                    {isCn ? "回退" : "Back"}
+                  </button>
+                  <button type="button" onClick={() => moveRow(row.id, 1)} style={{ borderRadius: 999, border: "1px solid rgba(148,163,184,0.18)", background: "#fff", padding: "6px 10px", cursor: "pointer" }}>
+                    {isCn ? "推进" : "Advance"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
           <div style={{ borderRadius: 22, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "推进路径" : "Progress path"}</div>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{profile.progressTitle}</div>
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-              {(isCn ? ["线索识别", "首次沟通", "方案与报价", "签约与升级"] : ["Lead qualification", "First touch", "Proposal and pricing", "Close and upgrade"]).map((item, index) => (
+              {profile.progressItems.map((item, index) => (
                 <div key={item} style={{ borderRadius: 14, background: index === 0 ? "#eff6ff" : "#f8fafc", padding: "12px 14px", color: "#334155" }}>
                   {item}
                 </div>
               ))}
             </div>
           </div>
-          <div style={{ borderRadius: 22, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "页面角色" : "Page role"}</div>
-            <p style={{ marginTop: 12, color: "#94a3b8", lineHeight: 1.8 }}>
-              {isCn ? "这一页承接销售任务和成交节奏，应该看起来像真正销售后台的推进页，而不是普通任务列表。" : "This page should feel like a true sales progression workspace, not a generic task list."}
-            </p>
+          <div style={{ borderRadius: 22, background: "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 20, display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{profile.chartHierarchyLabel}</div>
+            {metrics.ownerLoad.map((item, index) => (
+              <div key={item.owner} style={{ borderRadius: 14, background: index === 0 ? "#eff6ff" : "#f8fafc", padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, fontWeight: 700 }}>
+                  <span>{item.owner}</span>
+                  <span>{item.count}</span>
+                </div>
+                <div style={{ marginTop: 8, height: 8, borderRadius: 999, background: "rgba(148,163,184,0.18)", overflow: "hidden" }}>
+                  <div style={{ width: String(Math.max(8, item.share)) + "%", height: "100%", borderRadius: 999, background: "#2563eb" }}></div>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
+
+        <section style={{ borderRadius: 22, background: "#0f172a", color: "#e2e8f0", padding: 20 }}>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>{profile.pageRoleTitle}</div>
+          <p style={{ marginTop: 12, color: "#94a3b8", lineHeight: 1.8 }}>
+            {profile.pageRoleBody}
+          </p>
+        </section>
         <Link href="/" style={{ width: "fit-content", textDecoration: "none", borderRadius: 999, padding: "10px 14px", background: "#2563eb", color: "#ffffff" }}>
-          {isCn ? "返回销售总览" : "Back to sales overview"}
+          {profile.backLabel}
         </Link>
       </div>
     </main>
@@ -15804,12 +17771,15 @@ export async function buildSpecDrivenWorkspaceFiles(
   }
   const archetype = getScaffoldArchetype(spec)
   const routeSet = new Set(extractPlannedRouteNames(spec))
+  const shouldEmitTasksPage = routeSet.has("tasks") || shouldRenderTaskWorkbench(spec)
 
-  if (spec.planTier !== "free" && spec.planTier !== "starter") {
+  if (shouldEmitTasksPage) {
     pushWorkspaceFile({
       path: "app/tasks/page.tsx",
       content: renderTasksPage(spec),
-      reason: "Add generated tasks entry page for non-basic tiers",
+      reason: shouldRenderTaskWorkbench(spec)
+        ? "Add a scene-aware generated tasks entry page"
+        : "Add generated tasks entry page for planned task routes",
     })
   }
 

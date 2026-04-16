@@ -29,6 +29,12 @@ export type GenerateArchetype =
   | "api_platform"
   | "community"
   | "website_landing_download"
+  | "healthcare"
+  | "education"
+  | "finance"
+  | "recruiting"
+  | "support"
+  | "commerce_ops"
   | "admin_ops_internal_tool"
 
 export type GeneratePlanSnapshot = {

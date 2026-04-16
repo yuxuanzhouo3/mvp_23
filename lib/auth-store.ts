@@ -105,6 +105,11 @@ async function writeStore(store: AuthStore) {
   await writeAtomicTextFile(AUTH_FILE, serialized)
 }
 
+export async function findUserByEmail(email: string) {
+  const store = await readStore()
+  return store.users.find((user) => user.email.toLowerCase() === email.trim().toLowerCase()) ?? null
+}
+
 export async function findUserByCredentials(email: string, password: string) {
   const store = await readStore()
   return (
@@ -172,6 +177,24 @@ export async function createLocalUser(input: {
   store.users.push(next)
   await writeStore(store)
   return next
+}
+
+export async function updateLocalUserPassword(email: string, password: string) {
+  const normalizedEmail = String(email ?? "").trim().toLowerCase()
+  const nextPassword = String(password ?? "")
+  if (!normalizedEmail || !nextPassword) {
+    throw new Error("email and password are required")
+  }
+
+  const store = await readStore()
+  const user = store.users.find((item) => item.email.toLowerCase() === normalizedEmail) ?? null
+  if (!user) {
+    return null
+  }
+
+  user.password = nextPassword
+  await writeStore(store)
+  return user
 }
 
 export async function createSession(userId: string) {

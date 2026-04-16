@@ -45,6 +45,7 @@ function inferNameFromPrompt(prompt?: string | null, region?: Region, spec?: Par
   if (!text) return ""
 
   const explicit =
+    text.match(/(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|叫|名为)\s*["“'`]?([\u4e00-\u9fa5A-Za-z0-9][\u4e00-\u9fa5A-Za-z0-9 _-]{1,40}?)(?=\s*(?:的|，|。|,|\.|包含|包括|要求|并且|用于|供|给|with|for|$))["”'`]?/iu)?.[1] ||
     text.match(/名字叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
     text.match(/叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
     text.match(/named\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
@@ -56,6 +57,12 @@ function inferNameFromPrompt(prompt?: string | null, region?: Region, spec?: Par
   if (spec?.kind === "community" || /community|社区|反馈/i.test(text)) return "Community Hub"
   if (/api|接口|数据平台/i.test(text)) return "API Studio"
   if (/site|website|官网|landing/i.test(text)) return "AI Site Generator"
+  if (/health|healthcare|medical|clinic|patient|appointment|医疗|诊所|患者|预约|护理|随访|分诊/.test(text)) return region === "cn" ? "晨星医务台" : "CareLoop"
+  if (/education|course|student|assignment|school|learning|教育|课程|学生|作业|教务|排课|教学/.test(text)) return region === "cn" ? "晨星教务台" : "ClassOrbit"
+  if (/finance|ledger|transaction|reconciliation|invoice|金融|财务|账本|交易|对账|发票|账务/.test(text)) return region === "cn" ? "财务星图" : "LedgerFlow"
+  if (/recruit|hiring|candidate|interview|talent|resume|招聘|候选人|面试|岗位|人才|简历/.test(text)) return region === "cn" ? "人才引擎" : "TalentLoop"
+  if (/support|ticket|helpdesk|knowledge base|客服|售后|工单|帮助台|知识库|客诉/.test(text)) return region === "cn" ? "客服中枢" : "ResolveDesk"
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|电商|商城|库存|商品|履约|仓库|订单/.test(text)) return region === "cn" ? "履约中台" : "FulfillOps"
   if (/task|任务|流程/i.test(text)) return "TaskFlow"
   return region === "cn" ? "AI App Studio" : "AI App Studio"
 }
@@ -104,7 +111,7 @@ function inferRoutesFromSpec(spec?: Partial<AppSpec> | null) {
   if (spec?.features?.includes("analytics_page")) routes.add("/analytics")
   if (spec?.features?.includes("about_page")) routes.add("/about")
 
-  if (routes.size === 0) routes.add("/")
+  if (routes.size === 0) routes.add("/dashboard")
   return Array.from(routes)
 }
 

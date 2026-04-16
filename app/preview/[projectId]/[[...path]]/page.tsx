@@ -38,9 +38,16 @@ export default async function PreviewProjectPage({
     })
     const allowedPages = new Set(
       (presentation.routes.length ? presentation.routes : ["/dashboard", "/editor", "/runs", "/templates", "/pricing"])
-        .map((route) => route.replace(/^\//, ""))
+        .map((route) => {
+          const normalizedRoute = route.replace(/^\//, "")
+          return normalizedRoute || "dashboard"
+        })
     )
-    const normalizedPage = page || (allowedPages.has("dashboard") ? "dashboard" : Array.from(allowedPages)[0] || "dashboard")
+    const normalizedPage =
+      page ||
+      (allowedPages.has("dashboard")
+        ? "dashboard"
+        : Array.from(allowedPages)[0] || "dashboard")
 
     if (!allowedPages.has(normalizedPage)) {
       notFound()

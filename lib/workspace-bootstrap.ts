@@ -178,7 +178,7 @@ function withinStartupGrace(lastStartedAt?: string, graceMs = 25_000) {
   return Date.now() - started < graceMs
 }
 
-async function normalizeRuntimeStatus<T extends WorkspaceRuntimeState & { lastStartedAt?: string }>(
+export async function normalizeRuntimeStatus<T extends WorkspaceRuntimeState & { lastStartedAt?: string }>(
   runtime: T | undefined
 ): Promise<T | undefined> {
   if (!runtime) return runtime
@@ -287,8 +287,9 @@ async function buildProjectDetailSnapshot(projectId: string): Promise<WorkspaceP
     spec,
     latestHistory,
   })
+  const requestedPreviewMode = project.previewMode ?? getDefaultPreviewMode()
   const activeMode = resolveActivePreviewMode({
-    previewMode: project.previewMode ?? getDefaultPreviewMode(),
+    previewMode: requestedPreviewMode,
     sandboxStatus: project.sandboxRuntime?.status,
     runtimeStatus: runtime?.status,
   })
@@ -297,7 +298,7 @@ async function buildProjectDetailSnapshot(projectId: string): Promise<WorkspaceP
   const runtimeUrl = normalizeRuntimeUrl(safeId, runtime?.url)
   const sandboxUrl = buildSandboxPreviewUrl(safeId)
   const preview: WorkspacePreviewState = {
-    defaultMode: "static_ssr",
+    defaultMode: requestedPreviewMode,
     activeMode,
     status: resolvePreviewStatus({
       activeMode,
@@ -317,7 +318,7 @@ async function buildProjectDetailSnapshot(projectId: string): Promise<WorkspaceP
       sandboxUrl,
     }),
     fallbackReason: resolveFallbackReason({
-      requestedMode: project.previewMode ?? getDefaultPreviewMode(),
+      requestedMode: requestedPreviewMode,
       activeMode,
       runtimeStatus: runtime?.status,
       runtimeError: runtime?.lastError,

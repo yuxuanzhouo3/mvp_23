@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createPhoneOtp } from "@/lib/phone-auth-store"
+import { getTencentSmsConfig, sendTencentSmsOtp } from "@/lib/tencent-sms"
 
 export const runtime = "nodejs"
 
@@ -25,6 +26,31 @@ export async function POST(req: Request) {
   }
 
   const record = await createPhoneOtp({ phone, email })
+  const tencentSms = getTencentSmsConfig()
+
+  if (tencentSms.configured) {
+    const result = await sendTencentSmsOtp({ phone, code: record.code })
+    if (!result.ok) {
+      return NextResponse.json(
+        {
+          error: "Tencent SMS send failed",
+          providerCode: result.providerCode,
+          providerMessage: result.providerMessage,
+          requestId: result.requestId,
+        },
+        { status: 502 }
+      )
+    }
+    return NextResponse.json({
+      ok: true,
+      sandbox: false,
+      provider: "tencent-sms",
+      requestId: result.requestId,
+      expiresInSeconds: 300,
+      message: "Verification code sent.",
+    })
+  }
+
   return NextResponse.json({
     ok: true,
     sandbox: true,

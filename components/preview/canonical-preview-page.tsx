@@ -87,12 +87,43 @@ type CanonicalPreviewPageProps = {
   history: PreviewHistoryItem[]
 }
 
+type PreviewTaskRow = {
+  id: string
+  title: string
+  desc: string
+  status: "todo" | "doing" | "done"
+  owner: string
+  priority: "low" | "medium" | "high"
+}
+
+type PreviewTaskExperience = {
+  title: string
+  subtitle: string
+  addLabel: string
+  searchPlaceholder: string
+  boardLabel: string
+  listLabel: string
+  focusLabel: string
+  chartTitle: string
+  chartModeLabels: [string, string, string, string]
+  rows: PreviewTaskRow[]
+}
+
 type PreviewFile = {
   id: string
   group: string
   label: string
   path: string
   content: string
+}
+
+function cardStyle(background = "#13151d") {
+  return {
+    borderRadius: 24,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background,
+    padding: 18,
+  } as const
 }
 
 function PreviewAnchor({
@@ -283,15 +314,170 @@ function formatDate(value: string, locale: string) {
   }
 }
 
-function cardStyle(background = "#13151d") {
-  return {
-    borderRadius: 24,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background,
-    padding: 18,
-  } as const
-}
+function getPreviewTaskExperience({
+  isCn,
+  previewKind,
+  promptText,
+}: {
+  isCn: boolean
+  previewKind: string
+  promptText: string
+}): PreviewTaskExperience {
+  if (previewKind === "crm") {
+    return isCn
+      ? {
+          title: "销售任务流",
+          subtitle: "跟进、报价、回访和签约动作直接在预览里推进。",
+          addLabel: "新建跟进",
+          searchPlaceholder: "搜索客户、负责人或阶段...",
+          boardLabel: "销售看板",
+          listLabel: "线索列表",
+          focusLabel: "高意向客户",
+          chartTitle: "商机推进图",
+          chartModeLabels: ["漏斗", "折线", "柱状", "占比"],
+          rows: [
+            { id: "crm-1", title: "跟进华星续约", desc: "确认预算与法务反馈", status: "doing", owner: "Liam", priority: "high" },
+            { id: "crm-2", title: "输出景曜报价", desc: "补齐版本与交付说明", status: "todo", owner: "Emma", priority: "medium" },
+            { id: "crm-3", title: "Northstar 签约回访", desc: "同步上线计划与管理员名单", status: "done", owner: "Noah", priority: "low" },
+          ],
+        }
+      : {
+          title: "Sales execution flow",
+          subtitle: "Advance follow-ups, proposals, handoff, and close actions directly inside preview.",
+          addLabel: "New follow-up",
+          searchPlaceholder: "Search accounts, owners, or stages...",
+          boardLabel: "Pipeline board",
+          listLabel: "Lead list",
+          focusLabel: "High-intent accounts",
+          chartTitle: "Deal progression",
+          chartModeLabels: ["Funnel", "Line", "Bar", "Mix"],
+          rows: [
+            { id: "crm-1", title: "Follow Huaxing renewal", desc: "Confirm budget and legal feedback", status: "doing", owner: "Liam", priority: "high" },
+            { id: "crm-2", title: "Prepare Jingyao quote", desc: "Add tier and handoff notes", status: "todo", owner: "Emma", priority: "medium" },
+            { id: "crm-3", title: "Northstar close follow-up", desc: "Sync onboarding plan and admin seats", status: "done", owner: "Noah", priority: "low" },
+          ],
+        }
+  }
 
+  if (previewKind === "api_platform") {
+    const webhookHeavy = /webhook|callback|delivery|event|retry|回调|投递|事件/.test(promptText)
+    return isCn
+      ? {
+          title: webhookHeavy ? "事件投递轨道" : "接口运行轨道",
+          subtitle: webhookHeavy ? "重试、恢复和订阅状态在预览里联动变化。" : "接口、环境和运行状态在预览里一起变化。",
+          addLabel: webhookHeavy ? "新建回调动作" : "新建接口动作",
+          searchPlaceholder: webhookHeavy ? "搜索事件、订阅或环境..." : "搜索接口、日志或环境...",
+          boardLabel: webhookHeavy ? "投递轨道" : "运行看板",
+          listLabel: webhookHeavy ? "事件列表" : "接口列表",
+          focusLabel: webhookHeavy ? "待恢复事件" : "高负载接口",
+          chartTitle: webhookHeavy ? "事件恢复图" : "API 运行概览",
+          chartModeLabels: webhookHeavy ? ["进度", "折线", "柱状", "占比"] : ["柱状", "折线", "进度", "占比"],
+          rows: webhookHeavy
+            ? [
+                { id: "api-1", title: "恢复 project.preview.ready", desc: "检查失败原因并触发重试", status: "doing", owner: "Gateway", priority: "high" },
+                { id: "api-2", title: "同步 invoice.paid 订阅", desc: "把计费回调映射到 CRM", status: "todo", owner: "Billing", priority: "medium" },
+                { id: "api-3", title: "清理 token.revoked 队列", desc: "安全事件已完成回放", status: "done", owner: "Security", priority: "low" },
+              ]
+            : [
+                { id: "api-1", title: "检查 Generate API 配额", desc: "观察高流量租户请求趋势", status: "doing", owner: "Platform", priority: "high" },
+                { id: "api-2", title: "整理 OAuth 接入规则", desc: "补齐回调与 scope 说明", status: "todo", owner: "Docs", priority: "medium" },
+                { id: "api-3", title: "发布 Preview runtime 变更", desc: "当前环境已准备就绪", status: "done", owner: "Runtime", priority: "low" },
+              ],
+        }
+      : {
+          title: webhookHeavy ? "Webhook delivery rail" : "API operating rail",
+          subtitle: webhookHeavy ? "Retries, recovery, and subscription health move together inside preview." : "Endpoints, environments, and runtime health now move together inside preview.",
+          addLabel: webhookHeavy ? "New event action" : "New API action",
+          searchPlaceholder: webhookHeavy ? "Search events, subscriptions, or environments..." : "Search endpoints, logs, or environments...",
+          boardLabel: webhookHeavy ? "Delivery rail" : "Runtime board",
+          listLabel: webhookHeavy ? "Event list" : "Endpoint list",
+          focusLabel: webhookHeavy ? "Recovering events" : "High-load endpoints",
+          chartTitle: webhookHeavy ? "Delivery recovery" : "API runtime overview",
+          chartModeLabels: webhookHeavy ? ["Progress", "Line", "Bar", "Mix"] : ["Bar", "Line", "Progress", "Mix"],
+          rows: webhookHeavy
+            ? [
+                { id: "api-1", title: "Recover project.preview.ready", desc: "Inspect failure and replay delivery", status: "doing", owner: "Gateway", priority: "high" },
+                { id: "api-2", title: "Sync invoice.paid subscription", desc: "Route billing callbacks into CRM", status: "todo", owner: "Billing", priority: "medium" },
+                { id: "api-3", title: "Clear token.revoked queue", desc: "Security replay finished", status: "done", owner: "Security", priority: "low" },
+              ]
+            : [
+                { id: "api-1", title: "Review Generate API quota", desc: "Watch heavy-tenant traffic trend", status: "doing", owner: "Platform", priority: "high" },
+                { id: "api-2", title: "Polish OAuth onboarding", desc: "Add callback and scope guidance", status: "todo", owner: "Docs", priority: "medium" },
+                { id: "api-3", title: "Ship Preview runtime update", desc: "Current environment is ready", status: "done", owner: "Runtime", priority: "low" },
+              ],
+        }
+  }
+
+  if (previewKind === "code_platform") {
+    return isCn
+      ? {
+          title: "AI 改码工作流",
+          subtitle: "解释、修复、生成和重构不再是静态文案，而是会改动文件轨道。",
+          addLabel: "新建 AI 任务",
+          searchPlaceholder: "搜索文件、符号或 AI 动作...",
+          boardLabel: "改动轨道",
+          listLabel: "文件列表",
+          focusLabel: "当前改动焦点",
+          chartTitle: "AI 改动与运行图",
+          chartModeLabels: ["进度", "折线", "柱状", "树状"],
+          rows: [
+            { id: "code-1", title: "为 editor/page.tsx 注入 AI 交互轨道", desc: "保持主壳不散并补状态同步", status: "doing", owner: "Copilot", priority: "high" },
+            { id: "code-2", title: "检查 runs/page.tsx 预览守卫", desc: "补回退与输出提示", status: "todo", owner: "Runtime", priority: "medium" },
+            { id: "code-3", title: "同步 templates 轨道状态", desc: "模板切换已写入工作区会话", status: "done", owner: "Template", priority: "low" },
+          ],
+        }
+      : {
+          title: "AI code-edit workflow",
+          subtitle: "Explain, fix, generate, and refactor now change the file rail instead of acting like static copy.",
+          addLabel: "New AI task",
+          searchPlaceholder: "Search files, symbols, or AI actions...",
+          boardLabel: "Change rail",
+          listLabel: "File list",
+          focusLabel: "Current code focus",
+          chartTitle: "AI edits and runtime",
+          chartModeLabels: ["Progress", "Line", "Bar", "Tree"],
+          rows: [
+            { id: "code-1", title: "Inject AI workflow into editor/page.tsx", desc: "Keep the shell stable while syncing state", status: "doing", owner: "Copilot", priority: "high" },
+            { id: "code-2", title: "Review preview guards in runs/page.tsx", desc: "Add fallback and output hints", status: "todo", owner: "Runtime", priority: "medium" },
+            { id: "code-3", title: "Sync template rail state", desc: "Template switching now updates workspace session", status: "done", owner: "Template", priority: "low" },
+          ],
+        }
+  }
+
+  return isCn
+    ? {
+        title: "任务执行面",
+        subtitle: "新增、推进、完成和筛选都直接作用于当前工作流。",
+        addLabel: "新建任务",
+        searchPlaceholder: "搜索任务、负责人或标签...",
+        boardLabel: "任务看板",
+        listLabel: "任务列表",
+        focusLabel: "当前焦点任务",
+        chartTitle: "任务推进图",
+        chartModeLabels: ["进度", "占比", "柱状", "树状"],
+        rows: [
+          { id: "task-1", title: "完成生成器任务页", desc: "保证新增、推进与完成可操作", status: "doing", owner: "产品", priority: "high" },
+          { id: "task-2", title: "同步预览图表状态", desc: "让不同 prompt 看到不同图形", status: "todo", owner: "预览", priority: "medium" },
+          { id: "task-3", title: "整理交付检查项", desc: "准备部署与登录测试", status: "done", owner: "交付", priority: "low" },
+        ],
+      }
+    : {
+        title: "Task execution surface",
+        subtitle: "Create, advance, complete, and filter actions directly change the current workflow.",
+        addLabel: "New task",
+        searchPlaceholder: "Search tasks, owners, or tags...",
+        boardLabel: "Task board",
+        listLabel: "Task list",
+        focusLabel: "Current focus",
+        chartTitle: "Task progression",
+        chartModeLabels: ["Progress", "Mix", "Bar", "Tree"],
+        rows: [
+          { id: "task-1", title: "Finish generator tasks page", desc: "Make create, advance, and complete actions usable", status: "doing", owner: "Product", priority: "high" },
+          { id: "task-2", title: "Sync preview chart state", desc: "Let different prompts render different chart forms", status: "todo", owner: "Preview", priority: "medium" },
+          { id: "task-3", title: "Prepare release checks", desc: "Get deployment and login testing ready", status: "done", owner: "Delivery", priority: "low" },
+        ],
+      }
+}
 function buildWorkbenchFiles({
   kind,
   brand,
@@ -303,6 +489,32 @@ function buildWorkbenchFiles({
   region: "cn" | "intl"
   isCn: boolean
 }) {
+  if (kind === "admin_ops") {
+    return [
+      {
+        id: "admin-approvals",
+        group: "app",
+        label: "approvals/page.tsx",
+        path: "app/approvals/page.tsx",
+        content: `export const approvalQueues = ["access_review", "policy_change", "incident_signoff"]\nexport const workspaceMode = "${isCn ? "china-control-plane" : "internal-control-plane"}"`,
+      },
+      {
+        id: "admin-security",
+        group: "app",
+        label: "security/page.tsx",
+        path: "app/security/page.tsx",
+        content: `export const policyScopes = ["workspace", "billing", "preview", "deploy"]\nexport const auditMode = "${isCn ? "审计优先" : "audit-first"}"`,
+      },
+      {
+        id: "admin-automation",
+        group: "lib",
+        label: "governance-rules.ts",
+        path: "lib/governance-rules.ts",
+        content: `export function syncGovernanceRule(event: string) {\n  return { event, notify: ["security", "ops", "workspace-admin"], export: true }\n}`,
+      },
+    ] satisfies PreviewFile[]
+  }
+
   if (kind === "crm") {
     return [
       {
@@ -582,7 +794,7 @@ export function CanonicalPreviewPage({
   const isCommerceOpsPreview = previewKind === "commerce_ops"
   const isSpecializedOpsPreview = isHealthcarePreview || isEducationPreview || isFinancePreview || isRecruitingPreview || isSupportPreview || isCommerceOpsPreview
   const isAdminPreview = previewKind === "admin_ops" || previewKind === "task"
-  const workbenchKind = isAdminPreview || isSpecializedOpsPreview ? "task" : previewKind
+  const workbenchKind = previewKind === "admin_ops" ? "admin_ops" : isSpecializedOpsPreview ? "task" : previewKind
 
   const dashboardSections = useMemo(() => {
     if (isCrmPreview) {
@@ -627,13 +839,318 @@ export function CanonicalPreviewPage({
       }),
     [isCn, presentation.displayName, region, workbenchKind]
   )
-  const [selectedFileId, setSelectedFileId] = useState(workbenchFiles[0]?.id ?? "")
-  const [openFileIds, setOpenFileIds] = useState(workbenchFiles.slice(0, 3).map((item) => item.id))
-  const [activityView, setActivityView] = useState<"explorer" | "search" | "runs" | "settings">("explorer")
-  const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal")
-  const [aiMode, setAiMode] = useState<"explain" | "fix" | "generate" | "refactor">("generate")
-  const [runsFilter, setRunsFilter] = useState<"all" | "running" | "failed" | "ready">("all")
-  const [templateCategory, setTemplateCategory] = useState<"product" | "ops" | "data">("product")
+  const [selectedFileId, setSelectedFileId] = useState(() => workbenchFiles[0]?.id ?? "")
+  const [aiMode, setAiMode] = useState<"explain" | "fix" | "generate" | "refactor">("explain")
+  const [runsFilter, setRunsFilter] = useState<"all" | "ready" | "running" | "failed">("all")
+  useEffect(() => {
+    if (!workbenchFiles.some((item) => item.id === selectedFileId)) {
+      setSelectedFileId(workbenchFiles[0]?.id ?? "")
+    }
+  }, [selectedFileId, workbenchFiles])
+
+  const previewTaskExperience = useMemo(
+    () =>
+      getPreviewTaskExperience({
+        isCn,
+        previewKind,
+        promptText: String((spec as { prompt?: string } | null)?.prompt ?? presentation.displayName ?? "").toLowerCase(),
+      }),
+    [isCn, presentation.displayName, previewKind, spec]
+  )
+  const [previewTaskRows, setPreviewTaskRows] = useState<PreviewTaskRow[]>(previewTaskExperience.rows)
+  const [previewTaskQuery, setPreviewTaskQuery] = useState("")
+  const [previewTaskView, setPreviewTaskView] = useState<"board" | "list">("board")
+  useEffect(() => {
+    setPreviewTaskRows(previewTaskExperience.rows)
+  }, [previewTaskExperience])
+
+  const filteredPreviewTaskRows = useMemo(() => {
+    const needle = previewTaskQuery.trim().toLowerCase()
+    return previewTaskRows.filter((row) => {
+      const haystack = [row.title, row.desc, row.owner, row.status, row.priority].join(" ").toLowerCase()
+      return !needle || haystack.includes(needle)
+    })
+  }, [previewTaskQuery, previewTaskRows])
+
+  const previewTaskGroups = useMemo(
+    () => ({
+      todo: filteredPreviewTaskRows.filter((row) => row.status === "todo"),
+      doing: filteredPreviewTaskRows.filter((row) => row.status === "doing"),
+      done: filteredPreviewTaskRows.filter((row) => row.status === "done"),
+    }),
+    [filteredPreviewTaskRows]
+  )
+
+  const previewTaskMetrics = useMemo(() => {
+    const total = previewTaskRows.length
+    const done = previewTaskRows.filter((row) => row.status === "done").length
+    const doing = previewTaskRows.filter((row) => row.status === "doing").length
+    const todo = previewTaskRows.filter((row) => row.status === "todo").length
+    const owners = Array.from(new Set(previewTaskRows.map((row) => row.owner)))
+    const completionRate = total ? Math.round((done / total) * 100) : 0
+    return { total, done, doing, todo, owners, completionRate, focus: previewTaskRows.find((row) => row.priority === "high" && row.status !== "done") ?? previewTaskRows[0] ?? null }
+  }, [previewTaskRows])
+
+  const movePreviewTask = (id: string, direction: -1 | 1) => {
+    const order: PreviewTaskRow["status"][] = ["todo", "doing", "done"]
+    setPreviewTaskRows((current) =>
+      current.map((row) => {
+        if (row.id !== id) return row
+        const nextIndex = Math.max(0, Math.min(order.length - 1, order.indexOf(row.status) + direction))
+        return { ...row, status: order[nextIndex] }
+      })
+    )
+  }
+
+  const addPreviewTask = () => {
+    setPreviewTaskRows((current) => [
+      {
+        id: `preview-task-${Date.now()}`,
+        title: previewTaskExperience.addLabel,
+        desc: previewTaskExperience.subtitle,
+        status: "todo",
+        owner: isCn ? "新负责人" : "New owner",
+        priority: "medium",
+      },
+      ...current,
+    ])
+  }
+
+  const previewTaskChartRows = [
+    { label: isCn ? "待办" : "Todo", value: previewTaskMetrics.todo, tone: "#94a3b8" },
+    { label: isCn ? "进行中" : "Doing", value: previewTaskMetrics.doing, tone: "#2563eb" },
+    { label: isCn ? "已完成" : "Done", value: previewTaskMetrics.done, tone: "#16a34a" },
+  ]
+  const previewTaskTotal = Math.max(1, previewTaskMetrics.total)
+  const previewTaskSegments = [
+    `${previewTaskChartRows[0].tone} 0 ${(previewTaskChartRows[0].value / previewTaskTotal) * 360}deg`,
+    `${previewTaskChartRows[1].tone} ${(previewTaskChartRows[0].value / previewTaskTotal) * 360}deg ${((previewTaskChartRows[0].value + previewTaskChartRows[1].value) / previewTaskTotal) * 360}deg`,
+    `${previewTaskChartRows[2].tone} ${((previewTaskChartRows[0].value + previewTaskChartRows[1].value) / previewTaskTotal) * 360}deg 360deg`,
+  ].join(", ")
+  const previewTaskOwnerLoad = previewTaskMetrics.owners.map((owner) => {
+    const count = previewTaskRows.filter((row) => row.owner === owner).length
+    return {
+      owner,
+      count,
+      share: previewTaskRows.length ? Math.round((count / previewTaskRows.length) * 100) : 0,
+    }
+  })
+  const renderPreviewTaskSurface = ({ dark = false }: { dark?: boolean } = {}) => {
+    const surfaceBackground = dark ? "#161a24" : cardBackground
+    const panelBackground = dark ? "#111827" : railBackground
+    const borderColor = dark ? "rgba(255,255,255,0.08)" : shellBorder
+    const textColor = dark ? "#f8fafc" : shellText
+    const mutedColor = dark ? "rgba(226,232,240,0.72)" : shellMuted
+
+    return (
+      <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ ...cardStyle(surfaceBackground), border: `1px solid ${borderColor}`, boxShadow: dark ? "none" : "0 16px 40px rgba(15,23,42,0.08)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: textColor }}>{previewTaskExperience.title}</div>
+              <div style={{ marginTop: 8, color: mutedColor, lineHeight: 1.7 }}>{previewTaskExperience.subtitle}</div>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={addPreviewTask}
+                style={{ borderRadius: 14, padding: "11px 16px", background: primaryCtaBackground, color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}
+              >
+                {previewTaskExperience.addLabel}
+              </button>
+              <div style={{ display: "flex", gap: 8, padding: 4, borderRadius: 999, background: panelBackground, border: `1px solid ${borderColor}` }}>
+                {[
+                  { key: "board", label: previewTaskExperience.boardLabel },
+                  { key: "list", label: previewTaskExperience.listLabel },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setPreviewTaskView(item.key as "board" | "list")}
+                    style={{
+                      borderRadius: 999,
+                      padding: "8px 12px",
+                      background: previewTaskView === item.key ? (dark ? "rgba(124,58,237,0.28)" : "rgba(124,58,237,0.18)") : "transparent",
+                      color: previewTaskView === item.key ? textColor : mutedColor,
+                      border: "none",
+                      cursor: "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12 }}>
+            {[
+              { label: isCn ? "总任务" : "Total items", value: String(previewTaskMetrics.total), note: previewTaskExperience.chartModeLabels[0] },
+              { label: isCn ? "完成率" : "Completion", value: `${previewTaskMetrics.completionRate}%`, note: previewTaskExperience.chartModeLabels[1] },
+              { label: isCn ? "负责人" : "Owners", value: String(previewTaskMetrics.owners.length), note: previewTaskExperience.chartModeLabels[3] },
+              { label: isCn ? "焦点任务" : "Focus item", value: previewTaskMetrics.focus?.title ?? "—", note: previewTaskExperience.focusLabel },
+            ].map((item) => (
+              <div key={item.label} style={{ borderRadius: 18, background: panelBackground, border: `1px solid ${borderColor}`, padding: 14 }}>
+                <div style={{ color: mutedColor, fontSize: 12 }}>{item.label}</div>
+                <div style={{ marginTop: 10, color: textColor, fontWeight: 900, fontSize: item.label === (isCn ? "焦点任务" : "Focus item") ? 16 : 28, lineHeight: 1.3 }}>{item.value}</div>
+                <div style={{ marginTop: 8, color: mutedColor, fontSize: 12 }}>{item.note}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1.08fr 0.92fr", gap: 16 }}>
+          <div style={{ ...cardStyle(surfaceBackground), border: `1px solid ${borderColor}`, boxShadow: dark ? "none" : "0 16px 40px rgba(15,23,42,0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: textColor }}>{previewTaskExperience.chartTitle}</div>
+                <div style={{ marginTop: 6, color: mutedColor, fontSize: 13 }}>{previewTaskExperience.chartModeLabels.join(" · ")}</div>
+              </div>
+              <input
+                value={previewTaskQuery}
+                onChange={(event) => setPreviewTaskQuery(event.target.value)}
+                placeholder={previewTaskExperience.searchPlaceholder}
+                style={{
+                  minWidth: 220,
+                  borderRadius: 12,
+                  border: `1px solid ${borderColor}`,
+                  background: panelBackground,
+                  color: textColor,
+                  padding: "10px 12px",
+                  outline: "none",
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 180px", gap: 18, alignItems: "center" }}>
+              <div style={{ display: "grid", gap: 12 }}>
+                {previewTaskChartRows.map((item) => (
+                  <div key={item.label}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, color: mutedColor }}>
+                      <span>{item.label}</span>
+                      <span style={{ color: textColor, fontWeight: 700 }}>{item.value}</span>
+                    </div>
+                    <div style={{ height: 12, borderRadius: 999, background: dark ? "#1f2937" : "#e2e8f0", overflow: "hidden" }}>
+                      <div style={{ width: `${Math.max(10, Math.round((item.value / previewTaskTotal) * 100))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${item.tone}, ${item.tone}cc)` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "grid", placeItems: "center" }}>
+                <div style={{ width: 150, height: 150, borderRadius: "50%", background: `conic-gradient(${previewTaskSegments})`, display: "grid", placeItems: "center" }}>
+                  <div style={{ width: 88, height: 88, borderRadius: "50%", background: dark ? "#0f172a" : "#fff", display: "grid", placeItems: "center" }}>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ color: textColor, fontSize: 24, fontWeight: 900 }}>{previewTaskMetrics.completionRate}%</div>
+                      <div style={{ color: mutedColor, fontSize: 11 }}>{previewTaskExperience.chartModeLabels[0]}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ ...cardStyle(surfaceBackground), border: `1px solid ${borderColor}`, boxShadow: dark ? "none" : "0 16px 40px rgba(15,23,42,0.08)" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: textColor }}>{previewTaskExperience.focusLabel}</div>
+            {previewTaskMetrics.focus ? (
+              <div style={{ marginTop: 14, borderRadius: 18, background: panelBackground, border: `1px solid ${borderColor}`, padding: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ fontWeight: 800, color: textColor }}>{previewTaskMetrics.focus.title}</div>
+                  <div style={{ color: previewTaskMetrics.focus.priority === "high" ? "#f97316" : previewTaskMetrics.focus.priority === "medium" ? "#8b5cf6" : "#94a3b8", fontSize: 12, fontWeight: 800 }}>
+                    {previewTaskMetrics.focus.priority}
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, color: mutedColor, lineHeight: 1.6 }}>{previewTaskMetrics.focus.desc}</div>
+                <div style={{ marginTop: 10, color: mutedColor, fontSize: 13 }}>{previewTaskMetrics.focus.owner}</div>
+              </div>
+            ) : null}
+            <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+              {previewTaskOwnerLoad.map((item) => (
+                <div key={item.owner}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, color: mutedColor }}>
+                    <span>{item.owner}</span>
+                    <span style={{ color: textColor, fontWeight: 700 }}>{item.count}</span>
+                  </div>
+                  <div style={{ height: 10, borderRadius: 999, background: dark ? "#1f2937" : "#e2e8f0", overflow: "hidden" }}>
+                    <div style={{ width: `${Math.max(10, item.share)}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #8b5cf6, #38bdf8)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {previewTaskView === "board" ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 16 }}>
+            {[
+              { key: "todo", label: isCn ? "待办" : "Todo", rows: previewTaskGroups.todo },
+              { key: "doing", label: isCn ? "进行中" : "Doing", rows: previewTaskGroups.doing },
+              { key: "done", label: isCn ? "已完成" : "Done", rows: previewTaskGroups.done },
+            ].map((column, columnIndex) => (
+              <div key={column.key} style={{ ...cardStyle(surfaceBackground), border: `1px solid ${borderColor}`, boxShadow: dark ? "none" : "0 16px 40px rgba(15,23,42,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ color: textColor, fontWeight: 800 }}>{column.label}</div>
+                  <div style={{ color: mutedColor, fontSize: 12 }}>{column.rows.length}</div>
+                </div>
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  {column.rows.map((row) => (
+                    <div key={row.id} style={{ borderRadius: 18, background: panelBackground, border: `1px solid ${borderColor}`, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontWeight: 800, color: textColor }}>{row.title}</div>
+                        <div style={{ color: row.priority === "high" ? "#f97316" : row.priority === "medium" ? "#8b5cf6" : "#94a3b8", fontSize: 12, fontWeight: 800 }}>{row.priority}</div>
+                      </div>
+                      <div style={{ marginTop: 8, color: mutedColor, lineHeight: 1.6 }}>{row.desc}</div>
+                      <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <span style={{ color: mutedColor, fontSize: 12 }}>{row.owner}</span>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() => movePreviewTask(row.id, -1)}
+                            disabled={columnIndex === 0}
+                            style={{ borderRadius: 10, padding: "6px 10px", border: `1px solid ${borderColor}`, background: "transparent", color: columnIndex === 0 ? `${mutedColor}88` : textColor, cursor: columnIndex === 0 ? "not-allowed" : "pointer" }}
+                          >
+                            ←
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => movePreviewTask(row.id, 1)}
+                            disabled={columnIndex === 2}
+                            style={{ borderRadius: 10, padding: "6px 10px", border: `1px solid ${borderColor}`, background: "transparent", color: columnIndex === 2 ? `${mutedColor}88` : textColor, cursor: columnIndex === 2 ? "not-allowed" : "pointer" }}
+                          >
+                            →
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!column.rows.length ? <div style={{ color: mutedColor, fontSize: 13 }}>{isCn ? "当前筛选下暂无内容" : "No items for the current filter"}</div> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ ...cardStyle(surfaceBackground), border: `1px solid ${borderColor}`, boxShadow: dark ? "none" : "0 16px 40px rgba(15,23,42,0.08)" }}>
+            <div style={{ display: "grid", gap: 10 }}>
+              {filteredPreviewTaskRows.map((row) => (
+                <div key={row.id} style={{ borderRadius: 18, background: panelBackground, border: `1px solid ${borderColor}`, padding: 14, display: "grid", gridTemplateColumns: "1.4fr 1fr 120px 120px", gap: 12, alignItems: "center" }}>
+                  <div>
+                    <div style={{ color: textColor, fontWeight: 800 }}>{row.title}</div>
+                    <div style={{ marginTop: 6, color: mutedColor, lineHeight: 1.6 }}>{row.desc}</div>
+                  </div>
+                  <div style={{ color: mutedColor }}>{row.owner}</div>
+                  <div style={{ color: textColor, fontWeight: 700 }}>{row.status}</div>
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button type="button" onClick={() => movePreviewTask(row.id, -1)} style={{ borderRadius: 10, padding: "6px 10px", border: `1px solid ${borderColor}`, background: "transparent", color: textColor, cursor: "pointer" }}>←</button>
+                    <button type="button" onClick={() => movePreviewTask(row.id, 1)} style={{ borderRadius: 10, padding: "6px 10px", border: `1px solid ${borderColor}`, background: "transparent", color: textColor, cursor: "pointer" }}>→</button>
+                  </div>
+                </div>
+              ))}
+              {!filteredPreviewTaskRows.length ? <div style={{ color: mutedColor, fontSize: 13 }}>{isCn ? "当前筛选下暂无内容" : "No items for the current filter"}</div> : null}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const [pricingFocus, setPricingFocus] = useState<"free" | "starter" | "builder" | "pro" | "elite">(
     spec?.planTier === "elite" || spec?.planTier === "pro" || spec?.planTier === "builder" || spec?.planTier === "starter"
       ? spec.planTier
@@ -1078,6 +1595,42 @@ export function CanonicalPreviewPage({
     }
   }, [isCn, presentation.displayName, spec])
 
+  const dashboardChartVariant = useMemo<"bar" | "line" | "donut" | "progress">(() => {
+    const promptText = String((spec as { prompt?: string } | null)?.prompt ?? presentation.displayName ?? "").toLowerCase()
+
+    if (isApiPreview) {
+      if (/docs|sdk|guide|onboarding|文档|sdk|接入/.test(promptText)) return "line"
+      if (/usage|billing|meter|quota|rate limit|用量|计费|配额/.test(promptText)) return "donut"
+      if (/webhook|callback|delivery|event|retry|webhook|回调|投递|事件/.test(promptText)) return "progress"
+      return "bar"
+    }
+
+    if (isCrmPreview) {
+      if (/renewal|onboarding|customer success|续约|交付|上线/.test(promptText)) return "line"
+      if (/quote|approval|order|contract|报价|审批|订单|合同/.test(promptText)) return "bar"
+      return "progress"
+    }
+
+    if (isMarketingPreview) {
+      if (/devices|desktop|mobile|release distribution|installer|设备|桌面|移动端|分发/.test(promptText)) return "bar"
+      if (/docs|guide|changelog|release notes|文档|指南|更新日志|发行说明/.test(promptText)) return "line"
+      return "donut"
+    }
+
+    if (isCommunityPreview) {
+      if (/event|webinar|invite|registration|活动|直播|邀请|报名/.test(promptText)) return "line"
+      return "donut"
+    }
+
+    if (isSpecializedOpsPreview) {
+      if (/incident|alert|outage|recovery|告警|故障|恢复|异常/.test(promptText)) return "line"
+      if (/security|access|permission|role|policy|权限|角色|安全|策略/.test(promptText)) return "progress"
+      return "bar"
+    }
+
+    return "progress"
+  }, [isApiPreview, isCommunityPreview, isCrmPreview, isMarketingPreview, isSpecializedOpsPreview, presentation.displayName, spec])
+
   const tactileClassName =
     "cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:brightness-[1.03] hover:shadow-[0_18px_44px_rgba(15,23,42,0.16)] active:translate-y-[1px] active:scale-[0.99]"
   const routeKeySet = useMemo(() => new Set(routes.map((route) => route.replace(/^\//, ""))), [routes])
@@ -1133,6 +1686,7 @@ export function CanonicalPreviewPage({
     }
 
     const darkShell = !isCommunityPreview && !isMarketingPreview && !isHealthcarePreview && !isEducationPreview
+    const isControlPlaneRoute = previewKind === "admin_ops" || routePrototype === "admin_queue" || routeKey === "approvals" || routeKey === "security" || routeKey === "audit" || routeKey === "incidents"
 
     if (isCrmPreview) {
       if (routeKey === "leads") {
@@ -1451,20 +2005,34 @@ export function CanonicalPreviewPage({
           ? isCn ? "把权限、角色和访问边界放进真正的控制平面。" : "Bring roles, permissions, and access boundaries into a real control plane."
           : routeKey === "incidents"
             ? isCn ? "异常、恢复和复盘在同一条响应轨道里推进。" : "Move incidents, recovery, and postmortems through one response rail."
-            : isCn ? "让后台动作、审批和审计保持在同一工作台里。" : "Keep approvals, audit, and backoffice actions in one workspace.",
+            : isControlPlaneRoute
+              ? isCn ? "让审批、审计、访问策略和响应动作成为一个真正可操作的控制平面。" : "Turn approvals, audit, access policy, and response actions into one practical control plane."
+              : isCn ? "让后台动作、审批和审计保持在同一工作台里。" : "Keep approvals, audit, and backoffice actions in one workspace.",
       metrics: [
-        { label: isCn ? "待处理" : "Queued", value: "18", tone: "#8b5cf6" },
-        { label: isCn ? "审计事件" : "Audit events", value: "92", tone: "#38bdf8" },
-        { label: isCn ? "规则" : "Rules", value: "11", tone: "#22c55e" },
+        { label: isCn ? "待处理" : "Queued", value: isControlPlaneRoute ? "26" : "18", tone: "#8b5cf6" },
+        { label: isCn ? "审计事件" : "Audit events", value: isControlPlaneRoute ? "128" : "92", tone: "#38bdf8" },
+        { label: isCn ? "规则" : "Rules", value: isControlPlaneRoute ? "17" : "11", tone: "#22c55e" },
       ],
       lanes: [
-        { title: isCn ? "关键动作" : "Priority action", meta: isCn ? "审批、审计和团队节奏同屏推进" : "Approvals, audit, and team rhythm stay together", status: titleCase(routeKey) },
-        { title: isCn ? "控制平面" : "Control plane", meta: isCn ? "已经脱离通用任务板壳" : "Detached from the generic task-shell", status: isCn ? "稳定" : "Stable" },
+        {
+          title: isControlPlaneRoute ? (isCn ? "高风险访问审查" : "High-risk access review") : (isCn ? "关键动作" : "Priority action"),
+          meta: isControlPlaneRoute
+            ? isCn ? "审批、策略和恢复动作按优先级集中处理" : "Approvals, policies, and recovery actions are triaged by priority"
+            : isCn ? "审批、审计和团队节奏同屏推进" : "Approvals, audit, and team rhythm stay together",
+          status: titleCase(routeKey),
+        },
+        {
+          title: isCn ? "控制平面" : "Control plane",
+          meta: isControlPlaneRoute
+            ? isCn ? "这里是治理轨道，不再像通用任务板" : "This is a governance rail, not a generic task board"
+            : isCn ? "已经脱离通用任务板壳" : "Detached from the generic task-shell",
+          status: isCn ? "稳定" : "Stable",
+        },
       ],
       bars: [
-        { label: isCn ? "审批" : "Approvals", value: 52, color: "#8b5cf6" },
-        { label: isCn ? "审计" : "Audit", value: 49, color: "#38bdf8" },
-        { label: isCn ? "自动化" : "Automation", value: 26, color: "#22c55e" },
+        { label: isCn ? "审批" : "Approvals", value: isControlPlaneRoute ? 64 : 52, color: "#8b5cf6" },
+        { label: isCn ? "审计" : "Audit", value: isControlPlaneRoute ? 56 : 49, color: "#38bdf8" },
+        { label: isCn ? "自动化" : "Automation", value: isControlPlaneRoute ? 38 : 26, color: "#22c55e" },
       ],
     }
   }, [
@@ -1653,6 +2221,7 @@ export function CanonicalPreviewPage({
     const shellText = isLightSurface ? "#0f172a" : "#f8fafc"
     const shellMuted = isLightSurface ? "rgba(15,23,42,0.62)" : "rgba(255,255,255,0.68)"
     const shellBorder = isLightSurface ? "rgba(148,163,184,0.18)" : "rgba(255,255,255,0.08)"
+    const primaryCtaBackground = isMarketingPreview ? "#0f172a" : isCommunityPreview ? "#f97316" : "#8b5cf6"
     const navSurface = isLightSurface ? "rgba(255,255,255,0.82)" : "rgba(11,15,24,0.78)"
     const cardSurface = isLightSurface ? "rgba(255,255,255,0.92)" : "rgba(17,23,35,0.86)"
     const secondarySurface = isLightSurface ? "rgba(239,246,255,0.86)" : "rgba(23,29,42,0.86)"
@@ -1707,21 +2276,147 @@ export function CanonicalPreviewPage({
       </div>
     )
 
+    const renderChartRows = () => (
+      <div style={{ display: "grid", gap: 14 }}>
+        {dashboardModel.chartBars.map((bar) => (
+          <div key={bar.label}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, color: shellMuted }}>
+              <span>{bar.label}</span>
+              <span style={{ color: shellText, fontWeight: 700 }}>{bar.value}</span>
+            </div>
+            <div style={{ height: 12, borderRadius: 999, background: isLightSurface ? "#e2e8f0" : "#1b1f2b", overflow: "hidden" }}>
+              <div style={{ width: `${Math.min(100, Math.max(12, bar.value))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${bar.color}, ${bar.color}cc)` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+
+    const renderChartBar = () => {
+      const max = Math.max(...dashboardModel.chartBars.map((bar) => bar.value), 100)
+      return (
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(${dashboardModel.chartBars.length}, minmax(0, 1fr))`, gap: 14, alignItems: "end", height: 220, paddingTop: 8 }}>
+            {dashboardModel.chartBars.map((bar) => {
+              const height = Math.max(22, Math.round((bar.value / max) * 180))
+              return (
+                <div key={bar.label} style={{ display: "grid", gap: 10, alignItems: "end" }}>
+                  <div style={{ borderRadius: 16, height, background: `linear-gradient(180deg, ${bar.color}, ${bar.color}cc)`, boxShadow: `0 16px 26px ${bar.color}33` }} />
+                  <div style={{ textAlign: "center", color: shellMuted, fontSize: 12, lineHeight: 1.3 }}>
+                    <div style={{ color: shellText, fontWeight: 700, marginBottom: 2 }}>{bar.label}</div>
+                    <div>{bar.value}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {dashboardModel.chartBars.map((bar) => (
+              <span key={bar.label} style={{ borderRadius: 999, padding: "6px 10px", background: `${bar.color}18`, color: bar.color, fontSize: 12, fontWeight: 800 }}>
+                {bar.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    const renderChartLine = () => {
+      const points = dashboardModel.chartBars.map((bar, index) => {
+        const x = dashboardModel.chartBars.length === 1 ? 32 : 32 + (index * 240) / Math.max(1, dashboardModel.chartBars.length - 1)
+        const y = 210 - (Math.min(100, Math.max(0, bar.value)) / 100) * 150
+        return { ...bar, x, y }
+      })
+      const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")
+      return (
+        <div style={{ display: "grid", gap: 14 }}>
+          <svg viewBox="0 0 280 220" width="100%" height="220" role="img" aria-label={dashboardModel.chartTitle}>
+            <defs>
+              <linearGradient id={`line-${dashboardModel.chartTitle}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                {points.map((point, index) => (
+                  <stop key={point.label} offset={`${(index / Math.max(1, points.length - 1)) * 100}%`} stopColor={point.color} />
+                ))}
+              </linearGradient>
+            </defs>
+            {[40, 80, 120, 160].map((y) => (
+              <line key={y} x1="20" y1={y} x2="260" y2={y} stroke={isLightSurface ? "#dbe4f0" : "#273043"} strokeDasharray="4 6" />
+            ))}
+            <path d={`${path} L 260 210 L 20 210 Z`} fill="rgba(99,102,241,0.08)" />
+            <path d={path} fill="none" stroke={`url(#line-${dashboardModel.chartTitle})`} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            {points.map((point) => (
+              <g key={point.label}>
+                <circle cx={point.x} cy={point.y} r="5" fill={point.color} />
+                <circle cx={point.x} cy={point.y} r="10" fill={point.color} opacity="0.12" />
+              </g>
+            ))}
+          </svg>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+            {dashboardModel.chartBars.map((bar) => (
+              <div key={bar.label} style={{ borderRadius: 16, padding: "10px 12px", background: secondarySurface, border: `1px solid ${shellBorder}` }}>
+                <div style={{ color: shellMuted, fontSize: 12 }}>{bar.label}</div>
+                <div style={{ marginTop: 6, color: bar.color, fontWeight: 900, fontSize: 18 }}>{bar.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    const renderChartDonut = () => {
+      const total = dashboardModel.chartBars.reduce((sum, bar) => sum + Math.max(1, bar.value), 0)
+      let cumulative = 0
+      return (
+        <div style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 16, alignItems: "center" }}>
+          <svg viewBox="0 0 180 180" width="100%" height="180" role="img" aria-label={dashboardModel.chartTitle}>
+            <circle cx="90" cy="90" r="54" fill="none" stroke={isLightSurface ? "#e2e8f0" : "#1c2330"} strokeWidth="18" />
+            {dashboardModel.chartBars.map((bar) => {
+              const normalized = Math.max(1, bar.value) / total
+              const dash = normalized * Math.PI * 2 * 54
+              const circle = (
+                <circle
+                  key={bar.label}
+                  cx="90"
+                  cy="90"
+                  r="54"
+                  fill="none"
+                  stroke={bar.color}
+                  strokeWidth="18"
+                  strokeLinecap="round"
+                  strokeDasharray={`${dash} ${Math.max(1, Math.PI * 2 * 54 - dash)}`}
+                  strokeDashoffset={-cumulative * Math.PI * 2 * 54}
+                  transform="rotate(-90 90 90)"
+                />
+              )
+              cumulative += normalized
+              return circle
+            })}
+            <text x="90" y="84" textAnchor="middle" fill={shellText} fontSize="26" fontWeight="900">
+              {dashboardModel.chartBars[0]?.value ?? 0}
+            </text>
+            <text x="90" y="104" textAnchor="middle" fill={shellMuted} fontSize="10" fontWeight="700">
+              {isCn ? "当前重点" : "current mix"}
+            </text>
+          </svg>
+          <div style={{ display: "grid", gap: 10 }}>
+            {dashboardModel.chartBars.map((bar) => (
+              <div key={bar.label} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", borderRadius: 16, padding: "10px 12px", background: secondarySurface, border: `1px solid ${shellBorder}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 999, background: bar.color, boxShadow: `0 0 0 4px ${bar.color}22` }} />
+                  <span style={{ color: shellText, fontWeight: 800 }}>{bar.label}</span>
+                </div>
+                <span style={{ color: bar.color, fontWeight: 900 }}>{bar.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
     const chartBlock = (
       <div style={{ ...cardStyle(cardSurface), boxShadow: isLightSurface ? "0 16px 40px rgba(15,23,42,0.08)" : "none" }}>
         <div style={{ fontSize: 16, fontWeight: 800, color: shellText }}>{dashboardModel.chartTitle}</div>
-        <div style={{ marginTop: 16, display: "grid", gap: 14 }}>
-          {dashboardModel.chartBars.map((bar) => (
-            <div key={bar.label}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, color: shellMuted }}>
-                <span>{bar.label}</span>
-                <span style={{ color: shellText, fontWeight: 700 }}>{bar.value}</span>
-              </div>
-              <div style={{ height: 12, borderRadius: 999, background: isLightSurface ? "#e2e8f0" : "#1b1f2b", overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(100, Math.max(12, bar.value))}%`, height: "100%", borderRadius: 999, background: `linear-gradient(90deg, ${bar.color}, ${bar.color}cc)` }} />
-              </div>
-            </div>
-          ))}
+        <div style={{ marginTop: 16 }}>
+          {dashboardChartVariant === "bar" ? renderChartBar() : dashboardChartVariant === "line" ? renderChartLine() : dashboardChartVariant === "donut" ? renderChartDonut() : renderChartRows()}
         </div>
       </div>
     )
@@ -3057,6 +3752,8 @@ export function CanonicalPreviewPage({
               </div>
             </div>
           </div>
+
+          {renderPreviewTaskSurface({ dark: routeExperienceModel.darkShell })}
         </section>
       </div>
     )

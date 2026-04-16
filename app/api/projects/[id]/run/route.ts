@@ -167,26 +167,6 @@ async function hasUsableInstall(workspacePath: string) {
   return (await pathExists(nextBin)) && (await pathExists(reactServerDom)) && (await pathExists(reactPkg))
 }
 
-async function ensureSharedNodeModules(workspacePath: string) {
-  const workspaceNodeModules = path.join(workspacePath, "node_modules")
-  if (await pathExists(workspaceNodeModules)) {
-    return await hasUsableInstall(workspacePath)
-  }
-
-  const hostNodeModules = path.join(process.cwd(), "node_modules")
-  const hostNextBin = path.join(hostNodeModules, "next", "dist", "bin", "next")
-  if (!(await pathExists(hostNextBin))) {
-    return false
-  }
-
-  try {
-    await fs.symlink(hostNodeModules, workspaceNodeModules, "dir")
-    return await hasUsableInstall(workspacePath)
-  } catch {
-    return false
-  }
-}
-
 async function resolvePackageManager(workspacePath: string) {
   const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm"
   const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
@@ -198,7 +178,7 @@ async function resolvePackageManager(workspacePath: string) {
 }
 
 async function resolveNextCliArgs(workspacePath: string, port: number) {
-  return ["dev", "-p", String(port)]
+  return ["dev", "--webpack", "-p", String(port)]
 }
 
 async function installWorkspaceDependencies(packageManager: { cmd: string; kind: "pnpm" | "npm" }, workspacePath: string) {
@@ -454,6 +434,7 @@ async function startProject(projectId: string) {
 
   if (
     project.runtime?.status === "running" &&
+    project.runtime.url === buildPreviewPath(projectId) &&
     ((Boolean(project.runtime.pid) && isPidAlive(project.runtime.pid)) ||
       (project.runtime.port ? await isPortInUse(project.runtime.port) : false) ||
       withinStartupGrace(project.runtime.lastStartedAt))
@@ -477,10 +458,6 @@ async function startProject(projectId: string) {
   const startupLogPath = path.join(workspacePath, ".mornstack-preview.log")
   const packageManager = await resolvePackageManager(workspacePath)
   logs.push(`package manager: ${packageManager.kind}`)
-  const reusedHostModules = await ensureSharedNodeModules(workspacePath)
-  if (reusedHostModules) {
-    logs.push("preview runtime: reusing host node_modules")
-  }
 
   await updateProject(projectId, (p) => ({
     ...p,
@@ -537,8 +514,30 @@ async function startProject(projectId: string) {
     await unlinkIfExists(path.join(workspacePath, ".next", "dev", "lock"))
     await removePathIfExists(startupLogPath)
     const workspaceNextBin = path.join(workspacePath, "node_modules", "next", "dist", "bin", "next")
-    const hostNextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next")
-    const nextBin = (await pathExists(workspaceNextBin)) ? workspaceNextBin : hostNextBin
+    if (!(await pathExists(workspaceNextBin))) {
+      const diagnostics = await collectStartupDiagnostics(workspacePath, port)
+      const failureText = `Generated workspace install is incomplete.\n\nDiagnostics:\n${diagnostics}`
+      await updateProject(projectId, (p) => ({
+        ...p,
+        runtime: {
+          ...(p.runtime ?? { port, url: previewPath }),
+          status: "error",
+          port,
+          url: previewPath,
+          lastError: failureText,
+        },
+      }))
+      return NextResponse.json(
+        {
+          projectId,
+          status: "error",
+          error: failureText,
+          logs: [...logs, diagnostics],
+        },
+        { status: 500 }
+      )
+    }
+    const nextBin = workspaceNextBin
     const mode: "dev" = "dev"
     let child: ChildProcess | null = null
     let ready = false
@@ -569,6 +568,7 @@ async function startProject(projectId: string) {
         NODE_ENV: "development",
       } as NodeJS.ProcessEnv
       delete childEnv.TURBOPACK
+      childEnv.__NEXT_DISABLE_TURBOPACK = "1"
 
       child = spawn(process.execPath, [nextBin, ...nextArgs], {
         cwd: workspacePath,
@@ -700,8 +700,11 @@ async function stopProject(projectId: string) {
     updatedAt: new Date().toISOString(),
     runtime: {
       status: "stopped",
-      port,
+      port: undefined,
+      pid: undefined,
       url,
+      lastStartedAt: undefined,
+      lastError: p.runtime?.lastError,
     },
   }))
 
@@ -710,8 +713,11 @@ async function stopProject(projectId: string) {
     status: "stopped",
     runtime: {
       status: "stopped",
-      port,
+      port: undefined,
+      pid: undefined,
       url,
+      lastStartedAt: undefined,
+      lastError: project.runtime?.lastError,
     },
   })
 }

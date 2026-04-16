@@ -596,7 +596,17 @@ function resolveContextAppKind(prompt: string, context?: GenerateRequestContext)
   return inferAppKind(prompt)
 }
 
+function shouldUseSpecializedWorkspaceTemplateIsolation(prompt: string) {
+  return (
+    looksLikeSpecializedWorkspacePrompt(prompt) &&
+    !looksLikeMarketingDistributionPrompt(prompt) &&
+    !looksLikeApiPlatformPrompt(prompt) &&
+    !looksLikeCodePlatformPrompt(prompt)
+  )
+}
+
 function resolveTemplateId(prompt: string, context?: GenerateRequestContext) {
+  if (shouldUseSpecializedWorkspaceTemplateIsolation(prompt)) return undefined
   const selectedTemplate = normalizeTextValue(context?.sharedSession?.selectedTemplate).toLowerCase()
   if (selectedTemplate) {
     if (selectedTemplate.includes("siteforge")) return "siteforge"
@@ -611,42 +621,42 @@ function resolveTemplateId(prompt: string, context?: GenerateRequestContext) {
 function looksLikeCodePlatformPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
   const explicitApiSignals =
-    /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+    /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|开放平台|接口平台|接口|监控|日志|鉴权|令牌|环境|用量|计费|网关|回调/.test(
       text
     )
   const explicitCodeSignals =
-    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
+    /cursor|code editor|coding workspace|ai coding|代码编辑器|编程平台|代码平台|代码工作台|开发者工作台|开发者平台|全栈平台|全栈应用生成器|应用生成器|代码助手|base44|app builder|ai app builder|builder workspace|code builder|代码生成平台|ai 编码平台|ai 代码平台|ai 工作台/.test(
       text
     )
-  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制/.test(text)
+  const ideSignals = /\bide\b|editor|file tree|multi-tab|live preview|publish control|模板库|文件树|多标签|实时预览|发布控制|代码标签|代码预览/.test(text)
   if (explicitApiSignals && !ideSignals && !explicitCodeSignals) return false
   return explicitCodeSignals || ideSignals
 }
 
 function looksLikeApiPlatformPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|接口|监控|日志|鉴权|令牌|环境|用量|计费/.test(
+  return /api|sdk|developer portal|endpoint|endpoints|auth|oauth|token|environment|environments|webhook|webhooks|logs|observability|monitoring|usage|metering|billing|开放平台|接口平台|开发者门户|接口|端点|监控|日志|鉴权|令牌|环境|用量|计费|限流|网关|回调|调用量/.test(
     text
   )
 }
 
 function looksLikeAdminOpsPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|运营后台|内部工具|审批|工单|控制台|权限|角色|审计|告警|故障|合规|安全/.test(
+  return /admin|ops|internal tool|backoffice|back office|control plane|approval|approvals|role-based|permission|permissions|access|audit|incident|incidents|compliance|security|workspace admin|管理后台|后台系统|运维后台|运营后台|内部工具|内控平台|审批|审批流|工单|控制台|权限|角色|审计|告警|故障|合规|安全|策略|风控/.test(
     text
   )
 }
 
 function looksLikeMarketingDistributionPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|落地页|下载|文档|设备|分发|安装包|桌面端/.test(
+  return /website|landing|homepage|download|downloads|docs|documentation|devices|device|distribution|installer|ios|android|desktop|mac|windows|官网|产品官网|产品站|落地页|下载|下载中心|下载站|文档|帮助中心|设备|分发|安装包|安装说明|桌面端|更新日志|发布页/.test(
     text
   )
 }
 
 function looksLikeCommunityPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|社区|社团|社交|公告|活动|反馈|路线图|审核|治理|成员|投票/.test(
+  return /community|club|social|group|announcement|event|feedback|roadmap|moderation|member|members|vote|wishlist|forum|forums|post|posts|comment|comments|社区|社团|社交|论坛|帖子|评论|公告|活动|反馈|建议箱|路线图|审核|治理|成员|投票/.test(
     text
   )
 }
@@ -660,7 +670,7 @@ function looksLikeEventDrivenCommunityPrompt(prompt: string) {
 
 function looksLikeSpecializedWorkspacePrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
-  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(
+  return /health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|门诊|患者|医生|医院|预约|病历|护理|复诊|随访|分诊|education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|排课|教务|finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|账务|recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|简历|support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|售后|工单|帮助台|知识库|服务等级|客诉|commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库|订单/.test(
     text
   )
 }
@@ -668,7 +678,7 @@ function looksLikeSpecializedWorkspacePrompt(prompt: string) {
 function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
   const text = String(prompt ?? "").toLowerCase()
   const isCn = region === "cn"
-  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|患者|医生|医院|预约|病历|护理/.test(text)) {
+  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|门诊|患者|医生|医院|预约|病历|护理|复诊|随访|分诊/.test(text)) {
     return {
       category: isCn ? "医疗运营工作台" : "Healthcare operations workspace",
       tone: isCn ? "医疗护理运营工作台" : "Clinical care operations workspace",
@@ -677,7 +687,7 @@ function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
       workflow: isCn ? "患者 -> 预约 -> 护理计划 -> 风险跟进" : "Patient -> appointment -> care plan -> risk follow-up",
     }
   }
-  if (/recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用/.test(text)) {
+  if (/recruit|hiring|candidate|interview|job role|talent|offer|ats|招聘|候选人|面试|岗位|人才|录用|简历/.test(text)) {
     return {
       category: isCn ? "招聘人才工作台" : "Recruiting and talent workspace",
       tone: isCn ? "招聘人才运营工作台" : "Talent pipeline workspace",
@@ -686,7 +696,7 @@ function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
       workflow: isCn ? "候选人 -> 岗位 -> 面试 -> offer 审批" : "Candidate -> role -> interview -> offer approval",
     }
   }
-  if (/support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+  if (/support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|售后|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
     return {
       category: isCn ? "客服工单工作台" : "Support and ticketing workspace",
       tone: isCn ? "客服 SLA 工单工作台" : "Support SLA command center",
@@ -695,7 +705,7 @@ function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
       workflow: isCn ? "工单 -> 客户案例 -> 升级 -> 知识库沉淀" : "Ticket -> customer case -> escalation -> knowledge base",
     }
   }
-  if (/commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库/.test(text)) {
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|电商|店铺|库存|履约|仓库|订单/.test(text)) {
     return {
       category: isCn ? "电商运营工作台" : "Commerce operations workspace",
       tone: isCn ? "库存履约运营工作台" : "Inventory and fulfillment workspace",
@@ -704,7 +714,7 @@ function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
       workflow: isCn ? "SKU -> 库存 -> 履约订单 -> 供应商交接" : "SKU -> inventory -> fulfillment order -> supplier handoff",
     }
   }
-  if (/finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票/.test(text)) {
+  if (/finance|bank|ledger|transaction|reconciliation|invoice|金融|银行|账本|交易|对账|发票|账务/.test(text)) {
     return {
       category: isCn ? "金融财务控制台" : "Finance operations console",
       tone: isCn ? "金融对账控制台" : "Finance reconciliation console",
@@ -713,7 +723,7 @@ function getSpecializedWorkspaceFlavor(prompt: string, region: Region) {
       workflow: isCn ? "账本 -> 交易 -> 对账 -> 异常处理" : "Ledger -> transaction -> reconciliation -> exception handling",
     }
   }
-  if (/education|course|student|assignment|school|learning|课程|学生|作业|学校|学习/.test(text)) {
+  if (/education|course|student|assignment|school|learning|课程|学生|作业|学校|学习|排课|教务/.test(text)) {
     return {
       category: isCn ? "教育学习工作台" : "Education and learning workspace",
       tone: isCn ? "教育课程运营工作台" : "Learning operations workspace",
@@ -731,7 +741,7 @@ function shouldPreferAdminOpsOverCrm(prompt: string) {
   if (looksLikeMarketingDistributionPrompt(text)) return false
   if (looksLikeCommunityPrompt(text)) return false
   if (looksLikeSpecializedWorkspacePrompt(text)) return false
-  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|商机|报价|续约/.test(
+  return !/crm|customer|sales|pipeline|deal|deals|quote|quotes|renewal|renewals|account executive|account executives|客户|销售|线索|商机|报价|报价单|订单审批|续约|客户成功/.test(
     text
   )
 }
@@ -747,16 +757,16 @@ function inferPromptOnlyPlannerProductType(prompt: string): PlannerProductType {
   if (looksLikeMarketingDistributionPrompt(text)) {
     return "content_site"
   }
-  if (looksLikeCommunityPrompt(text)) {
-    return "community_hub"
-  }
   if (looksLikeSpecializedWorkspacePrompt(text)) {
     return "task_workspace"
+  }
+  if (looksLikeCommunityPrompt(text)) {
+    return "community_hub"
   }
   if (shouldPreferAdminOpsOverCrm(text)) {
     return "task_workspace"
   }
-  if (/crm|customer|sales|pipeline|lead|客户|销售|跟进/.test(text)) {
+  if (/crm|customer|sales|pipeline|lead|lead management|customer success|renewal|quote|quotes|客户|销售|线索|跟进|商机|客户成功|续约|报价/.test(text)) {
     return "crm_workspace"
   }
   if (/website|landing|homepage|download|downloads|documentation|docs|marketing|brand|官网|下载站|落地页|下载页|文档|品牌|增长/.test(text)) {
@@ -773,8 +783,8 @@ function resolvePlannerProductType(prompt: string, context?: GenerateRequestCont
   if (looksLikeApiPlatformPrompt(prompt) && kind !== "code_platform") return "api_platform"
   if (kind === "code_platform") return "ai_code_platform"
   if (looksLikeMarketingDistributionPrompt(prompt)) return "content_site"
-  if (looksLikeCommunityPrompt(prompt) || kind === "community") return "community_hub"
   if (looksLikeSpecializedWorkspacePrompt(prompt)) return "task_workspace"
+  if (looksLikeCommunityPrompt(prompt) || kind === "community") return "community_hub"
   if (shouldPreferAdminOpsOverCrm(prompt)) return "task_workspace"
   if (kind === "crm") return "crm_workspace"
   if (looksLikeApiPlatformPrompt(prompt)) return "api_platform"
@@ -1094,6 +1104,28 @@ function normalizeGenerateWorkflowMode(input: unknown, context?: GenerateRequest
   return hasMeaningfulGenerateContext(context) ? "edit_context" : "act"
 }
 
+function resolveSpecializedGenerateArchetype(text: string): GenerateArchetype | null {
+  if (/health|healthcare|medical|clinic|patient|doctor|hospital|appointment|care plan|nurse|医疗|健康|诊所|门诊|患者|医生|医院|预约|病历|护理|复诊|随访|分诊/.test(text)) {
+    return "healthcare"
+  }
+  if (/education|course|student|assignment|school|learning|class|lesson|teacher|课程|学生|作业|学校|学习|排课|教务|班级|老师|教学/.test(text)) {
+    return "education"
+  }
+  if (/finance|financial|bank|ledger|transaction|reconciliation|invoice|expense|portfolio|金融|财务|银行|账本|交易|对账|发票|账务|费用|投资组合/.test(text)) {
+    return "finance"
+  }
+  if (/recruit|hiring|candidate|interview|job role|talent|offer|ats|resume|招聘|候选人|面试|岗位|人才|录用|简历/.test(text)) {
+    return "recruiting"
+  }
+  if (/support|ticket|helpdesk|sla|knowledge base|customer case|escalation|客服|售后|工单|帮助台|知识库|服务等级|客诉/.test(text)) {
+    return "support"
+  }
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|warehouse|merchant|retail|电商|商城|店铺|库存|商品|履约|仓库|订单|零售|商家/.test(text)) {
+    return "commerce_ops"
+  }
+  return null
+}
+
 function resolveGenerateArchetype(
   prompt: string,
   plannerProductType: PlannerProductType,
@@ -1115,6 +1147,11 @@ function resolveGenerateArchetype(
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
+
+  if (plannerProductType === "task_workspace") {
+    const specialized = resolveSpecializedGenerateArchetype(text)
+    if (specialized) return specialized
+  }
 
   if (/admin|ops|internal tool|backoffice|back office|console|control plane|管理后台|运营后台|内部工具|审批|工单|控制台/.test(text)) {
     return "admin_ops_internal_tool"
@@ -1445,6 +1482,9 @@ function getDefaultTemplateIdForPlannerProductType(
   if (productType === "api_platform") return "taskflow"
   if (productType === "community_hub") return "orbital"
   if (productType === "content_site") return "launchpad"
+  if (productType === "task_workspace" && shouldUseSpecializedWorkspaceTemplateIsolation(prompt)) {
+    return undefined
+  }
   const inferred = resolveTemplateId(prompt, context)
   if (inferred) return inferred
   if (looksLikeMarketingDistributionPrompt(prompt)) return "launchpad"
@@ -1749,6 +1789,15 @@ function fallbackPlannerSpec(
   }
 }
 
+function isOverbroadPlannerProductName(input: string, prompt: string) {
+  const value = sanitizeUiText(input)
+  if (!value) return true
+  const cleanPrompt = sanitizeUiText(prompt)
+  if (cleanPrompt && value === cleanPrompt) return true
+  if (value.length > 48) return true
+  return /^(build|create|make|generate|构建|创建|生成|做一个|搭建)/i.test(value) || /包含|包括|with/.test(value)
+}
+
 function normalizePlannerSpec(
   parsed: Partial<PlannerSpec> | null | undefined,
   prompt: string,
@@ -1762,18 +1811,21 @@ function normalizePlannerSpec(
     .toLowerCase()
     .replace(/-/g, "_")
   const productType =
-    rawProductType === "ai_code_platform" ||
-    rawProductType === "crm_workspace" ||
-    rawProductType === "api_platform" ||
-    rawProductType === "community_hub" ||
-    rawProductType === "content_site" ||
-    rawProductType === "task_workspace"
-      ? (rawProductType as PlannerProductType)
-      : fallback.productType
+    looksLikeSpecializedWorkspacePrompt(prompt)
+      ? "task_workspace"
+      : rawProductType === "ai_code_platform" ||
+          rawProductType === "crm_workspace" ||
+          rawProductType === "api_platform" ||
+          rawProductType === "community_hub" ||
+          rawProductType === "content_site" ||
+          rawProductType === "task_workspace"
+        ? (rawProductType as PlannerProductType)
+        : fallback.productType
+  const parsedProductName = sanitizeUiText(parsed?.productName || "")
   return {
     ...fallback,
     ...parsed,
-    productName: sanitizeUiText(parsed?.productName || "") || fallback.productName,
+    productName: isOverbroadPlannerProductName(parsedProductName, prompt) ? fallback.productName : parsedProductName,
     productType,
     targetLocale: parsed?.targetLocale === "zh-CN" || parsed?.targetLocale === "en-US" ? parsed.targetLocale : fallback.targetLocale,
     style: {
@@ -3409,9 +3461,10 @@ async function writeGeneratedProjectFiles(
   }
 ) {
   const dbFile = region === "cn" ? "cn.db" : "intl.db"
+  const previewDatabaseTarget: DatabaseTarget = "sqlite" as DatabaseTarget
   const defaults = getRegionDefaults(region)
   const deploymentTarget = options?.deploymentTarget ?? getDefaultDeploymentTarget(region)
-  const databaseTarget = options?.databaseTarget ?? getDefaultDatabaseTarget(region)
+  const databaseTarget = previewDatabaseTarget
   const deployment = getDeploymentOption(deploymentTarget)
   const database = getDatabaseOption(databaseTarget)
   const planTier = options?.planTier ?? "free"
@@ -3470,12 +3523,20 @@ ${[...getDeploymentEnvGuide(deploymentTarget), ...getDatabaseEnvGuide(databaseTa
           next: "16.1.6",
           react: "^19",
           "react-dom": "^19",
+          "@prisma/client": "^5.22.0",
+          "lucide-react": "^0.309.0",
         },
         devDependencies: {
+          prisma: "^5.22.0",
           typescript: "^5.0.0",
           "@types/node": "^20.0.0",
           "@types/react": "^19.0.0",
           "@types/react-dom": "^19.0.0",
+          postcss: "^8.5.9",
+          tailwindcss: "^3.4.19",
+          autoprefixer: "^10.5.0",
+          eslint: "^9.18.0",
+          "eslint-config-next": "16.1.6",
         },
       },
       null,
@@ -3919,12 +3980,20 @@ function deriveProjectHeadline(prompt: string) {
   const explicitName = extractProductNameFromPrompt(prompt)
   if (explicitName) return explicitName
   const clean = sanitizeUiText(prompt)
-  if (!clean) return "Generated Task Workspace"
-  return clean.length > 42 ? `${clean.slice(0, 42)}...` : clean
+  if (!clean) return "Generated Workspace"
+  const stripped = clean
+    .replace(/^(please|pls|build|create|make|generate|give me|show me|help me|帮我|请帮我|请|给我|生成一个|生成一套|做一个|做一套|弄一个)\s+/i, "")
+    .replace(/^(a|an|the|一个|一套|这个|那个)\s+/i, "")
+    .replace(/\s*(with|for|that|which|including|plus|and|以及|并且|用于|供)\s+[\s\S]*$/i, "")
+    .replace(/(app|application|platform|workspace|system|console|site|website|panel|tool|应用|系统|平台|工作台|后台|控制台|网站|站点|页面)$/i, "")
+    .trim()
+  if (!stripped) return clean.length > 24 ? `${clean.slice(0, 24)}...` : clean
+  return stripped.length > 24 ? `${stripped.slice(0, 24)}...` : stripped
 }
 
 function extractProductNameFromPrompt(prompt: string) {
   const patterns = [
+    /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|叫|名为)\s*["“'`]?([\u4e00-\u9fa5A-Za-z0-9][\u4e00-\u9fa5A-Za-z0-9 _-]{1,40}?)(?=\s*(?:的|，|。|,|\.|包含|包括|要求|并且|用于|供|给|with|for|$))["”'`]?/iu,
     /(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|名为)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|要求|并且|用于|for)\b|[,.，。]|$)["”'`]?/i,
     /(?:name\s+it|call(?:ed)?|named)\s*["“'`]?([A-Za-z0-9][A-Za-z0-9 _-]{1,40}?)(?=\s+(?:with|for|that)\b|[,.，。]|$)["”'`]?/i,
   ]

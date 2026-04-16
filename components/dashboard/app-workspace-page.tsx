@@ -212,7 +212,19 @@ type IterateResp = {
   }>
   workflowMode?: "act" | "discuss" | "edit_context"
   plan?: {
-    archetype: "code_platform" | "crm" | "api_platform" | "community" | "website_landing_download" | "admin_ops_internal_tool"
+    archetype:
+      | "code_platform"
+      | "crm"
+      | "api_platform"
+      | "community"
+      | "website_landing_download"
+      | "healthcare"
+      | "education"
+      | "finance"
+      | "recruiting"
+      | "support"
+      | "commerce_ops"
+      | "admin_ops_internal_tool"
     summary: string
     routeMap: string[]
     modulePlan: string[]
@@ -249,7 +261,19 @@ type GenerateTaskResp = {
     workflowMode: "act" | "discuss" | "edit_context"
     productName: string
     productType: string
-    archetype: "code_platform" | "crm" | "api_platform" | "community" | "website_landing_download" | "admin_ops_internal_tool"
+    archetype:
+      | "code_platform"
+      | "crm"
+      | "api_platform"
+      | "community"
+      | "website_landing_download"
+      | "healthcare"
+      | "education"
+      | "finance"
+      | "recruiting"
+      | "support"
+      | "commerce_ops"
+      | "admin_ops_internal_tool"
     summary: string
     pages: string[]
     routeMap?: string[]
@@ -263,7 +287,19 @@ type GenerateTaskResp = {
   }
   acceptance?: {
     workflowMode: "act" | "discuss" | "edit_context"
-    archetype: "code_platform" | "crm" | "api_platform" | "community" | "website_landing_download" | "admin_ops_internal_tool"
+    archetype:
+      | "code_platform"
+      | "crm"
+      | "api_platform"
+      | "community"
+      | "website_landing_download"
+      | "healthcare"
+      | "education"
+      | "finance"
+      | "recruiting"
+      | "support"
+      | "commerce_ops"
+      | "admin_ops_internal_tool"
     quality: "app_grade" | "demo_grade"
     buildStatus: "ok" | "failed" | "skipped"
     previewReadiness: "ready" | "planning_only" | "limited" | "blocked"
@@ -284,6 +320,166 @@ type GenerateTaskResp = {
 type ProjectFilesResp = {
   projectId: string
   files: string[]
+}
+
+type WorkspaceArchetype =
+  | "code_platform"
+  | "crm"
+  | "api_platform"
+  | "community"
+  | "marketing_admin"
+  | "admin_ops_internal_tool"
+  | "task"
+  | "task_workspace"
+  | "healthcare"
+  | "education"
+  | "finance"
+  | "recruiting"
+  | "support"
+  | "commerce_ops"
+  | "workspace"
+
+function isSpecializedWorkspaceArchetype(value: string): value is Extract<WorkspaceArchetype, "healthcare" | "education" | "finance" | "recruiting" | "support" | "commerce_ops"> {
+  return ["healthcare", "education", "finance", "recruiting", "support", "commerce_ops"].includes(value)
+}
+
+function getSpecializedWorkspaceDescriptor(archetype: WorkspaceArchetype, isCn: boolean) {
+  switch (archetype) {
+    case "healthcare":
+      return {
+        eyebrow: isCn ? "医疗运营" : "Healthcare ops",
+        title: isCn ? "医疗护理工作台" : "Clinical care workspace",
+        summary: isCn ? "围绕患者、预约、护理计划、分诊与风险提醒形成真正的诊疗闭环。" : "Shape the product around patients, appointments, care plans, triage, and risk follow-ups.",
+        flowTitle: isCn ? "护理链路" : "Care workflow",
+        flowSteps: isCn ? ["患者建档", "预约排班", "护理计划", "复诊随访"] : ["Patient intake", "Scheduling", "Care plan", "Follow-up"],
+        sideItems: [
+          isCn ? "患者、预约与护理计划不再回退成审批后台" : "Patients, appointments, and care plans no longer collapse into an admin shell",
+          isCn ? "首页、列表、时间轴与风险面板一起成立" : "Hero, lists, timelines, and risk rails now coexist",
+          isCn ? "字段、按钮和文案更像诊所团队产品" : "Fields, buttons, and copy now read like a clinic product",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "护理总览" : "Care", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "patients", group: isCn ? "护理总览" : "Care", label: isCn ? "患者" : "Patients", icon: Users, href: "/users" },
+          { key: "appointments", group: isCn ? "护理总览" : "Care", label: isCn ? "预约" : "Appointments", icon: FileText, href: "/data" },
+          { key: "care", group: isCn ? "护理总览" : "Care", label: isCn ? "护理计划" : "Care plans", icon: Database, href: "/analytics" },
+          { key: "risk", group: isCn ? "运营与安全" : "Operate", label: isCn ? "风险提醒" : "Risk", icon: Shield, href: "/security" },
+          { key: "automations", group: isCn ? "运营与安全" : "Operate", label: isCn ? "自动化" : "Automations", icon: Zap, href: "/automations" },
+          { key: "settings", group: isCn ? "运营与安全" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    case "education":
+      return {
+        eyebrow: isCn ? "教学运营" : "Learning ops",
+        title: isCn ? "教育与教务工作台" : "Education operations workspace",
+        summary: isCn ? "课程、学生、作业、班级反馈与教务排课组成独立学习产品。" : "Courses, students, assignments, classes, and scheduling form a dedicated learning product.",
+        flowTitle: isCn ? "教学链路" : "Learning workflow",
+        flowSteps: isCn ? ["课程搭建", "学生分班", "作业发放", "学习反馈"] : ["Course setup", "Cohort planning", "Assignments", "Learning feedback"],
+        sideItems: [
+          isCn ? "课程、学生、班级、作业具备专属结构" : "Courses, students, classes, and assignments have their own structure",
+          isCn ? "不再回退成审批/工单式后台" : "No longer falls back to approvals or ticketing",
+          isCn ? "更像教务与学习平台，而不是通用任务壳" : "Feels like a school or learning platform, not a generic task shell",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "学习总览" : "Learning", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "courses", group: isCn ? "学习总览" : "Learning", label: isCn ? "课程" : "Courses", icon: Database, href: "/data" },
+          { key: "students", group: isCn ? "学习总览" : "Learning", label: isCn ? "学生" : "Students", icon: Users, href: "/users" },
+          { key: "assignments", group: isCn ? "学习总览" : "Learning", label: isCn ? "作业" : "Assignments", icon: FileText, href: "/api" },
+          { key: "classes", group: isCn ? "教务运营" : "Operate", label: isCn ? "班级" : "Classes", icon: BarChart3, href: "/analytics" },
+          { key: "automations", group: isCn ? "教务运营" : "Operate", label: isCn ? "自动化" : "Automations", icon: Zap, href: "/automations" },
+          { key: "settings", group: isCn ? "教务运营" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    case "finance":
+      return {
+        eyebrow: isCn ? "财务对账" : "Finance ops",
+        title: isCn ? "财务与对账控制台" : "Finance reconciliation console",
+        summary: isCn ? "围绕账户、交易、对账、风险复核与报表形成审计友好的财务工作台。" : "Accounts, transactions, reconciliation, risk review, and reporting form an audit-friendly finance console.",
+        flowTitle: isCn ? "财务链路" : "Finance workflow",
+        flowSteps: isCn ? ["账户归集", "交易同步", "对账匹配", "异常复核"] : ["Accounts", "Transactions", "Reconciliation", "Exception review"],
+        sideItems: [
+          isCn ? "账户、交易、对账、报表明显不同于 CRM 或后台" : "Accounts, transactions, reconciliation, and reports clearly differ from CRM or internal tools",
+          isCn ? "按钮和字段是财务语义，不再泛化" : "Buttons and fields now use finance-native language",
+          isCn ? "可继续接真实账务与审批流" : "Ready for real ledger and approval flows",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "财务总览" : "Finance", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "accounts", group: isCn ? "财务总览" : "Finance", label: isCn ? "账户" : "Accounts", icon: Database, href: "/data" },
+          { key: "transactions", group: isCn ? "财务总览" : "Finance", label: isCn ? "交易" : "Transactions", icon: FileText, href: "/logs" },
+          { key: "reconciliation", group: isCn ? "财务总览" : "Finance", label: isCn ? "对账" : "Reconciliation", icon: BarChart3, href: "/analytics" },
+          { key: "risk", group: isCn ? "审计治理" : "Governance", label: isCn ? "风控" : "Risk", icon: Shield, href: "/security" },
+          { key: "reports", group: isCn ? "审计治理" : "Governance", label: isCn ? "报表" : "Reports", icon: Code2, href: "/api" },
+          { key: "settings", group: isCn ? "审计治理" : "Governance", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    case "recruiting":
+      return {
+        eyebrow: isCn ? "招聘运营" : "Hiring ops",
+        title: isCn ? "招聘与候选人工作台" : "Recruiting workspace",
+        summary: isCn ? "候选人、岗位、面试与 offer 审批形成真正的人才推进流水线。" : "Candidates, roles, interviews, and offer approvals form a real hiring pipeline.",
+        flowTitle: isCn ? "招聘链路" : "Hiring workflow",
+        flowSteps: isCn ? ["岗位建立", "候选人筛选", "面试推进", "Offer 审批"] : ["Role setup", "Candidate screening", "Interviews", "Offer approval"],
+        sideItems: [
+          isCn ? "更像 ATS / 招聘台，而不是 CRM 管道" : "Feels like ATS and recruiting ops, not CRM",
+          isCn ? "候选人、面试、offer 拥有独立页面骨架" : "Candidates, interviews, and offers have distinct page archetypes",
+          isCn ? "文案与动作贴近招聘流程" : "Copy and actions now match hiring workflows",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "招聘总览" : "Hiring", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "candidates", group: isCn ? "招聘总览" : "Hiring", label: isCn ? "候选人" : "Candidates", icon: Users, href: "/users" },
+          { key: "jobs", group: isCn ? "招聘总览" : "Hiring", label: isCn ? "岗位" : "Jobs", icon: Database, href: "/data" },
+          { key: "interviews", group: isCn ? "招聘总览" : "Hiring", label: isCn ? "面试" : "Interviews", icon: FileText, href: "/api" },
+          { key: "offers", group: isCn ? "招聘治理" : "Operate", label: isCn ? "Offer" : "Offers", icon: Shield, href: "/security" },
+          { key: "reports", group: isCn ? "招聘治理" : "Operate", label: isCn ? "分析" : "Reports", icon: BarChart3, href: "/analytics" },
+          { key: "settings", group: isCn ? "招聘治理" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    case "support":
+      return {
+        eyebrow: isCn ? "客服解决" : "Support resolution",
+        title: isCn ? "客服与知识库工作台" : "Support and knowledge workspace",
+        summary: isCn ? "工单、SLA、客户案例、升级与知识库形成完整客服闭环。" : "Tickets, SLAs, cases, escalations, and knowledge create a full support loop.",
+        flowTitle: isCn ? "解决链路" : "Resolution workflow",
+        flowSteps: isCn ? ["工单接入", "升级处理", "知识沉淀", "客户回访"] : ["Ticket intake", "Escalation", "Knowledge update", "Follow-up"],
+        sideItems: [
+          isCn ? "工单与知识库是主结构，不是审批板" : "Tickets and knowledge become the primary structure, not approvals",
+          isCn ? "SLA、升级、客户案例拥有自己的页面骨架" : "SLA, escalations, and cases get their own page skeletons",
+          isCn ? "更接近客服系统而不是运营后台" : "Feels like a support desk instead of an internal ops shell",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "客服总览" : "Support", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "tickets", group: isCn ? "客服总览" : "Support", label: isCn ? "工单" : "Tickets", icon: FileText, href: "/logs" },
+          { key: "cases", group: isCn ? "客服总览" : "Support", label: isCn ? "客户案例" : "Cases", icon: Users, href: "/users" },
+          { key: "knowledge", group: isCn ? "客服总览" : "Support", label: isCn ? "知识库" : "Knowledge", icon: Database, href: "/data" },
+          { key: "sla", group: isCn ? "客服治理" : "Operate", label: isCn ? "SLA" : "SLA", icon: BarChart3, href: "/analytics" },
+          { key: "escalations", group: isCn ? "客服治理" : "Operate", label: isCn ? "升级" : "Escalations", icon: Shield, href: "/security" },
+          { key: "settings", group: isCn ? "客服治理" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    case "commerce_ops":
+      return {
+        eyebrow: isCn ? "电商运营" : "Commerce ops",
+        title: isCn ? "库存与履约工作台" : "Inventory and fulfillment workspace",
+        summary: isCn ? "商品、SKU、库存、履约订单和供应商形成独立供应链面。" : "Products, SKUs, inventory, fulfillment, and suppliers form a dedicated commerce operations surface.",
+        flowTitle: isCn ? "履约链路" : "Fulfillment workflow",
+        flowSteps: isCn ? ["商品管理", "库存同步", "履约处理", "补货预警"] : ["Catalog", "Inventory", "Fulfillment", "Reorder"],
+        sideItems: [
+          isCn ? "更像电商/仓储运营，而不是控制平面" : "Feels like commerce and warehouse ops rather than a generic control plane",
+          isCn ? "商品、库存、履约和供应商层次明确" : "Products, inventory, fulfillment, and suppliers each own a distinct surface",
+          isCn ? "字段、动作和指标贴近供应链" : "Fields, actions, and metrics are supply-chain native",
+        ],
+        nav: [
+          { key: "overview", group: isCn ? "履约总览" : "Commerce", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: "" },
+          { key: "products", group: isCn ? "履约总览" : "Commerce", label: isCn ? "商品" : "Products", icon: Database, href: "/data" },
+          { key: "inventory", group: isCn ? "履约总览" : "Commerce", label: isCn ? "库存" : "Inventory", icon: BarChart3, href: "/analytics" },
+          { key: "fulfillment", group: isCn ? "履约总览" : "Commerce", label: isCn ? "履约" : "Fulfillment", icon: FileText, href: "/logs" },
+          { key: "suppliers", group: isCn ? "供应链治理" : "Operate", label: isCn ? "供应商" : "Suppliers", icon: Users, href: "/users" },
+          { key: "alerts", group: isCn ? "供应链治理" : "Operate", label: isCn ? "预警" : "Alerts", icon: Shield, href: "/security" },
+          { key: "settings", group: isCn ? "供应链治理" : "Operate", label: isCn ? "设置" : "Settings", icon: Settings, href: "/settings" },
+        ],
+      }
+    default:
+      return null
+  }
 }
 
 type ProjectFileContentResp = {
@@ -372,8 +568,6 @@ function normalizePreviewUrl(projectId: string, url?: string) {
   const fallback = buildCanonicalPreviewUrl(projectId)
   const normalized = String(url ?? "").trim()
   if (!normalized) return fallback
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(normalized)) return fallback
-  if (normalized.startsWith("/api/projects/")) return fallback
   if (!normalized.startsWith("/") && !/^https?:\/\//i.test(normalized)) return fallback
   return normalized
 }
@@ -404,6 +598,7 @@ function inferDisplayNameFromPrompt(prompt?: string | null, isCn?: boolean) {
   const text = String(prompt ?? "").trim()
   if (!text) return isCn ? "AI App Studio" : "AI App Studio"
   const explicit =
+    text.match(/(?:名字叫|名字是|项目名(?:字)?(?:叫|是)?|产品名(?:字)?(?:叫|是)?|叫做|叫|名为)\s*["“'`]?([\u4e00-\u9fa5A-Za-z0-9][\u4e00-\u9fa5A-Za-z0-9 _-]{1,40}?)(?=\s*(?:的|，|。|,|\.|包含|包括|要求|并且|用于|供|给|with|for|$))["”'`]?/iu)?.[1] ||
     text.match(/名字叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
     text.match(/叫\s*([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1] ||
     text.match(/named\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i)?.[1]
@@ -412,6 +607,12 @@ function inferDisplayNameFromPrompt(prompt?: string | null, isCn?: boolean) {
   if (/api|接口|数据平台/i.test(text)) return "API Studio"
   if (/crm|销售|客户/i.test(text)) return "CRM Pilot"
   if (/site|website|官网|landing/i.test(text)) return "AI Site Generator"
+  if (/health|healthcare|medical|clinic|patient|appointment|医疗|诊所|患者|预约|护理|随访|分诊/.test(text)) return isCn ? "晨星医务台" : "CareLoop"
+  if (/education|course|student|assignment|school|learning|教育|课程|学生|作业|教务|排课|教学/.test(text)) return isCn ? "晨星教务台" : "ClassOrbit"
+  if (/finance|ledger|transaction|reconciliation|invoice|金融|财务|账本|交易|对账|发票|账务/.test(text)) return isCn ? "财务星图" : "LedgerFlow"
+  if (/recruit|hiring|candidate|interview|talent|resume|招聘|候选人|面试|岗位|人才|简历/.test(text)) return isCn ? "人才引擎" : "TalentLoop"
+  if (/support|ticket|helpdesk|knowledge base|客服|售后|工单|帮助台|知识库|客诉/.test(text)) return isCn ? "客服中枢" : "ResolveDesk"
+  if (/commerce|ecommerce|store|sku|inventory|fulfillment|电商|商城|库存|商品|履约|仓库|订单/.test(text)) return isCn ? "履约中台" : "FulfillOps"
   if (/task|任务|流程/i.test(text)) return "TaskFlow"
   return isCn ? "AI App Studio" : "AI App Studio"
 }
@@ -969,61 +1170,73 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   async function loadProject() {
-    const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
-    if (!res.ok) {
+    try {
+      const res = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
+      if (!res.ok) {
+        const cached = workspaceSnapshot ?? readWorkspaceSnapshot(projectId)
+        if (cached) {
+          const restored = await hydrateWorkspaceFromSnapshot(cached)
+          if (restored) {
+            const retried = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
+            if (retried.ok) {
+              const json = await retried.json()
+              const nextProject = json.project as ProjectDetail
+              setProject(nextProject)
+              setProjectMissing(false)
+              setWorkspaceRecoveredFromCache(false)
+              setLoading(false)
+              persistWorkspaceSnapshotDraft((current) => ({
+                projectId: nextProject.projectId,
+                projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
+                region: nextProject.region,
+                createdAt: nextProject.createdAt,
+                updatedAt: nextProject.updatedAt,
+                project: nextProject as WorkspaceBootstrapSnapshot["project"],
+                generateTask: current?.generateTask ?? null,
+                codeFiles: current?.codeFiles ?? [],
+                codeContents: current?.codeContents ?? {},
+                source: "workspace",
+              }))
+              return
+            }
+          }
+          applyWorkspaceSnapshot(cached, { recovered: true })
+          return
+        }
+        setProjectMissing(true)
+        setWorkspaceRecoveredFromCache(false)
+        setLoading(false)
+        return
+      }
+      const json = await res.json()
+      const nextProject = json.project as ProjectDetail
+      setProject(nextProject)
+      setProjectMissing(false)
+      setWorkspaceRecoveredFromCache(false)
+      setLoading(false)
+      persistWorkspaceSnapshotDraft((current) => ({
+        projectId: nextProject.projectId,
+        projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
+        region: nextProject.region,
+        createdAt: nextProject.createdAt,
+        updatedAt: nextProject.updatedAt,
+        project: nextProject as WorkspaceBootstrapSnapshot["project"],
+        generateTask: current?.generateTask ?? null,
+        codeFiles: current?.codeFiles ?? [],
+        codeContents: current?.codeContents ?? {},
+        source: "workspace",
+      }))
+    } catch (error) {
       const cached = workspaceSnapshot ?? readWorkspaceSnapshot(projectId)
       if (cached) {
-        const restored = await hydrateWorkspaceFromSnapshot(cached)
-        if (restored) {
-          const retried = await fetch(`/api/projects?projectId=${encodeURIComponent(projectId)}`)
-          if (retried.ok) {
-            const json = await retried.json()
-            const nextProject = json.project as ProjectDetail
-            setProject(nextProject)
-            setProjectMissing(false)
-            setWorkspaceRecoveredFromCache(false)
-            setLoading(false)
-            persistWorkspaceSnapshotDraft((current) => ({
-              projectId: nextProject.projectId,
-              projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
-              region: nextProject.region,
-              createdAt: nextProject.createdAt,
-              updatedAt: nextProject.updatedAt,
-              project: nextProject as WorkspaceBootstrapSnapshot["project"],
-              generateTask: current?.generateTask ?? null,
-              codeFiles: current?.codeFiles ?? [],
-              codeContents: current?.codeContents ?? {},
-              source: "workspace",
-            }))
-            return
-          }
-        }
         applyWorkspaceSnapshot(cached, { recovered: true })
         return
       }
-      setProjectMissing(true)
-      setWorkspaceRecoveredFromCache(false)
-      setLoading(false)
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[workspace] project polling skipped", error)
+      }
       return
     }
-    const json = await res.json()
-    const nextProject = json.project as ProjectDetail
-    setProject(nextProject)
-    setProjectMissing(false)
-    setWorkspaceRecoveredFromCache(false)
-    setLoading(false)
-    persistWorkspaceSnapshotDraft((current) => ({
-      projectId: nextProject.projectId,
-      projectSlug: nextProject.projectSlug || current?.projectSlug || nextProject.projectId,
-      region: nextProject.region,
-      createdAt: nextProject.createdAt,
-      updatedAt: nextProject.updatedAt,
-      project: nextProject as WorkspaceBootstrapSnapshot["project"],
-      generateTask: current?.generateTask ?? null,
-      codeFiles: current?.codeFiles ?? [],
-      codeContents: current?.codeContents ?? {},
-      source: "workspace",
-    }))
   }
 
   async function loadGenerateTask() {
@@ -1465,8 +1678,10 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }
 
   useEffect(() => {
-    loadProject()
-    const timer = setInterval(loadProject, 5000)
+    void loadProject()
+    const timer = setInterval(() => {
+      void loadProject()
+    }, 5000)
     return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
@@ -1769,14 +1984,20 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   )
   const runtimePreviewUrl = normalizePreviewUrl(
     projectSlug,
-    project?.preview?.runtimeUrl || runtime?.url || buildRuntimePreviewUrl(projectSlug)
+    buildRuntimePreviewUrl(projectSlug)
   )
   const sandboxPreviewUrl = normalizePreviewUrl(
     projectSlug,
-    project?.preview?.sandboxUrl || buildSandboxPreviewUrl(projectSlug)
+    buildSandboxPreviewUrl(projectSlug)
   )
   const prefersSandboxPreview = project?.preview?.activeMode === "sandbox_runtime" && project?.preview?.sandboxStatus === "running"
-  const primaryPreviewUrl = prefersSandboxPreview ? (sandboxPreviewUrl || canonicalPreviewUrl) : canonicalPreviewUrl
+  const prefersRuntimePreview = project?.preview?.activeMode === "dynamic_runtime" && runtime?.status === "running"
+  const primaryPreviewUrl =
+    prefersSandboxPreview
+      ? (sandboxPreviewUrl || runtimePreviewUrl || canonicalPreviewUrl)
+      : prefersRuntimePreview
+        ? (runtimePreviewUrl || canonicalPreviewUrl)
+        : canonicalPreviewUrl
   const refreshPreview = () => {
     setPreviewRefreshKey((current) => current + 1)
   }
@@ -1800,12 +2021,17 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
       project?.generation?.buildStatus === "ok" ||
       (previewProbe?.renderStrategy === "iframe" && previewProbe?.responseStatus === 200)
     )
+  const generationTaskComplete =
+    generateTask?.status === "done" ||
+    project?.generation?.buildStatus === "ok" ||
+    project?.preview?.status === "ready"
   const rawPreviewReady =
     Boolean(iframePreviewUrl) &&
     (
       probeIframeReady ||
       canonicalPreviewReady ||
-      (!previewProbe?.renderStrategy && project?.preview?.status === "ready")
+      project?.generation?.buildStatus === "ok" ||
+      project?.preview?.status === "ready"
     )
   const previewStarting = runtime?.status === "starting" || previewBooting
   const previewGenerating = generateTask?.status === "running" || generateTask?.status === "queued" || iterating
@@ -1813,7 +2039,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     previewStarting ||
     project?.preview?.status === "building" ||
     previewProbe?.previewStatus === "building"
-  const previewShouldStayLoading = !rawPreviewReady
+  const previewShouldStayLoading = !iframePreviewUrl || !generationTaskComplete
   const previewReady = rawPreviewReady
   const previewLoadingReason = previewGenerating
     ? cleanTimelineLine(generateTask?.logs?.slice(-1)[0] || "") ||
@@ -2332,12 +2558,12 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
   const openPreviewUrl = isLocalPreviewHost
-    ? absoluteResolvedPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+    ? absolutePrimaryPreviewUrl || absoluteResolvedPreviewUrl || absoluteCanonicalPreviewUrl || absoluteAssignedAppUrl
     : workspaceRegion === "intl"
-      ? absoluteResolvedPreviewUrl || hostedIntlPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
+      ? absolutePrimaryPreviewUrl || absoluteResolvedPreviewUrl || hostedIntlPreviewUrl || absoluteCanonicalPreviewUrl || absoluteAssignedAppUrl
       : workspaceRegion === "cn"
-        ? absoluteResolvedPreviewUrl || hostedCnPreviewUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl || absoluteAssignedAppUrl
-        : absoluteResolvedPreviewUrl || absoluteAssignedAppUrl || absoluteCanonicalPreviewUrl || absolutePrimaryPreviewUrl
+        ? absolutePrimaryPreviewUrl || absoluteResolvedPreviewUrl || hostedCnPreviewUrl || absoluteCanonicalPreviewUrl || absoluteAssignedAppUrl
+        : absolutePrimaryPreviewUrl || absoluteResolvedPreviewUrl || absoluteAssignedAppUrl || absoluteCanonicalPreviewUrl
   const sharedAppUrl = openPreviewUrl
   const generatedRouteCount = project?.presentation?.routes?.length ?? pageManifest.length
   const moduleCount = project?.spec?.modules?.length ?? 0
@@ -3571,7 +3797,34 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   )
   const dashboardNavItems = useMemo(
     () => {
-      const archetype = project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace"
+      const archetype = (project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace") as WorkspaceArchetype
+      const specializedDescriptor = getSpecializedWorkspaceDescriptor(archetype, isCn)
+      if (specializedDescriptor) {
+        return specializedDescriptor.nav.map((item) => ({
+          ...item,
+          href: item.href ? `${workspaceRootHref}${item.href}` : workspaceRootHref,
+          active:
+            item.key === "overview"
+              ? activeDashboardSection === "dashboard" || activeDashboardSection === "overview"
+              : item.href.includes("/users")
+                ? activeDashboardSection === "users"
+                : item.href.includes("/data")
+                  ? activeDashboardSection === "data"
+                  : item.href.includes("/analytics")
+                    ? activeDashboardSection === "analytics"
+                    : item.href.includes("/security")
+                      ? activeDashboardSection === "security"
+                      : item.href.includes("/automations")
+                        ? activeDashboardSection === "automations"
+                        : item.href.includes("/logs")
+                          ? activeDashboardSection === "logs"
+                          : item.href.includes("/api")
+                            ? activeDashboardSection === "api"
+                            : item.href.includes("/settings")
+                              ? activeDashboardSection === "settings"
+                              : false,
+        }))
+      }
       if (archetype === "crm") {
         return [
           { key: "overview", group: isCn ? "销售控制台" : "Revenue", label: isCn ? "概览" : "Overview", icon: LayoutGrid, href: workspaceRootHref, active: activeDashboardSection === "dashboard" || activeDashboardSection === "overview" },
@@ -3657,7 +3910,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     [dashboardNavItems]
   )
   const aiTimelineScrollerRef = useRef<HTMLDivElement | null>(null)
-  const workspaceArchetype = project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace"
+  const workspaceArchetype = (project?.spec?.appIdentity?.category || project?.spec?.appIntent?.archetype || project?.presentation?.archetype || "workspace") as WorkspaceArchetype
   const dashboardSurfaceModel = useMemo(() => {
     const routeList = routeBlueprintEntries.slice(0, 6)
     const entityList = entityBlueprintEntries.slice(0, 5)
@@ -3667,6 +3920,61 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     const moduleCountText = `${moduleCount} ${isCn ? "个模块" : "modules"}`
     const previewStateText = workspaceStatus.label
     const buildStateText = buildAcceptanceLabel
+    const specializedDescriptor = getSpecializedWorkspaceDescriptor(workspaceArchetype, isCn)
+    if (specializedDescriptor) {
+      return {
+        eyebrow: specializedDescriptor.eyebrow,
+        accent:
+          workspaceArchetype === "healthcare"
+            ? "from-emerald-500 via-teal-500 to-sky-500"
+            : workspaceArchetype === "education"
+              ? "from-blue-500 via-violet-500 to-fuchsia-500"
+              : workspaceArchetype === "finance"
+                ? "from-cyan-500 via-sky-500 to-emerald-500"
+                : workspaceArchetype === "recruiting"
+                  ? "from-teal-500 via-cyan-500 to-violet-500"
+                  : workspaceArchetype === "support"
+                    ? "from-sky-500 via-cyan-500 to-orange-500"
+                    : "from-amber-500 via-lime-500 to-emerald-500",
+        title: specializedDescriptor.title,
+        summary: specializedDescriptor.summary,
+        stats: [
+          {
+            label: isCn ? "专用页面骨架" : "Domain surfaces",
+            value: routeCountText,
+            helper:
+              workspaceArchetype === "healthcare"
+                ? isCn ? "患者、预约、护理计划和风险页必须像诊疗产品，不再像审批后台。" : "Patients, appointments, care plans, and risk should feel clinical, not administrative."
+                : workspaceArchetype === "education"
+                  ? isCn ? "课程、学生、作业和班级反馈必须像教务产品，而不是通用任务壳。" : "Courses, students, assignments, and class feedback must feel like a learning product, not a generic task shell."
+                  : workspaceArchetype === "finance"
+                    ? isCn ? "账户、交易、对账和报表需要是财务视角，不得回退成 CRM 或后台。" : "Accounts, transactions, reconciliation, and reports must stay finance-native instead of collapsing into CRM or admin."
+                    : workspaceArchetype === "recruiting"
+                      ? isCn ? "候选人、岗位、面试、offer 需要是招聘流水线。" : "Candidates, jobs, interviews, and offers should behave like a hiring pipeline."
+                      : workspaceArchetype === "support"
+                        ? isCn ? "工单、SLA、升级与知识库是客服闭环，不得套审批壳。" : "Tickets, SLAs, escalations, and knowledge form a support loop, not an approval shell."
+                        : isCn ? "商品、库存、履约与供应商需要是供应链结构，不应退化成后台台账。" : "Products, inventory, fulfillment, and suppliers should form a supply-chain structure, not a generic backoffice ledger.",
+          },
+          {
+            label: isCn ? "场景对象" : "Domain objects",
+            value: entityCountText,
+            helper: isCn ? "字段、按钮、文案和动作现在跟随场景对象，不再通用化。" : "Fields, actions, copy, and controls now follow domain objects instead of generic naming.",
+          },
+          {
+            label: isCn ? "当前构建状态" : "Build state",
+            value: buildStateText,
+            helper: isCn ? "生成结果会直接承接到专用路由与预览骨架。" : "The build now flows into domain-specific routes and preview shells.",
+          },
+        ],
+        flowTitle: specializedDescriptor.flowTitle,
+        flowSteps: specializedDescriptor.flowSteps,
+        sideTitle: isCn ? "本轮生成已接入" : "This generation now drives",
+        sideItems: specializedDescriptor.sideItems,
+        routeList,
+        entityList,
+        moduleList,
+      }
+    }
     if (workspaceArchetype === "crm") {
       return {
         eyebrow: isCn ? "Revenue command" : "Revenue command",
@@ -4049,20 +4357,46 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
     const projectRecord = project
 
     const previewMode = projectRecord.preview?.activeMode ?? "static_ssr"
+    const runtimePreferred = previewMode === "dynamic_runtime" && runtime?.status === "running"
+    const sandboxPreferred = previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running"
     const preferredPreviewUrl =
-      previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running"
-        ? sandboxPreviewUrl || canonicalPreviewUrl
-        : canonicalPreviewUrl
+      sandboxPreferred
+        ? sandboxPreviewUrl || runtimePreviewUrl || canonicalPreviewUrl
+        : runtimePreferred
+          ? runtimePreviewUrl || canonicalPreviewUrl
+          : canonicalPreviewUrl
     const candidates = Array.from(
       new Set(
         [
           preferredPreviewUrl,
-          previewMode === "sandbox_runtime" && projectRecord.preview?.sandboxStatus === "running" ? sandboxPreviewUrl : runtimePreviewUrl,
+          sandboxPreferred ? sandboxPreviewUrl : undefined,
+          runtimePreviewUrl,
           canonicalPreviewUrl,
         ].filter(Boolean)
       )
     )
     let cancelled = false
+
+    if (projectRecord.generation?.buildStatus === "ok" || projectRecord.preview?.status === "ready") {
+      const readyPreviewUrl = preferredPreviewUrl || canonicalPreviewUrl
+      setPreviewProbe({
+        projectSlug,
+        previewMode,
+        previewStatus: "ready",
+        canonicalPreviewUrl,
+        runtimePreviewUrl,
+        sandboxPreviewUrl,
+        resolvedPreviewUrl: readyPreviewUrl,
+        fallbackUsed: false,
+        responseStatus: 200,
+        renderStrategy: "iframe",
+        responseUrl: readyPreviewUrl,
+        responsePreviewState: "ready",
+      })
+      return () => {
+        cancelled = true
+      }
+    }
 
     async function resolvePreviewTarget() {
       const serverPreviewStatus = projectRecord.preview?.status ?? "idle"
@@ -4177,12 +4511,13 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
   }, [
     canonicalPreviewUrl,
     previewRefreshKey,
-    project,
     projectSlug,
     project?.preview?.status,
+    project?.generation?.buildStatus,
     runtime?.status,
     runtimePreviewUrl,
     sandboxPreviewUrl,
+    primaryPreviewUrl,
   ])
 
   if (loading) {
@@ -4690,7 +5025,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                         <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">{openPreviewUrl || absolutePrimaryPreviewUrl || "/"}</div>
                       </div>
                       <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-500">
-                        {previewReady ? (isCn ? "Ready" : "Ready") : previewGenerating ? "Generating" : workspaceStatus.label}
+                        {previewReady && generationTaskComplete ? (isCn ? "Ready" : "Ready") : previewGenerating || !generationTaskComplete ? "Generating" : workspaceStatus.label}
                       </span>
                     </div>
 
@@ -4714,7 +5049,7 @@ export function AppWorkspacePage({ projectId, initialSection }: { projectId: str
                           <StructuredPreviewFallback
                             projectName={projectName}
                             projectSubtitle={projectSubtitle}
-                            fallbackReason={previewLoadingReason}
+                            fallbackReason={generationTaskComplete ? previewLoadingReason : (isCn ? "正在生成中，完成后才会切入动态预览。" : "The app is still generating, so the dynamic preview stays on loading state.")}
                             buildStatus={project?.generation?.buildStatus ?? null}
                             isCn={isCn}
                             iconGlyph={projectIcon?.glyph}

@@ -8,6 +8,7 @@ export type DeploymentTarget =
   | "self_hosted"
 
 export type DatabaseTarget =
+  | "sqlite"
   | "supabase_postgres"
   | "cloudbase_document"
   | "neon_postgres"
@@ -29,7 +30,7 @@ export type DatabaseOption = {
   id: DatabaseTarget
   nameCn: string
   nameEn: string
-  engine: "postgres" | "document" | "mysql" | "mongodb"
+  engine: "sqlite" | "postgres" | "document" | "mysql" | "mongodb"
   defaultRegions: Region[]
   descriptionCn: string
   descriptionEn: string
@@ -90,6 +91,15 @@ export const DEPLOYMENT_OPTIONS: DeploymentOption[] = [
 
 export const DATABASE_OPTIONS: DatabaseOption[] = [
   {
+    id: "sqlite",
+    nameCn: "SQLite 本地预览库",
+    nameEn: "SQLite Local Preview",
+    engine: "sqlite",
+    defaultRegions: ["cn", "intl"],
+    descriptionCn: "本地预览默认数据库，零配置即可启动生成应用。",
+    descriptionEn: "Default local preview database so generated apps can boot without external infrastructure.",
+  },
+  {
     id: "supabase_postgres",
     nameCn: "Supabase Postgres",
     nameEn: "Supabase Postgres",
@@ -141,7 +151,7 @@ export function getDefaultDeploymentTarget(region: Region): DeploymentTarget {
 }
 
 export function getDefaultDatabaseTarget(region: Region): DatabaseTarget {
-  return region === "cn" ? "cloudbase_document" : "supabase_postgres"
+  return "sqlite"
 }
 
 export function normalizeDeploymentTarget(value: string, region: Region): DeploymentTarget {
@@ -179,6 +189,8 @@ export function getDeploymentEnvGuide(target: DeploymentTarget) {
 
 export function getDatabaseEnvGuide(target: DatabaseTarget) {
   switch (target) {
+    case "sqlite":
+      return ["DATABASE_URL"]
     case "cloudbase_document":
       return ["CLOUDBASE_MONGODB_URL", "CN_DATABASE_URL"]
     case "supabase_postgres":

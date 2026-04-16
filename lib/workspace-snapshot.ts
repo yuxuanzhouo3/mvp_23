@@ -103,7 +103,19 @@ export type WorkspaceGenerateTaskSnapshot = {
     workflowMode: "act" | "discuss" | "edit_context"
     productName: string
     productType: string
-    archetype: "code_platform" | "crm" | "api_platform" | "community" | "website_landing_download" | "admin_ops_internal_tool"
+    archetype:
+      | "code_platform"
+      | "crm"
+      | "api_platform"
+      | "community"
+      | "website_landing_download"
+      | "healthcare"
+      | "education"
+      | "finance"
+      | "recruiting"
+      | "support"
+      | "commerce_ops"
+      | "admin_ops_internal_tool"
     summary: string
     pages: string[]
     routeMap?: string[]
@@ -117,7 +129,19 @@ export type WorkspaceGenerateTaskSnapshot = {
   }
   acceptance?: {
     workflowMode: "act" | "discuss" | "edit_context"
-    archetype: "code_platform" | "crm" | "api_platform" | "community" | "website_landing_download" | "admin_ops_internal_tool"
+    archetype:
+      | "code_platform"
+      | "crm"
+      | "api_platform"
+      | "community"
+      | "website_landing_download"
+      | "healthcare"
+      | "education"
+      | "finance"
+      | "recruiting"
+      | "support"
+      | "commerce_ops"
+      | "admin_ops_internal_tool"
     quality: "app_grade" | "demo_grade"
     buildStatus: "ok" | "failed" | "skipped"
     previewReadiness: "ready" | "planning_only" | "limited" | "blocked"
