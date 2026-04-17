@@ -936,11 +936,12 @@ export function CanonicalPreviewPage({
     }
   })
   const renderPreviewTaskSurface = ({ dark = false }: { dark?: boolean } = {}) => {
-    const surfaceBackground = dark ? "#161a24" : cardBackground
-    const panelBackground = dark ? "#111827" : railBackground
-    const borderColor = dark ? "rgba(255,255,255,0.08)" : shellBorder
-    const textColor = dark ? "#f8fafc" : shellText
-    const mutedColor = dark ? "rgba(226,232,240,0.72)" : shellMuted
+    const surfaceBackground = dark ? "#161a24" : "rgba(255,255,255,0.92)"
+    const panelBackground = dark ? "#111827" : "rgba(239,246,255,0.86)"
+    const borderColor = dark ? "rgba(255,255,255,0.08)" : "rgba(148,163,184,0.18)"
+    const textColor = dark ? "#f8fafc" : "#0f172a"
+    const mutedColor = dark ? "rgba(226,232,240,0.72)" : "rgba(15,23,42,0.62)"
+    const ctaBackground = dark ? "#8b5cf6" : "#0f172a"
 
     return (
       <div style={{ display: "grid", gap: 16 }}>
@@ -954,7 +955,7 @@ export function CanonicalPreviewPage({
               <button
                 type="button"
                 onClick={addPreviewTask}
-                style={{ borderRadius: 14, padding: "11px 16px", background: primaryCtaBackground, color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}
+                style={{ borderRadius: 14, padding: "11px 16px", background: ctaBackground, color: "#fff", fontWeight: 800, border: "none", cursor: "pointer" }}
               >
                 {previewTaskExperience.addLabel}
               </button>
