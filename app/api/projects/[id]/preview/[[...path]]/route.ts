@@ -203,6 +203,7 @@ async function renderFallbackPreview(projectId: string) {
 
 function rewriteHtmlForPreview(html: string, routeParam: string) {
   const previewBase = buildPreviewBase(routeParam)
+  const fallbackBase = `/preview/${encodeURIComponent(routeParam)}`
   let next = html
 
   next = next.replace(/(href|src|action)=("|')\/(?!\/)/g, `$1=$2${previewBase}/`)
@@ -213,18 +214,20 @@ function rewriteHtmlForPreview(html: string, routeParam: string) {
   if (next.includes("</head>")) {
     next = next.replace(
       "</head>",
-      `${buildPreviewRuntimeShim(previewBase)}</head>`
+      `${buildPreviewRuntimeShim(previewBase, fallbackBase)}</head>`
     )
   }
 
   return next
 }
 
-function buildPreviewRuntimeShim(previewBase: string) {
+function buildPreviewRuntimeShim(previewBase: string, fallbackBase: string) {
   const escapedBase = JSON.stringify(previewBase)
+  const escapedFallbackBase = JSON.stringify(fallbackBase)
   return `<script>
 ;(() => {
   const previewBase = ${escapedBase};
+  const fallbackBase = ${escapedFallbackBase};
   const sameOriginAbsolute = /^\\/(?!\\/)/;
   const shouldProxy = (value) =>
     typeof value === "string" &&
@@ -237,6 +240,34 @@ function buildPreviewRuntimeShim(previewBase: string) {
   };
 
   window.__MORNSTACK_PREVIEW_BASE__ = previewBase;
+  window.__MORNSTACK_CANONICAL_PREVIEW_BASE__ = fallbackBase;
+
+  let fallbackScheduled = false;
+  const currentPreviewSuffix = () => {
+    const pathname = window.location.pathname || "";
+    if (!pathname.startsWith(previewBase)) return "";
+    return pathname.slice(previewBase.length).replace(/^\\/+/, "");
+  };
+  const buildFallbackUrl = () => {
+    const suffix = currentPreviewSuffix();
+    const path = suffix && !suffix.startsWith("_next/") ? fallbackBase + "/" + suffix : fallbackBase;
+    return path + window.location.search + window.location.hash;
+  };
+  const looksLikeFatalClientError = () => {
+    const text = document.body?.innerText || "";
+    return /Application error|client-side exception|Hydration failed|Minified React error/i.test(text);
+  };
+  const scheduleFallback = () => {
+    if (!fallbackBase || fallbackScheduled) return;
+    fallbackScheduled = true;
+    window.setTimeout(() => {
+      if (looksLikeFatalClientError()) {
+        window.location.replace(buildFallbackUrl());
+      } else {
+        fallbackScheduled = false;
+      }
+    }, 700);
+  };
 
   const nativeFetch = window.fetch;
   if (typeof nativeFetch === "function") {
@@ -260,6 +291,18 @@ function buildPreviewRuntimeShim(previewBase: string) {
     window.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
       return nativeOpen.call(this, method, proxyUrl(url), ...rest);
     };
+  }
+
+  window.addEventListener("error", scheduleFallback);
+  window.addEventListener("unhandledrejection", scheduleFallback);
+
+  if (window.MutationObserver) {
+    const observer = new MutationObserver(() => {
+      if (looksLikeFatalClientError()) scheduleFallback();
+    });
+    if (document.documentElement) {
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
   }
 
   for (const method of ["pushState", "replaceState"]) {
