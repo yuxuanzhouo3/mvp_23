@@ -88,12 +88,7 @@ export async function sendTencentSmsOtp(input: { phone: string; code: string }):
   const secretService = hmac(secretDate, SMS_SERVICE)
   const secretSigning = hmac(secretService, "tc3_request")
   const signature = hmacHex(secretSigning, stringToSign)
-  const authorization = [
-    "TC3-HMAC-SHA256",
-    `Credential=${config.secretId}/${credentialScope}`,
-    `SignedHeaders=${signedHeaders}`,
-    `Signature=${signature}`,
-  ].join(", ")
+  const authorization = `TC3-HMAC-SHA256 Credential=${config.secretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
 
   const res = await fetch(`https://${SMS_ENDPOINT}`, {
     method: "POST",
