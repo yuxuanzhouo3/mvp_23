@@ -828,6 +828,11 @@ export function CanonicalPreviewPage({
       : ["Overview", "Users", "Data", "Integrations", "Security", "Settings"]
   }, [isApiPreview, isCn, isCommerceOpsPreview, isCommunityPreview, isCrmPreview, isEducationPreview, isFinancePreview, isHealthcarePreview, isMarketingPreview, isRecruitingPreview, isSupportPreview])
   const [dashboardSection, setDashboardSection] = useState(dashboardSections[0] || "Overview")
+  useEffect(() => {
+    if (!dashboardSections.includes(dashboardSection)) {
+      setDashboardSection(dashboardSections[0] || "Overview")
+    }
+  }, [dashboardSection, dashboardSections])
 
   const workbenchFiles = useMemo(
     () =>
@@ -840,6 +845,10 @@ export function CanonicalPreviewPage({
     [isCn, presentation.displayName, region, workbenchKind]
   )
   const [selectedFileId, setSelectedFileId] = useState(() => workbenchFiles[0]?.id ?? "")
+  const [openFileIds, setOpenFileIds] = useState<string[]>(() => workbenchFiles.slice(0, 2).map((item) => item.id))
+  const [activityView, setActivityView] = useState<"explorer" | "search" | "runs" | "settings">("explorer")
+  const [terminalTab, setTerminalTab] = useState<"terminal" | "problems" | "output">("terminal")
+  const [templateCategory, setTemplateCategory] = useState<"product" | "ops" | "data">("product")
   const [aiMode, setAiMode] = useState<"explain" | "fix" | "generate" | "refactor">("explain")
   const [runsFilter, setRunsFilter] = useState<"all" | "ready" | "running" | "failed">("all")
   useEffect(() => {
@@ -847,6 +856,13 @@ export function CanonicalPreviewPage({
       setSelectedFileId(workbenchFiles[0]?.id ?? "")
     }
   }, [selectedFileId, workbenchFiles])
+  useEffect(() => {
+    setOpenFileIds((current) => {
+      const valid = current.filter((id) => workbenchFiles.some((item) => item.id === id))
+      if (valid.length) return valid
+      return workbenchFiles.slice(0, 2).map((item) => item.id)
+    })
+  }, [workbenchFiles])
 
   const previewTaskExperience = useMemo(
     () =>
@@ -2091,6 +2107,7 @@ export function CanonicalPreviewPage({
       isCn ? "下一步建议：补支付入口、增强模板差异、接入团队成员权限。" : "Suggested next step: expand billing entry, template differences, and team roles.",
     ],
   } as const
+  const activeTerminalOutput = terminalOutput[terminalTab] ?? terminalOutput.output
 
   const runRows = [
     { id: "run-1", status: "ready", branch: "main", action: isCn ? "生成应用骨架" : "Generate scaffold", duration: "1m 24s", updatedAt: "2026-03-26T12:00:00.000Z" },
@@ -2202,6 +2219,7 @@ export function CanonicalPreviewPage({
           ["Ops cockpit", "Runs, errors, alerts, checks, environments"],
         ],
   } as const
+  const activeTemplateGroup = templateGroups[templateCategory] ?? templateGroups.product
 
   const renderDashboard = () => {
     const isLightSurface = isCommunityPreview || isMarketingPreview || spec?.visualSeed?.theme === "light"
@@ -3905,7 +3923,7 @@ export function CanonicalPreviewPage({
             ))}
           </div>
           <div style={{ padding: "0 14px 16px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12.5, lineHeight: 1.9 }}>
-            {terminalOutput[terminalTab].map((line) => (
+            {activeTerminalOutput.map((line) => (
               <div key={line} style={{ color: line.startsWith("$") ? "#cbd5e1" : line.includes("ok") || line.includes("ready") || line.includes("就绪") ? "#22c55e" : line.includes("Fix") || line.includes("修复") ? "#f59e0b" : "#94a3b8" }}>
                 {line}
               </div>
@@ -4029,7 +4047,7 @@ export function CanonicalPreviewPage({
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 16 }}>
-        {templateGroups[templateCategory].map(([title, desc], index) => (
+        {activeTemplateGroup.map(([title, desc], index) => (
           <div key={title} style={{ ...cardStyle(index === 0 ? "rgba(124,58,237,0.14)" : "#14161f"), minHeight: 180 }}>
             <div style={{ fontSize: 18, fontWeight: 800 }}>{title}</div>
             <p style={{ marginTop: 10, color: "rgba(255,255,255,0.66)", lineHeight: 1.8 }}>{desc}</p>

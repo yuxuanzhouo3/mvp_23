@@ -1,4 +1,3 @@
-import { notFound } from "next/navigation"
 import { PreviewRouteClient } from "@/components/preview/preview-route-client"
 import { buildAssignedAppUrl } from "@/lib/app-subdomain"
 import { buildProjectLookupLogPayload, resolveProjectLookup } from "@/lib/project-lookup"
@@ -24,6 +23,7 @@ export default async function PreviewProjectPage({
   }
   const page = String(path?.[0] ?? "").trim().replace(/^\/+/, "")
   let initialSnapshot: PreviewSnapshot | null = null
+  let normalizedPage = page || "dashboard"
 
   if (project) {
     const projectDir = await resolveProjectPath(projectId)
@@ -44,14 +44,11 @@ export default async function PreviewProjectPage({
         })
     )
     const normalizedPage =
-      page ||
-      (allowedPages.has("dashboard")
-        ? "dashboard"
-        : Array.from(allowedPages)[0] || "dashboard")
-
-    if (!allowedPages.has(normalizedPage)) {
-      notFound()
-    }
+      page && allowedPages.has(page)
+        ? page
+        : allowedPages.has("dashboard")
+          ? "dashboard"
+          : Array.from(allowedPages)[0] || "dashboard"
 
     initialSnapshot = {
       projectId,
@@ -84,7 +81,7 @@ export default async function PreviewProjectPage({
   return (
     <PreviewRouteClient
       routeParam={projectIdRaw}
-      page={page}
+      page={normalizedPage}
       initialSnapshot={initialSnapshot}
       initialLookup={{
         routeParam: lookup.routeParam,
