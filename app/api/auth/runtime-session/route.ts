@@ -2,8 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/auth"
 import { getCurrentSession, setCurrentSession } from "@/lib/auth"
 import { resolveAuthRuntimeConfig } from "@/lib/auth-runtime"
+import { isEmailSmtpConfigured } from "@/lib/email-auth"
 import { getLatestCompletedPayment } from "@/lib/payment-store"
+import { resolvePaymentAdapterConfig } from "@/lib/payment-adapter"
 import { getPlanDefinition } from "@/lib/plan-catalog"
+import { getTencentSmsConfig } from "@/lib/tencent-sms"
 
 export const runtime = "nodejs"
 
@@ -42,10 +45,39 @@ async function resolveRuntimeSession() {
 export async function GET() {
   const authRuntime = resolveAuthRuntimeConfig()
   const current = await resolveRuntimeSession()
+  const payment = resolvePaymentAdapterConfig()
+  const tencentSms = getTencentSmsConfig()
+  const effectiveReadiness = {
+    cn: {
+      authMode: authRuntime.cnMode,
+      phoneOtp: {
+        configured: authRuntime.phoneOtpConfigured,
+        path: authRuntime.phoneOtpConfigured ? "tencent_sms" : "sandbox",
+        provider: authRuntime.phoneOtpConfigured ? "tencent-sms" : "sandbox",
+        region: tencentSms.region,
+      },
+      emailVerification: {
+        enabled: authRuntime.cnEmailPasswordEnabled,
+        smtpConfigured: isEmailSmtpConfigured(),
+        sendPath: isEmailSmtpConfigured() ? "smtp" : "not_configured",
+      },
+      wechatLogin: {
+        configured: authRuntime.wechatConfigured,
+        modeLive: authRuntime.cnMode === "wechat" && authRuntime.wechatConfigured,
+      },
+      payment: {
+        wechatPayConfigured: payment.wechatConfigured,
+        wechatPayWebhookVerificationConfigured: payment.wechatWebhookVerificationConfigured,
+        alipayConfigured: payment.alipayConfigured,
+      },
+    },
+  }
+
   if (!current) {
     return NextResponse.json({
       authenticated: false,
       authRuntime,
+      effectiveReadiness,
       subscription: {
         tier: "free",
         plan: getPlanDefinition("free"),
@@ -60,6 +92,7 @@ export async function GET() {
   return NextResponse.json({
     authenticated: true,
     authRuntime,
+    effectiveReadiness,
     user: {
       id: current.user.id,
       email: current.user.email,

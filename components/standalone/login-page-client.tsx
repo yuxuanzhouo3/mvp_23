@@ -84,6 +84,7 @@ function LoginPageContent() {
   const [phoneCode, setPhoneCode] = useState("")
   const [sandboxCode, setSandboxCode] = useState("")
   const [phoneHint, setPhoneHint] = useState("")
+  const [phoneSendDetails, setPhoneSendDetails] = useState<{ providerCode?: string; providerMessage?: string; requestId?: string } | null>(null)
   const [phoneUsesLiveSms, setPhoneUsesLiveSms] = useState(false)
 
   useEffect(() => {
@@ -241,6 +242,7 @@ function LoginPageContent() {
     setSubmitting(true)
     setError("")
     setPhoneHint("")
+    setPhoneSendDetails(null)
     setSandboxCode("")
     try {
       const res = await fetch("/api/auth/phone/send", {
@@ -250,6 +252,11 @@ function LoginPageContent() {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
+        setPhoneSendDetails({
+          providerCode: String(json?.providerCode ?? "").trim() || undefined,
+          providerMessage: String(json?.providerMessage ?? "").trim() || undefined,
+          requestId: String(json?.requestId ?? "").trim() || undefined,
+        })
         throw new Error(String(json?.error ?? "Send verification code failed"))
       }
       const code = String(json?.sandboxCode ?? "").trim()
@@ -294,6 +301,7 @@ function LoginPageContent() {
   function handleContinue() {
     setError("")
     setPhoneHint("")
+    setPhoneSendDetails(null)
     setEmailCodeSent(false)
     setEmailCode("")
     setEmailPurpose("register")
@@ -303,6 +311,10 @@ function LoginPageContent() {
     }
     if (!emailEnabled) {
       setError(isCn ? "当前邮箱登录未开启，请使用可用的登录入口。" : "Email login is unavailable right now. Use an available provider instead.")
+      return
+    }
+    if (isCn && cnLoginMethod === "email") {
+      setAuthStep("register")
       return
     }
     setAuthStep("password")
@@ -323,6 +335,7 @@ function LoginPageContent() {
             name: "昵称（可选）",
             emailCodePlaceholder: "输入邮箱收到的6位验证码",
             sendEmailCode: "发送邮箱验证码",
+            sendRegisterCode: "发送注册验证码",
             sendResetCode: "发送找回验证码",
             resetPassword: "重置密码并继续",
             forgotPassword: "找回密码",
@@ -358,10 +371,10 @@ function LoginPageContent() {
                 : runtimeMode === "wechat"
                 ? "当前模式：微信优先 + 邮箱密码，手机验证码准备中"
                 : runtimeMode === "password"
-                  ? "当前模式：邮箱密码，手机验证码准备中"
+                  ? "当前模式：邮箱验证注册 / 找回密码"
                   : runtimeMode === "supabase"
                     ? "当前模式：Supabase"
-                    : "当前模式：演示账号 + 邮箱密码",
+                    : "当前模式：演示账号 + 邮箱验证",
             oauthReady: `已从 ${provider} 返回，继续进入下一步。`,
           }
         : {
@@ -376,6 +389,7 @@ function LoginPageContent() {
             name: "Name (optional)",
             emailCodePlaceholder: "Enter the 6-digit code from your email",
             sendEmailCode: "Send email code",
+            sendRegisterCode: "Send sign-up code",
             sendResetCode: "Send reset code",
             resetPassword: "Reset password",
             forgotPassword: "Forgot password",
@@ -411,10 +425,10 @@ function LoginPageContent() {
                     ? "Current mode: phone verification + email verification"
                     : "Current mode: phone verification (sandbox) + email verification"
                 : runtimeMode === "password"
-                  ? "Current mode: direct email/password"
+                  ? "Current mode: email verification for sign-up and password reset"
                   : runtimeMode === "wechat"
                     ? "Current mode: WeChat auth"
-                    : "Current mode: demo social + password auth",
+                    : "Current mode: demo social + email verification",
             oauthReady: `Returned from ${provider}. Continue into the next step.`,
           },
     [isCn, provider, runtimeMode]
@@ -425,10 +439,19 @@ function LoginPageContent() {
       return isCn ? `第三方登录错误：${oauthError}` : `Provider error: ${oauthError}`
     }
     if (phoneHint) return phoneHint
+    if (phoneSendDetails?.providerCode || phoneSendDetails?.providerMessage || phoneSendDetails?.requestId) {
+      const parts = [
+        error || (isCn ? "短信发送失败" : "SMS send failed"),
+        phoneSendDetails.providerCode ? `providerCode: ${phoneSendDetails.providerCode}` : "",
+        phoneSendDetails.providerMessage ? `providerMessage: ${phoneSendDetails.providerMessage}` : "",
+        phoneSendDetails.requestId ? `requestId: ${phoneSendDetails.requestId}` : "",
+      ].filter(Boolean)
+      return parts.join(" | ")
+    }
     if (oauthState) return copy.oauthReady
     if (error) return error
     return copy.runtime
-  }, [copy.oauthReady, copy.runtime, error, isCn, oauthError, oauthState, phoneHint])
+  }, [copy.oauthReady, copy.runtime, error, isCn, oauthError, oauthState, phoneHint, phoneSendDetails])
 
   const showAuthForm = authStep !== "authenticated"
   const isRegisterMode = authStep === "register"
@@ -626,12 +649,20 @@ function LoginPageContent() {
                       <>
                         {isPasswordMode || isRegisterMode ? (
                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-900">{copy.password}</label>
+                            <label className="text-sm font-medium text-slate-900">
+                              {isCn && isRegisterMode ? (emailPurpose === "reset" ? "设置新密码" : "设置登录密码") : copy.password}
+                            </label>
                             <Input
                               value={password}
                               onChange={(event) => setPassword(event.target.value)}
                               type="password"
-                              placeholder={copy.passwordPlaceholder}
+                              placeholder={
+                                isCn && isRegisterMode
+                                  ? emailPurpose === "reset"
+                                    ? "输入新的登录密码"
+                                    : "设置登录密码"
+                                  : copy.passwordPlaceholder
+                              }
                               className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
                             />
                           </div>
@@ -680,6 +711,8 @@ function LoginPageContent() {
                                   copy.sendResetCode
                                 ) : emailCodeSent ? (
                                   isCn ? "重新发送验证码" : "Resend code"
+                                ) : isCn && isRegisterMode ? (
+                                  copy.sendRegisterCode
                                 ) : (
                                   copy.sendEmailCode
                                 )}
@@ -741,33 +774,53 @@ function LoginPageContent() {
                       <p>{isCn ? "验证码通过后会自动登录或创建账号。" : "Verification will sign you in automatically."}</p>
                     ) : authStep === "entry" ? (
                       <>
-                        <p>
-                          {copy.noAccount}{" "}
-                          <button
-                            type="button"
-                            className="font-semibold text-slate-950 underline underline-offset-4"
-                            onClick={() => {
-                              setEmailPurpose("register")
-                              setEmailCode("")
-                              setEmailCodeSent(false)
-                              setAuthStep("register")
-                            }}
-                          >
-                            {copy.signUp}
-                          </button>
-                        </p>
-                        <button
-                          type="button"
-                          className="font-medium text-slate-500 underline underline-offset-4"
-                          onClick={() => {
-                            setEmailPurpose("reset")
-                            setEmailCode("")
-                            setEmailCodeSent(false)
-                            setAuthStep("password")
-                          }}
-                        >
-                          {copy.forgotPassword}
-                        </button>
+                        {isCn ? (
+                          <>
+                            <p>国内邮箱入口用于邮箱验证码注册与找回密码。</p>
+                            <button
+                              type="button"
+                              className="font-medium text-slate-500 underline underline-offset-4"
+                              onClick={() => {
+                                setEmailPurpose("reset")
+                                setEmailCode("")
+                                setEmailCodeSent(false)
+                                setAuthStep("password")
+                              }}
+                            >
+                              {copy.forgotPassword}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p>
+                              {copy.noAccount}{" "}
+                              <button
+                                type="button"
+                                className="font-semibold text-slate-950 underline underline-offset-4"
+                                onClick={() => {
+                                  setEmailPurpose("register")
+                                  setEmailCode("")
+                                  setEmailCodeSent(false)
+                                  setAuthStep("register")
+                                }}
+                              >
+                                {copy.signUp}
+                              </button>
+                            </p>
+                            <button
+                              type="button"
+                              className="font-medium text-slate-500 underline underline-offset-4"
+                              onClick={() => {
+                                setEmailPurpose("reset")
+                                setEmailCode("")
+                                setEmailCodeSent(false)
+                                setAuthStep("password")
+                              }}
+                            >
+                              {copy.forgotPassword}
+                            </button>
+                          </>
+                        )}
                       </>
                     ) : authStep === "register" ? (
                       <>
