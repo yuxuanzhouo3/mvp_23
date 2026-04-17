@@ -3,11 +3,16 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react"
 import { zh } from "./locales/zh"
 import { en } from "./locales/en"
+import { translations as mvpTranslations } from "../mvp-i18n"
 
 export type Locale = "zh" | "en"
+export type Language = Locale
 
-export const translations = { zh, en }
-export type TranslationKey = keyof typeof zh
+export const translations = {
+  zh: { ...zh, ...mvpTranslations.zh },
+  en: { ...en, ...mvpTranslations.en },
+}
+export type TranslationKey = keyof typeof translations.zh
 
 const STORAGE_KEY = "mornfullstack-locale"
 
@@ -55,4 +60,9 @@ export function useLocale() {
   const ctx = useContext(LocaleContext)
   if (!ctx) throw new Error("useLocale must be used within LocaleProvider")
   return ctx
+}
+
+export function getTranslation(language: Language, key: keyof typeof translations.en): string {
+  const current = translations[language] as Record<string, string>
+  return current[key] ?? translations.en[key] ?? key
 }

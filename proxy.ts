@@ -20,8 +20,6 @@ function isProtectedPath(pathname: string) {
     pathname === "/projects" ||
     pathname === "/activity" ||
     pathname === "/settings" ||
-    pathname === "/admin" ||
-    pathname === "/market" ||
     pathname.startsWith("/apps/") ||
     pathname.startsWith("/payment/")
   )
