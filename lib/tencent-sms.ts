@@ -76,9 +76,12 @@ export async function sendTencentSmsOtp(input: { phone: string; code: string }):
 
   const timestamp = Math.floor(Date.now() / 1000)
   const date = getDate(timestamp)
-  const canonicalHeaders = `content-type:application/json; charset=utf-8\nhost:${SMS_ENDPOINT}\nx-tc-action:sendsms\n`
+  const action = "SendSms"
+  const contentType = "application/json; charset=utf-8"
+  const payloadHash = sha256(payload)
+  const canonicalHeaders = `content-type:${contentType}\nhost:${SMS_ENDPOINT}\nx-tc-action:${action.toLowerCase()}\n`
   const signedHeaders = "content-type;host;x-tc-action"
-  const canonicalRequest = ["POST", "/", "", canonicalHeaders, signedHeaders, sha256(payload)].join("\n")
+  const canonicalRequest = ["POST", "/", "", canonicalHeaders, signedHeaders, payloadHash].join("\n")
   const credentialScope = `${date}/${SMS_SERVICE}/tc3_request`
   const stringToSign = ["TC3-HMAC-SHA256", String(timestamp), credentialScope, sha256(canonicalRequest)].join("\n")
   const secretDate = hmac(`TC3${config.secretKey}`, date)
@@ -96,9 +99,9 @@ export async function sendTencentSmsOtp(input: { phone: string; code: string }):
     method: "POST",
     headers: {
       Authorization: authorization,
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type": contentType,
       Host: SMS_ENDPOINT,
-      "X-TC-Action": "SendSms",
+      "X-TC-Action": action,
       "X-TC-Version": SMS_VERSION,
       "X-TC-Timestamp": String(timestamp),
       "X-TC-Region": config.region,

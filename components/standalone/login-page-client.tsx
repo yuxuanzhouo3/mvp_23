@@ -51,11 +51,20 @@ function BrandMark() {
   )
 }
 
+function normalizeRedirectTarget(input: string | null) {
+  const fallback = "/projects"
+  const value = String(input ?? "").trim()
+  if (!value) return fallback
+  if (!value.startsWith("/")) return fallback
+  if (value.startsWith("//")) return fallback
+  return value
+}
+
 function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: nextAuthSession, status: nextAuthStatus } = useSession()
-  const redirectTo = searchParams.get("redirect") || "/projects"
+  const redirectTo = useMemo(() => normalizeRedirectTarget(searchParams.get("redirect")), [searchParams])
   const switchAccount = searchParams.get("switch") === "1"
   const registerRequested = searchParams.get("mode") === "register"
   const oauthState = searchParams.get("oauth") || ""
