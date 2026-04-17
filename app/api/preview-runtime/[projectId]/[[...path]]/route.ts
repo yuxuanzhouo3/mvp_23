@@ -16,7 +16,81 @@ function rewriteHtmlForSandboxPreview(html: string, projectId: string) {
   next = next.replace(/(["'])\/_next\//g, `$1${previewBase}/_next/`)
   next = next.replace(/(["'])\/favicon/g, `$1${previewBase}/favicon`)
   next = next.replace(/url\(\/(?!\/)/g, `url(${previewBase}/`)
+  if (next.includes("</head>")) {
+    next = next.replace("</head>", `${buildPreviewRuntimeShim(previewBase)}</head>`)
+  }
   return next
+}
+
+function buildPreviewRuntimeShim(previewBase: string) {
+  const escapedBase = JSON.stringify(previewBase)
+  return `<script>
+;(() => {
+  const previewBase = ${escapedBase};
+  const sameOriginAbsolute = /^\\/(?!\\/)/;
+  const shouldProxy = (value) =>
+    typeof value === "string" &&
+    sameOriginAbsolute.test(value) &&
+    value !== previewBase &&
+    !value.startsWith(previewBase + "/");
+  const proxyUrl = (value) => {
+    if (!shouldProxy(value)) return value;
+    return previewBase + value;
+  };
+
+  window.__MORNSTACK_PREVIEW_BASE__ = previewBase;
+
+  const nativeFetch = window.fetch;
+  if (typeof nativeFetch === "function") {
+    window.fetch = (input, init) => {
+      if (typeof input === "string") {
+        return nativeFetch(proxyUrl(input), init);
+      }
+      if (input instanceof Request) {
+        const parsed = new URL(input.url);
+        if (parsed.origin === window.location.origin && shouldProxy(parsed.pathname)) {
+          const nextUrl = proxyUrl(parsed.pathname + parsed.search + parsed.hash);
+          return nativeFetch(new Request(nextUrl, input), init);
+        }
+      }
+      return nativeFetch(input, init);
+    };
+  }
+
+  if (window.XMLHttpRequest?.prototype?.open) {
+    const nativeOpen = window.XMLHttpRequest.prototype.open;
+    window.XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      return nativeOpen.call(this, method, proxyUrl(url), ...rest);
+    };
+  }
+
+  for (const method of ["pushState", "replaceState"]) {
+    const nativeMethod = window.history?.[method];
+    if (typeof nativeMethod !== "function") continue;
+    window.history[method] = function(state, title, url) {
+      return nativeMethod.call(this, state, title, typeof url === "string" ? proxyUrl(url) : url);
+    };
+  }
+
+  document.addEventListener("click", (event) => {
+    const anchor = event.target?.closest?.("a[href]");
+    if (!anchor) return;
+    const href = anchor.getAttribute("href");
+    if (shouldProxy(href)) {
+      anchor.setAttribute("href", proxyUrl(href));
+    }
+  }, true);
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!form?.getAttribute) return;
+    const action = form.getAttribute("action");
+    if (shouldProxy(action)) {
+      form.setAttribute("action", proxyUrl(action));
+    }
+  }, true);
+})();
+</script>`
 }
 
 export async function handlePreviewRuntimeRequest(req: Request, projectIdRaw: string, pathSegments: string[]) {
@@ -52,6 +126,11 @@ export async function handlePreviewRuntimeRequest(req: Request, projectIdRaw: st
     headers.delete("content-encoding")
     headers.delete("content-length")
     headers.set("cache-control", "no-store")
+    const location = headers.get("location")
+    const previewBase = buildPreviewBase(projectId)
+    if (location?.startsWith("/") && !location.startsWith("//") && !location.startsWith(`${previewBase}/`)) {
+      headers.set("location", `${previewBase}${location}`)
+    }
 
     const contentType = headers.get("content-type") || ""
     if (contentType.includes("text/html")) {
