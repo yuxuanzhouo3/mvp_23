@@ -9,9 +9,9 @@ import { normalizeRuntimeStatus } from "@/lib/workspace-bootstrap"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function buildTargetUrl(req: Request, projectId: string, port: number) {
+function buildTargetUrl(req: Request, routeParam: string, port: number) {
   const incoming = new URL(req.url)
-  const previewBase = buildPreviewBase(projectId)
+  const previewBase = buildPreviewBase(routeParam)
   const suffix = incoming.pathname.startsWith(previewBase)
     ? incoming.pathname.slice(previewBase.length) || "/"
     : "/"
@@ -201,8 +201,8 @@ async function renderFallbackPreview(projectId: string) {
   })
 }
 
-function rewriteHtmlForPreview(html: string, projectId: string) {
-  const previewBase = buildPreviewBase(projectId)
+function rewriteHtmlForPreview(html: string, routeParam: string) {
+  const previewBase = buildPreviewBase(routeParam)
   let next = html
 
   next = next.replace(/(href|src|action)=("|')\/(?!\/)/g, `$1=$2${previewBase}/`)
@@ -275,7 +275,13 @@ export async function handleProjectPreviewRequest(req: Request, projectIdRaw: st
       : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
   }
 
-  const target = buildTargetUrl(req, projectId, runtimeState.port)
+  const runtimePort = runtimeState?.port
+  if (!runtimePort) {
+    return wantsHtml
+      ? await renderFallbackPreview(publicProjectKey)
+      : NextResponse.json({ error: "Preview runtime not available" }, { status: 404 })
+  }
+  const target = buildTargetUrl(req, projectIdRaw, runtimePort)
   let upstream: Response
   try {
     upstream = await fetch(target, {
@@ -320,7 +326,7 @@ export async function handleProjectPreviewRequest(req: Request, projectIdRaw: st
   const contentType = headers.get("content-type") || ""
   if (contentType.includes("text/html")) {
     const html = await upstream.text()
-    return new NextResponse(rewriteHtmlForPreview(html, projectId), {
+    return new NextResponse(rewriteHtmlForPreview(html, projectIdRaw), {
       status: upstream.status,
       statusText: upstream.statusText,
       headers,
