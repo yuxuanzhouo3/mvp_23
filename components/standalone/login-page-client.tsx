@@ -21,6 +21,20 @@ type SessionResp = {
     facebookEnabled?: boolean
     phoneOtpConfigured?: boolean
   }
+  effectiveReadiness?: {
+    cn?: {
+      phoneOtp?: {
+        configured?: boolean
+        path?: string
+        provider?: string
+      }
+      emailVerification?: {
+        enabled?: boolean
+        smtpConfigured?: boolean
+        sendPath?: string
+      }
+    }
+  }
   user?: {
     id: string
     email: string
@@ -70,6 +84,7 @@ function LoginPageContent() {
   const [phoneCode, setPhoneCode] = useState("")
   const [sandboxCode, setSandboxCode] = useState("")
   const [phoneHint, setPhoneHint] = useState("")
+  const [phoneUsesLiveSms, setPhoneUsesLiveSms] = useState(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -83,6 +98,7 @@ function LoginPageContent() {
         setRuntimeMode((isCn ? json?.authRuntime?.cnMode : json?.authRuntime?.intlMode) ?? "demo")
         setEmailEnabled(Boolean(isCn ? json?.authRuntime?.cnEmailPasswordEnabled : json?.authRuntime?.intlEmailPasswordEnabled))
         setGoogleEnabled(Boolean(json?.authRuntime?.googleEnabled))
+        setPhoneUsesLiveSms(Boolean(json?.effectiveReadiness?.cn?.phoneOtp?.configured))
         if (json.authenticated && !switchAccount) {
           setSessionUser(json.user ?? null)
           setAuthStep("authenticated")
@@ -241,7 +257,9 @@ function LoginPageContent() {
       setPhoneHint(
         code
           ? `沙盒验证码已生成：${code}。后续接入真实短信后，这里将改成真实发送。`
-          : "验证码已发送。"
+          : phoneUsesLiveSms
+            ? "验证码已发送到你的手机，请查收。"
+            : "验证码已发送。"
       )
     } catch (err: any) {
       setError(err?.message || "Send verification code failed")
@@ -334,7 +352,9 @@ function LoginPageContent() {
             previewHint: "一句需求，直接进入产品生成与交付流。",
             runtime:
               runtimeMode === "phone"
-                ? "当前模式：手机验证码 + 邮箱（沙盒）"
+                ? phoneUsesLiveSms
+                  ? "当前模式：手机验证码 + 邮箱验证"
+                  : "当前模式：手机验证码（沙盒） + 邮箱验证"
                 : runtimeMode === "wechat"
                 ? "当前模式：微信优先 + 邮箱密码，手机验证码准备中"
                 : runtimeMode === "password"
@@ -387,7 +407,9 @@ function LoginPageContent() {
               runtimeMode === "supabase"
                 ? "Current mode: Supabase email auth"
                 : runtimeMode === "phone"
-                  ? "Current mode: phone verification + email (sandbox)"
+                  ? phoneUsesLiveSms
+                    ? "Current mode: phone verification + email verification"
+                    : "Current mode: phone verification (sandbox) + email verification"
                 : runtimeMode === "password"
                   ? "Current mode: direct email/password"
                   : runtimeMode === "wechat"

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import path from "path"
+import { promises as fs } from "fs"
+
 const [, , baseUrlArg] = process.argv
 
 if (!baseUrlArg) {
@@ -8,6 +11,7 @@ if (!baseUrlArg) {
 }
 
 const baseUrl = baseUrlArg.replace(/\/+$/, "")
+const workspaceRoot = process.cwd()
 
 function getHeader(headers, key) {
   if (!headers) return ""
@@ -40,6 +44,51 @@ function logFail(label, detail = "") {
   console.error(`[FAIL] ${label}${detail ? ` :: ${detail}` : ""}`)
 }
 
+async function readJson(filePath) {
+  const raw = await fs.readFile(filePath, "utf8")
+  return JSON.parse(raw)
+}
+
+async function waitFor(getValue, label, timeoutMs = 3000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const value = await getValue()
+    if (value) return value
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`Timed out waiting for ${label}`)
+}
+
+async function getLatestEmailCode(email, purpose) {
+  const filePath = path.join(workspaceRoot, ".generated", "workspaces", "_email_verifications.json")
+  return waitFor(async () => {
+    try {
+      const store = await readJson(filePath)
+      const record = (Array.isArray(store?.codes) ? store.codes : []).find(
+        (item) => item?.email === email && item?.purpose === purpose && !item?.consumedAt
+      )
+      return record?.code ? String(record.code) : ""
+    } catch {
+      return ""
+    }
+  }, `email code for ${email}`)
+}
+
+async function getLatestPhoneCode(phone, email) {
+  const filePath = path.join(workspaceRoot, ".generated", "workspaces", "_phone_otps.json")
+  return waitFor(async () => {
+    try {
+      const store = await readJson(filePath)
+      const record = (Array.isArray(store?.otps) ? store.otps : []).find(
+        (item) => item?.phone === phone && item?.email === email && !item?.consumedAt
+      )
+      return record?.code ? String(record.code) : ""
+    } catch {
+      return ""
+    }
+  }, `phone code for ${phone}`)
+}
+
 async function run() {
   const readiness = await fetchJson(`${baseUrl}/api/integrations/readiness`)
   if (!readiness.res.ok) {
@@ -53,23 +102,39 @@ async function run() {
 
   const email = `cn-smoke-${Date.now()}@mornscience.ai`
   const phone = "13800138000"
+  const tencentSmsConfigured = Boolean(readiness.json?.effectiveReadiness?.cn?.phoneOtp?.configured)
 
   const send = await fetchJson(`${baseUrl}/api/auth/phone/send`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ region: "cn", email, phone }),
   })
-  if (!send.res.ok || !send.json?.sandboxCode) {
+  if (!send.res.ok) {
     logFail("phone send", JSON.stringify(send.json))
     process.exit(1)
   }
-  const sandboxCode = String(send.json.sandboxCode)
-  logOk("phone send", `sandboxCode=${sandboxCode}`)
+
+  let phoneCode = ""
+  if (tencentSmsConfigured) {
+    if (send.json?.sandboxCode) {
+      logFail("phone send mode", "Tencent SMS path should not return sandboxCode")
+      process.exit(1)
+    }
+    phoneCode = await getLatestPhoneCode(phone, email)
+    logOk("phone send", `provider=${send.json?.provider || "tencent-sms"}`)
+  } else {
+    if (!send.json?.sandboxCode) {
+      logFail("phone send sandbox", JSON.stringify(send.json))
+      process.exit(1)
+    }
+    phoneCode = String(send.json.sandboxCode)
+    logOk("phone send", `sandboxCode=${phoneCode}`)
+  }
 
   const verify = await fetchJson(`${baseUrl}/api/auth/phone/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ region: "cn", email, phone, code: sandboxCode, name: "CN Smoke User" }),
+    body: JSON.stringify({ region: "cn", email, phone, code: phoneCode, name: "CN Smoke User" }),
   })
   if (!verify.res.ok || !verify.json?.ok) {
     logFail("phone verify", JSON.stringify(verify.json))
@@ -93,6 +158,60 @@ async function run() {
     process.exit(1)
   }
   logOk("session after phone verify", `${session.json.user.email} / ${session.json.user.region}`)
+
+  const emailSend = await fetchJson(`${baseUrl}/api/auth/email/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ region: "cn", email, purpose: "register" }),
+  })
+  if (!emailSend.res.ok || !emailSend.json?.ok) {
+    logFail("email send", JSON.stringify(emailSend.json))
+    process.exit(1)
+  }
+  logOk("email send", `expiresAt=${emailSend.json?.expiresAt || "n/a"}`)
+
+  const emailCode = await getLatestEmailCode(email, "register")
+  const emailPassword = "SmokePass123!"
+  const emailVerify = await fetchJson(`${baseUrl}/api/auth/email/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      region: "cn",
+      email,
+      password: emailPassword,
+      code: emailCode,
+      purpose: "register",
+      name: "CN Email Smoke",
+    }),
+  })
+  if (!emailVerify.res.ok || !emailVerify.json?.ok) {
+    logFail("email verify", JSON.stringify(emailVerify.json))
+    process.exit(1)
+  }
+  const emailCookie = readSetCookie(emailVerify.res.headers)
+  if (!emailCookie) {
+    logFail("email verify cookie", "missing set-cookie")
+    process.exit(1)
+  }
+  logOk("email verify", emailVerify.json?.user?.email || "verified")
+
+  const emailSession = await fetchJson(`${baseUrl}/api/auth/session`, {
+    headers: {
+      Cookie: emailCookie,
+      Accept: "application/json",
+    },
+  })
+  if (!emailSession.res.ok || !emailSession.json?.authenticated || emailSession.json?.user?.email !== email) {
+    logFail("session after email verify", JSON.stringify(emailSession.json))
+    process.exit(1)
+  }
+  logOk("session after email verify", `${emailSession.json.user.email} / ${emailSession.json.user.region}`)
+
+  const wechatPay = readiness.json?.effectiveReadiness?.cn?.payment || {}
+  logOk(
+    "wechat pay readiness",
+    `configured=${Boolean(wechatPay.wechatPayConfigured)} webhookVerify=${Boolean(wechatPay.wechatPayWebhookVerificationConfigured)}`
+  )
 
   const googleStart = await fetch(`${baseUrl}/api/auth/google/start?redirect=${encodeURIComponent("/checkout?region=intl&plan=pro")}`, {
     method: "GET",

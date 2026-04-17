@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { resolveAuthRuntimeConfig } from "@/lib/auth-runtime"
+import { isEmailSmtpConfigured } from "@/lib/email-auth"
 import { resolvePaymentAdapterConfig } from "@/lib/payment-adapter"
 import { getPublicSiteMap, type PublicProviderDescriptor } from "@/lib/public-site"
+import { getTencentSmsConfig } from "@/lib/tencent-sms"
 import {
   DATABASE_OPTIONS,
   DEPLOYMENT_OPTIONS,
@@ -19,6 +21,9 @@ export async function GET() {
   const auth = resolveAuthRuntimeConfig()
   const payment = resolvePaymentAdapterConfig()
   const site = getPublicSiteMap()
+  const tencentSms = getTencentSmsConfig()
+  const emailSmtpConfigured = isEmailSmtpConfigured()
+  const cnPhoneAuthPath = auth.phoneOtpConfigured ? "tencent_sms" : "sandbox"
 
   const providers: PublicProviderDescriptor[] = [
     {
@@ -192,11 +197,18 @@ export async function GET() {
         "PAYPAL_CLIENT_SECRET",
       ],
       cnAuth: [
-        "SMS_PROVIDER_NAME",
-        "SMS_API_KEY",
-        "SMS_API_SECRET",
-        "SMS_SIGN_NAME",
-        "SMS_TEMPLATE_ID",
+        "TENCENT_SMS_APP_ID",
+        "TENCENT_SMS_SIGN_NAME",
+        "TENCENT_SMS_TEMPLATE_ID",
+        "TENCENT_SMS_SECRET_ID",
+        "TENCENT_SMS_SECRET_KEY",
+      ],
+      cnAuthEmail: [
+        "AUTH_EMAIL_SMTP_HOST",
+        "AUTH_EMAIL_SMTP_PORT",
+        "AUTH_EMAIL_SMTP_USER",
+        "AUTH_EMAIL_SMTP_PASS",
+        "AUTH_EMAIL_FROM",
       ],
       cnPayment: [
         "ALIPAY_APP_ID",
@@ -212,6 +224,7 @@ export async function GET() {
         "WECHAT_PAY_PLATFORM_SERIAL_NO",
       ],
       cnAuthOptional: [
+        "TENCENT_SMS_REGION",
         "NEXT_PUBLIC_WECHAT_APP_ID",
         "WECHAT_APP_SECRET",
       ],
@@ -222,6 +235,31 @@ export async function GET() {
       ],
       deploymentTargets: DEPLOYMENT_OPTIONS.map((item) => item.id),
       databaseTargets: DATABASE_OPTIONS.map((item) => item.id),
+    },
+    effectiveReadiness: {
+      cn: {
+        authMode: auth.cnMode,
+        phoneOtp: {
+          configured: auth.phoneOtpConfigured,
+          path: cnPhoneAuthPath,
+          provider: auth.phoneOtpConfigured ? "tencent-sms" : "sandbox",
+          region: tencentSms.region,
+        },
+        emailVerification: {
+          enabled: auth.cnEmailPasswordEnabled,
+          smtpConfigured: emailSmtpConfigured,
+          sendPath: emailSmtpConfigured ? "smtp" : "not_configured",
+        },
+        wechatLogin: {
+          configured: auth.wechatConfigured,
+          modeLive: auth.cnMode === "wechat" && auth.wechatConfigured,
+        },
+        payment: {
+          wechatPayConfigured: payment.wechatConfigured,
+          wechatPayWebhookVerificationConfigured: payment.wechatWebhookVerificationConfigured,
+          alipayConfigured: payment.alipayConfigured,
+        },
+      },
     },
     rolloutPlan: {
       currentTarget: {
