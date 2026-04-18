@@ -21,8 +21,11 @@ import {
   Video,
   X,
 } from 'lucide-react'
-import type { AiAsset, AiGenerationJob, AiLanguage, AiMarketingProfile } from '@/lib/admin/types'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import type { AiAsset, AiGenerationJob, AiLanguage, AiMarketingProfile, AiUsagePolicy } from '@/lib/admin/types'
 import type { AiProviderRoute } from '@/lib/admin/ai/provider-router'
+import { getDefaultAiUsagePolicy, summarizeAiUsagePolicy } from '@/lib/admin/ai/usage-policy'
 
 type FeatureItem = {
   id: string
@@ -36,6 +39,13 @@ type JobEnvelope = {
   assets: AiAsset[]
   analysis: any | null
   brief: any
+}
+
+type UsageEnvelope = {
+  adminId: string
+  usedGenerations: number
+  remainingFreeUses: number
+  trialExhausted: boolean
 }
 
 const defaultMarketingProfile: AiMarketingProfile = {
@@ -149,11 +159,86 @@ function formatFeatureLine(feature: FeatureItem) {
   return parts.join('：')
 }
 
+function formatCny(value: number) {
+  return new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(value)
+}
+
 export default function AiStudioClient({ region: _region, language, route: _route }: { region: 'CN' | 'INTL'; language: AiLanguage; route: AiProviderRoute }) {
+  const isCn = language === 'zh-CN'
+  const ui = isCn
+    ? {
+        title: 'AI 创意中心',
+        subtitle: '基于人工维护的宣传配置生成海报与视频。',
+        quotaBadge: 'AI 额度策略',
+        quotaStatusOn: '免费试用可用',
+        quotaStatusOff: '免费试用已用完',
+        quotaTitle: '免费体验和月度预算',
+        quotaDescription: (users: number, perUser: string, monthly: string, freeTrial: number) =>
+          `独立项目里凡是用到 AI 生成功能，默认按 ${users} 个用户、每个用户 ${perUser} / 月来测算，总预算 ${monthly} / 月。免费体验默认 ${freeTrial} 次，之后会提示收费。`,
+        usageLabel: '使用次数',
+        currentBudget: '当前预算',
+        reminderTitle: '收费提醒策略',
+        reminderBody:
+          '这里的配置会同步到后台，后续独立项目里只要触发 AI 生成功能，就能按同一套免费次数和预算口径提示用户是否继续使用。',
+        editorTitle: '编辑 AI 额度',
+        editorDescription: '这些数值都可以在 admin 后台灵活调整，并会保存到数据库配置里。',
+        monthlyBudget: '月度预算（元）',
+        defaultUsers: '默认用户数',
+        userFee: '单用户月费（元）',
+        trialUses: '免费体验次数',
+        enabledLabel: '启用 AI 配额限制和免费体验提醒',
+        saveQuota: '保存 AI 额度',
+        restoreQuota: '恢复默认额度',
+        saveHint:
+          '保存结果',
+        saveNote: '后续 AI 生成功能会参考这套配置显示免费次数和收费提示。',
+        loaded: '已加载',
+        trialRemaining: '剩余免费体验',
+        trialExhausted: '当前 admin 账号的免费次数已耗尽，继续生成会直接提示收费。',
+        loadingPolicy: '加载 AI 额度配置失败，已使用默认配置',
+        saved: 'AI 额度配置已保存',
+        saveFailed: 'AI 额度配置保存失败',
+      }
+    : {
+        title: 'AI Creative Center',
+        subtitle: 'Generate posters and videos from manually maintained marketing profiles.',
+        quotaBadge: 'AI quota policy',
+        quotaStatusOn: 'Free trial available',
+        quotaStatusOff: 'Free trial exhausted',
+        quotaTitle: 'Free trial and monthly budget',
+        quotaDescription: (users: number, perUser: string, monthly: string, freeTrial: number) =>
+          `AI-enabled features in standalone products default to ${users} users at ${perUser} / month each, for a total budget of ${monthly} / month. The free trial defaults to ${freeTrial} uses before charging reminders appear.`,
+        usageLabel: 'Usage count',
+        currentBudget: 'Current budget',
+        reminderTitle: 'Charge reminder policy',
+        reminderBody:
+          'These settings sync to the backend so standalone products can show the same free-use and budget rules when AI generation is triggered.',
+        editorTitle: 'Edit AI quota',
+        editorDescription: 'These values can be tuned in the admin backend and are persisted to the database config.',
+        monthlyBudget: 'Monthly budget',
+        defaultUsers: 'Default users',
+        userFee: 'Per-user monthly fee',
+        trialUses: 'Free trial uses',
+        enabledLabel: 'Enable AI quota limits and free-trial reminders',
+        saveQuota: 'Save AI quota',
+        restoreQuota: 'Restore defaults',
+        saveHint: 'Save result',
+        saveNote: 'Future AI generation flows will read this policy for free-use counts and billing prompts.',
+        loaded: 'Loaded',
+        trialRemaining: 'Free uses left',
+        trialExhausted: 'This admin account has exhausted the free trial quota. Future generations will prompt payment.',
+        loadingPolicy: 'Failed to load AI quota policy; default values are in use',
+        saved: 'AI quota policy saved',
+        saveFailed: 'Failed to save AI quota policy',
+      }
   const [profile, setProfile] = useState<AiMarketingProfile>(defaultMarketingProfile)
   const [features, setFeatures] = useState<FeatureItem[]>(buildFeaturesFromProfile(defaultMarketingProfile))
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [usagePolicy, setUsagePolicy] = useState<AiUsagePolicy>(getDefaultAiUsagePolicy())
+  const [usageEnvelope, setUsageEnvelope] = useState<UsageEnvelope | null>(null)
+  const [loadingUsagePolicy, setLoadingUsagePolicy] = useState(true)
+  const [savingUsagePolicy, setSavingUsagePolicy] = useState(false)
 
   const [activeMode, setActiveMode] = useState<'image' | 'video'>('image')
 
@@ -223,6 +308,34 @@ export default function AiStudioClient({ region: _region, language, route: _rout
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    const loadUsagePolicy = async () => {
+      setLoadingUsagePolicy(true)
+      try {
+        const json = await requestJson('/api/admin/ai/usage-policy')
+        if (cancelled) return
+        const nextPolicy = json.policy as AiUsagePolicy
+        setUsagePolicy(nextPolicy)
+        setUsageEnvelope(json.usage as UsageEnvelope)
+      } catch (error: any) {
+        if (!cancelled) {
+          toast.error(error?.message || '加载 AI 额度配置失败，已使用默认配置')
+          setUsagePolicy(getDefaultAiUsagePolicy())
+          setUsageEnvelope(null)
+        }
+      } finally {
+        if (!cancelled) setLoadingUsagePolicy(false)
+      }
+    }
+
+    void loadUsagePolicy()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (!promptInitRef.current) {
       promptInitRef.current = true
       return
@@ -272,11 +385,54 @@ export default function AiStudioClient({ region: _region, language, route: _rout
     }
   }
 
+  async function saveUsagePolicy(nextPolicy?: AiUsagePolicy) {
+    setSavingUsagePolicy(true)
+    try {
+      const payload = nextPolicy || usagePolicy
+      const json = await requestJson('/api/admin/ai/usage-policy', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      setUsagePolicy(json.policy as AiUsagePolicy)
+      setUsageEnvelope(json.usage as UsageEnvelope)
+      toast.success('AI 额度配置已保存')
+    } catch (error: any) {
+      toast.error(error?.message || 'AI 额度配置保存失败')
+    } finally {
+      setSavingUsagePolicy(false)
+    }
+  }
+
   async function handleRestoreDefault() {
     const nextProfile = { ...defaultMarketingProfile }
     setProfile(nextProfile)
     setFeatures(buildFeaturesFromProfile(nextProfile))
     await saveProfile(nextProfile)
+  }
+
+  function updateUsagePolicyField(field: keyof AiUsagePolicy, value: string | boolean) {
+    setUsagePolicy((current) => {
+      if (field === 'enabled') {
+        return { ...current, enabled: Boolean(value) }
+      }
+
+      const numericValue = Number.parseFloat(String(value))
+      if (field === 'free_trial_uses' || field === 'default_user_limit') {
+        const fallback = current[field] as number
+        return {
+          ...current,
+          [field]: Number.isFinite(numericValue) && numericValue > 0 ? Math.max(1, Math.floor(numericValue)) : fallback,
+        }
+      }
+
+      const fallback = current[field] as number
+      return {
+        ...current,
+        [field]: Number.isFinite(numericValue) && numericValue > 0 ? numericValue : fallback,
+      } as AiUsagePolicy
+    })
   }
 
   function startPolling(kind: 'poster' | 'video', jobId: string) {
@@ -477,14 +633,152 @@ export default function AiStudioClient({ region: _region, language, route: _rout
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 flex items-center gap-3">
               <LayoutGrid className="w-7 h-7 text-cyan-600" />
-              AI 创意中心
+              {ui.title}
             </h1>
-            <p className="mt-1 text-sm text-slate-500">基于人工维护的宣传配置生成海报与视频。</p>
+            <p className="mt-1 text-sm text-slate-500">{ui.subtitle}</p>
           </div>
           <div className="text-sm font-medium text-cyan-700 bg-cyan-50 px-4 py-1.5 rounded-full border border-cyan-100">
             当前产品: {profile.product_name}
           </div>
         </header>
+
+        <section className="grid gap-4 xl:grid-cols-[1.02fr_0.98fr]">
+          <Card className="border-cyan-100 bg-gradient-to-br from-cyan-50 to-white shadow-sm">
+            <CardHeader className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="border-cyan-200 bg-white text-cyan-700">
+                  {ui.quotaBadge}
+                </Badge>
+                <Badge variant={usageEnvelope?.trialExhausted ? "destructive" : "secondary"}>
+                  {usageEnvelope?.trialExhausted ? ui.quotaStatusOff : ui.quotaStatusOn}
+                </Badge>
+              </div>
+              <CardTitle className="text-xl text-slate-950">{ui.quotaTitle}</CardTitle>
+              <CardDescription className="leading-7 text-slate-600">
+                {ui.quotaDescription(usagePolicy.default_user_limit, formatCny(usagePolicy.per_user_monthly_fee_cny), formatCny(usagePolicy.monthly_budget_cny), usagePolicy.free_trial_uses)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-cyan-100 bg-white p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-cyan-700">{ui.usageLabel}</div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">
+                  {loadingUsagePolicy ? "..." : `${usageEnvelope?.usedGenerations || 0} / ${usagePolicy.free_trial_uses}`}
+                </div>
+                <div className="mt-2 text-sm text-slate-500">
+                  {usageEnvelope?.trialExhausted
+                    ? ui.trialExhausted
+                    : `${ui.trialRemaining}：${usageEnvelope?.remainingFreeUses ?? usagePolicy.free_trial_uses} 次`}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-cyan-100 bg-white p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-cyan-700">{ui.currentBudget}</div>
+                <div className="mt-2 text-3xl font-semibold text-slate-950">{formatCny(usagePolicy.monthly_budget_cny)}</div>
+                <div className="mt-2 text-sm text-slate-500">按 {usagePolicy.default_user_limit} 位默认用户、每位 {formatCny(usagePolicy.per_user_monthly_fee_cny)} / 月配置。</div>
+              </div>
+              <div className="rounded-2xl border border-dashed border-cyan-200 bg-cyan-50/70 p-4 md:col-span-2">
+                <div className="text-sm font-semibold text-cyan-900">{ui.reminderTitle}</div>
+                <p className="mt-2 text-sm leading-7 text-cyan-800">
+                  {ui.reminderBody}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-slate-900">
+                <Settings className="w-5 h-5 text-slate-500" />
+                {ui.editorTitle}
+              </CardTitle>
+              <CardDescription>{ui.editorDescription}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="font-medium">{ui.monthlyBudget}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={usagePolicy.monthly_budget_cny}
+                    onChange={(event) => updateUsagePolicyField('monthly_budget_cny', event.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </label>
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="font-medium">{ui.defaultUsers}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={usagePolicy.default_user_limit}
+                    onChange={(event) => updateUsagePolicyField('default_user_limit', event.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </label>
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="font-medium">{ui.userFee}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={usagePolicy.per_user_monthly_fee_cny}
+                    onChange={(event) => updateUsagePolicyField('per_user_monthly_fee_cny', event.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </label>
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="font-medium">{ui.trialUses}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    value={usagePolicy.free_trial_uses}
+                    onChange={(event) => updateUsagePolicyField('free_trial_uses', event.target.value)}
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </label>
+              </div>
+
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={usagePolicy.enabled}
+                  onChange={(event) => updateUsagePolicyField('enabled', event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                />
+                <span>{ui.enabledLabel}</span>
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => saveUsagePolicy()}
+                  disabled={savingUsagePolicy}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-60"
+                >
+                  {savingUsagePolicy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+                  {ui.saveQuota}
+                </button>
+                <button
+                  onClick={() => {
+                    const nextPolicy = getDefaultAiUsagePolicy()
+                    setUsagePolicy(nextPolicy)
+                    void saveUsagePolicy(nextPolicy)
+                  }}
+                  disabled={savingUsagePolicy}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {ui.restoreQuota}
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
+                <div className="font-medium text-slate-900">{ui.saveHint}</div>
+                <p className="mt-2">
+                  {summarizeAiUsagePolicy(usagePolicy)}。{ui.saveNote}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
 
         <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap gap-3 justify-between items-center">

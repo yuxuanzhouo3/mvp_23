@@ -1669,9 +1669,9 @@ function getArchetypeEntityBlueprints(spec: AppSpec): EntityBlueprint[] {
   if (archetype === "marketing_admin" || archetype === "content") {
     const entities: EntityBlueprint[] = [
       { id: "site_page", label: isCn ? "站点页面" : "Site page", summary: isCn ? "官网、下载页与说明页内容" : "Site, download, and docs content", fields: ["slug", "title", "status", "owner"], primaryViews: ["/website", "/docs"], workflows: isCn ? ["发布", "改版", "排期"] : ["publish", "revise", "schedule"] },
-      { id: "download_asset", label: isCn ? "下载资产" : "Download asset", summary: isCn ? "客户端或分发包信息" : "Client build or distribution asset", fields: ["name", "platform", "version", "channel"], primaryViews: ["/downloads"], workflows: isCn ? ["上传", "分发", "下架"] : ["upload", "distribute", "retire"] },
+      { id: "download_asset", label: isCn ? "下载资产" : "Download asset", summary: isCn ? "客户端或分发包信息" : "Client build or distribution asset", fields: ["name", "platform", "version", "channel"], primaryViews: ["/download"], workflows: isCn ? ["上传", "分发", "下架"] : ["upload", "distribute", "retire"] },
       { id: "release_note", label: isCn ? "版本说明" : "Release note", summary: isCn ? "更新记录与变更说明" : "Changelog and release narrative", fields: ["version", "headline", "publishedAt"], primaryViews: ["/docs", "/changelog", "/admin"], workflows: isCn ? ["发布说明", "同步下载页"] : ["publish note", "sync downloads"] },
-      { id: "distribution_channel", label: isCn ? "分发渠道" : "Distribution channel", summary: isCn ? "承接平台下载、版本可见性和分发规则" : "Controls store visibility, device distribution, and rollout rules", fields: ["name", "platform", "visibility", "status"], primaryViews: ["/downloads", "/pricing", "/admin"], workflows: isCn ? ["更新渠道", "灰度发布", "下架渠道"] : ["update channel", "roll out", "retire channel"] },
+      { id: "distribution_channel", label: isCn ? "分发渠道" : "Distribution channel", summary: isCn ? "承接平台下载、版本可见性和分发规则" : "Controls store visibility, device distribution, and rollout rules", fields: ["name", "platform", "visibility", "status"], primaryViews: ["/download", "/pricing", "/admin"], workflows: isCn ? ["更新渠道", "灰度发布", "下架渠道"] : ["update channel", "roll out", "retire channel"] },
     ]
     if (/device|ios|android|apk|mac|windows|desktop|设备|安卓|苹果|桌面端/.test(text)) {
       entities.push({
@@ -1679,7 +1679,7 @@ function getArchetypeEntityBlueprints(spec: AppSpec): EntityBlueprint[] {
         label: isCn ? "设备构建包" : "Device build",
         summary: isCn ? "记录不同端的安装包、版本和签名状态" : "Tracks per-device builds, versions, and signing state",
         fields: ["platform", "version", "channel", "signatureStatus", "releasedAt"],
-        primaryViews: ["/devices", "/downloads"],
+        primaryViews: ["/devices", "/download"],
         workflows: isCn ? ["上传构建", "更新版本", "检查签名"] : ["upload build", "update version", "check signing"],
       })
     }
@@ -2789,8 +2789,8 @@ function getPromptRoutePriority(spec: AppSpec, routeId: string) {
   if (archetype === "marketing_admin" || archetype === "content") {
     return (
       score(/website|site|story|marketing|brand|官网|站点|品牌/.test(text) && routeId === "website", 148) +
-      score(/download|downloads|distribution|installer|apk|ipa|mac|windows|desktop|ios|android|下载|分发|安装/.test(text) && routeId === "downloads", 155) +
-      score(/release distribution|distribution control|installer|desktop app|mobile app|发布分发|分发控制|安装包|桌面端|移动端/.test(text) && routeId === "downloads", 8) +
+      score(/download|downloads|distribution|installer|apk|ipa|mac|windows|desktop|ios|android|下载|分发|安装/.test(text) && routeId === "download", 155) +
+      score(/release distribution|distribution control|installer|desktop app|mobile app|发布分发|分发控制|安装包|桌面端|移动端/.test(text) && routeId === "download", 8) +
       score(/docs|documentation|guide|faq|release notes|文档|指南|faq|说明|发布说明/.test(text) && routeId === "docs", 150) +
       score(/onboarding|release notes|setup guide|developer guide|上手|发布说明|安装指南/.test(text) && routeId === "docs", 6) +
       score(/device|devices|ios|android|mac|windows|desktop|设备|安装包/.test(text) && routeId === "devices", 149) +
@@ -2907,7 +2907,7 @@ function buildBlueprintAwarePrimaryWorkflow(
     if (entityIds.has("device_build")) {
       return isCn ? "官网浏览 -> 下载对比 -> 设备分发 -> 后台同步" : "Website browse -> download compare -> device distribution -> admin sync"
     }
-    if (routeIds.has("downloads") && routeIds.has("docs")) {
+    if (routeIds.has("download") && routeIds.has("docs")) {
       return isCn ? "官网浏览 -> 文档教育 -> 下载分发 -> 后台联动" : "Website browse -> docs education -> download distribution -> admin linkage"
     }
   }
@@ -3072,8 +3072,8 @@ function buildBlueprintsForSpec(spec: AppSpec) {
       if (/quota|owner|team|leaderboard|cadence/.test(text)) push("team", "reports")
     } else if (archetype === "marketing_admin" || archetype === "content") {
       if (/website|homepage|narrative|proof|story|hero/.test(text)) push("website", "dashboard")
-      if (/download|distribution|asset|channel/.test(text)) push("downloads", "admin")
-      if (/device|build|sign|installer|matrix/.test(text)) push("devices", "downloads")
+      if (/download|distribution|asset|channel/.test(text)) push("download", "admin")
+      if (/device|build|sign|installer|matrix/.test(text)) push("devices", "download")
       if (/doc|release|changelog|note|faq|guide/.test(text)) push("docs", "changelog", "admin")
       if (/pricing|plan|compare/.test(text)) push("pricing", "dashboard")
       if (/admin|console|ops|growth|control/.test(text)) push("admin", "dashboard")
@@ -8287,7 +8287,7 @@ export default function Page() {
           <div style={{ fontSize: 18, fontWeight: 900 }}>mornstack</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", color: "#6b7280" }}>
             <Link href="/" style={{ textDecoration: "none", color: "#111827", fontWeight: 700 }}>${isCn ? "产品能力" : "Product"}</Link>
-            <Link href="/downloads" style={{ textDecoration: "none", color: "#6b7280" }}>${isCn ? "下载" : "Download"}</Link>
+            <Link href="/download" style={{ textDecoration: "none", color: "#6b7280" }}>${isCn ? "下载" : "Download"}</Link>
             <Link href="/about" style={{ textDecoration: "none", color: "#6b7280" }}>${isCn ? "品牌" : "About"}</Link>
             <span>${isCn ? "价格" : "Pricing"}</span>
           </div>
@@ -8300,7 +8300,7 @@ export default function Page() {
             <div style={{ marginTop: 24, display: "flex", gap: 12, flexWrap: "wrap" }}>
               <Link href="/download/android" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", background: "#111827", color: "#fff", fontWeight: 800 }}>${isCn ? "下载 Android" : "Download Android"}</Link>
               <Link href="/api-docs" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(17,24,39,0.12)", color: "#111827", fontWeight: 800 }}>${isCn ? "打开文档" : "Open docs"}</Link>
-              <Link href="/downloads" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(17,24,39,0.12)", color: "#111827", fontWeight: 800 }}>${isCn ? "下载中心" : "Download center"}</Link>
+              <Link href="/download" style={{ textDecoration: "none", borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(17,24,39,0.12)", color: "#111827", fontWeight: 800 }}>${isCn ? "下载中心" : "Download center"}</Link>
             </div>
           </div>
           <div style={{ borderRadius: 28, background: "linear-gradient(135deg,#111827,#1f2937)", padding: 24, color: "#f9fafb", minHeight: 420 }}>
@@ -10422,7 +10422,7 @@ function renderAboutPage(spec: AppSpec) {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             {[
               { href: "/", label: isCn ? "官网首页" : "Homepage" },
-              { href: "/downloads", label: isCn ? "下载中心" : "Downloads" },
+              { href: "/download", label: isCn ? "下载中心" : "Downloads" },
               { href: "/about", label: isCn ? "品牌说明" : "About", active: true },
             ].map((item) => (
               <a key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "#111827" : "#f8fafc", color: item.active ? "#ffffff" : "#111827", fontSize: 13, fontWeight: 700, border: item.active ? "none" : "1px solid rgba(15,23,42,0.08)" }}>
@@ -16513,7 +16513,7 @@ export default function TasksEntryPage() {
 `
 }
 
-function renderTemplateExtraPage(spec: AppSpec, page: "leads" | "incidents" | "events" | "downloads") {
+function renderTemplateExtraPage(spec: AppSpec, page: "leads" | "incidents" | "events" | "download" | "downloads") {
   const isCn = spec.region === "cn"
 
   if (page === "leads") {
@@ -16796,7 +16796,7 @@ export default function EventsPage() {
 
   return `import Link from "next/link";
 
-export default function DownloadsPage() {
+export default function DownloadPage() {
   const isCn = ${isCn ? "true" : "false"};
   return (
     <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#fff8f1 0%,#fff 48%,#f8fafc 100%)", color: "#111827", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 28 }}>
@@ -16805,7 +16805,7 @@ export default function DownloadsPage() {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
             {[
               { href: "/", label: isCn ? "官网首页" : "Homepage" },
-              { href: "/downloads", label: isCn ? "下载中心" : "Downloads", active: true },
+              { href: "/download", label: isCn ? "下载中心" : "Download center", active: true },
               { href: "/about", label: isCn ? "产品介绍" : "About" },
             ].map((item) => (
               <Link key={item.href} href={item.href} style={{ textDecoration: "none", borderRadius: 999, padding: "8px 12px", background: item.active ? "#111827" : "#f8fafc", color: item.active ? "#ffffff" : "#111827", fontSize: 13, fontWeight: 700, border: item.active ? "none" : "1px solid rgba(15,23,42,0.08)" }}>
@@ -16847,7 +16847,7 @@ export default function DownloadsPage() {
           <div style={{ borderRadius: 22, background: "#fff", border: "1px solid rgba(15,23,42,0.08)", padding: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "下载路径" : "Download path"}</div>
             <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-              {(isCn ? ["官网首页", "下载中心", "安装说明", "登录与升级"] : ["Homepage", "Downloads", "Install guide", "Login and upgrade"]).map((item, index) => (
+              {(isCn ? ["官网首页", "下载中心", "安装说明", "登录与升级"] : ["Homepage", "Download center", "Install guide", "Login and upgrade"]).map((item, index) => (
                 <div key={item} style={{ borderRadius: 14, background: index === 0 ? "#fff7ed" : "#f8fafc", padding: "12px 14px", color: "#334155" }}>
                   {item}
                 </div>
@@ -17292,6 +17292,17 @@ function extractPlannedRouteNames(spec: AppSpec) {
       : ["dashboard", "feedback", "moderation", "roadmap", "members", "events", "posts", "settings", "about"]
     return orderedRoutes.filter((route) => routes.has(route))
   }
+  if (archetype === "marketing_admin") {
+    routes.add("dashboard")
+    routes.add("website")
+    routes.add("market")
+    routes.add("download")
+    routes.add("demo")
+    routes.add("pricing")
+    routes.add("docs")
+    routes.add("admin")
+    return ["dashboard", "website", "market", "download", "demo", "pricing", "docs", "admin"].filter((route) => routes.has(route))
+  }
   if (archetype !== "code_platform" && hasFeature(spec, "about_page")) routes.add("about")
   if (archetype !== "code_platform" && hasFeature(spec, "analytics_page")) routes.add("analytics")
   if (archetype === "task") {
@@ -17329,7 +17340,10 @@ function getGeneratedRouteLabel(route: string, isCn: boolean) {
     members: ["Members", "Members"],
     feedback: ["Feedback", "Feedback"],
     website: ["Website", "Website"],
+    market: ["Market", "Market"],
+    download: ["Download", "Download"],
     downloads: ["Downloads", "Downloads"],
+    demo: ["Demo", "Demo"],
     docs: ["Docs", "Docs"],
     admin: ["Admin", "Admin"],
     patients: ["患者", "Patients"],
@@ -17905,8 +17919,8 @@ export async function buildSpecDrivenWorkspaceFiles(
     )
     pushWorkspaceFile(
       {
-        path: "app/downloads/page.tsx",
-        content: renderArchetypeConsolePage(spec, "downloads") ?? renderTemplateExtraPage(spec, "downloads"),
+        path: "app/download/page.tsx",
+        content: renderArchetypeConsolePage(spec, "download") ?? renderTemplateExtraPage(spec, "download"),
         reason: "Add download center page for marketing-admin scaffold",
       }
     )
@@ -17978,8 +17992,8 @@ export async function buildSpecDrivenWorkspaceFiles(
 
   if (spec.templateId === "launchpad" && archetype !== "marketing_admin") {
     pushWorkspaceFile({
-      path: "app/downloads/page.tsx",
-      content: renderTemplateExtraPage(spec, "downloads"),
+      path: "app/download/page.tsx",
+      content: renderTemplateExtraPage(spec, "download"),
       reason: "Add download center for launch and website products",
     })
   }

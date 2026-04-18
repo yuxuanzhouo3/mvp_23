@@ -354,6 +354,19 @@ export interface AiMarketingProfile {
   marketing_angles: string[];
 }
 
+/**
+ * AI 使用配额配置
+ *
+ * 用于控制每月预算、默认用户规模、单用户月费和免费体验次数。
+ */
+export interface AiUsagePolicy {
+  monthly_budget_cny: number;
+  default_user_limit: number;
+  per_user_monthly_fee_cny: number;
+  free_trial_uses: number;
+  enabled: boolean;
+}
+
 export interface AiProjectAnalysis {
   id: string;
   region: AiRegion;
@@ -502,6 +515,7 @@ export interface AiJobFilters {
   job_type?: AiJobType;
   region?: AiRegion;
   language?: AiLanguage;
+  created_by?: string;
   limit?: number;
   offset?: number;
 }

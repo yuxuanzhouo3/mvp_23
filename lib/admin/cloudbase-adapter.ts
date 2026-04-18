@@ -2263,6 +2263,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     const where: any = {};
     if (filters?.status) where.status = filters.status;
     if (filters?.job_type) where.job_type = filters.job_type;
+    if (filters?.created_by) where.created_by = filters.created_by;
     if (filters?.region) where.region = filters.region;
     if (filters?.language) where.language = filters.language;
 

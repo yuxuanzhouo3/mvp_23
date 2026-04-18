@@ -17,6 +17,7 @@ import type {
 } from '@/lib/admin/types'
 import { getDatabaseAdapter } from '@/lib/admin/database'
 import { buildRepoContextBundle } from './repo-context'
+import { sanitizeAiUsagePolicy } from './usage-policy'
 import {
   generateStructuredJson,
   pollPosterGeneration,
@@ -44,6 +45,34 @@ function mergePayload(base: Record<string, any> | undefined, patch: Record<strin
     ...(base || {}),
     ...patch,
   }
+}
+
+async function getAiUsagePolicy() {
+  const adapter = getDatabaseAdapter()
+  const stored = await adapter.getConfig("ai_studio_usage_policy")
+  return sanitizeAiUsagePolicy(stored, { allowEmpty: true })
+}
+
+async function ensureAiTrialAvailability(createdBy: string) {
+  const adapter = getDatabaseAdapter()
+  const policy = await getAiUsagePolicy()
+
+  if (!policy.enabled) {
+    return policy
+  }
+
+  if (policy.free_trial_uses <= 0) {
+    return policy
+  }
+
+  const jobs = await adapter.listAiGenerationJobs({ created_by: createdBy, limit: 1000, offset: 0 })
+  const completedGenerations = jobs.filter((job) => job.status === "completed").length
+
+  if (completedGenerations >= policy.free_trial_uses) {
+    throw new Error(`AI 免费体验次数已用完（${policy.free_trial_uses} 次）。请先在后台开通收费额度后继续生成。`)
+  }
+
+  return policy
 }
 
 function toStringValue(value: unknown, fallback = ""): string {
@@ -1041,6 +1070,8 @@ export async function createRepoAnalysisJob(input: RepoAnalysisRequest, createdB
   const route = resolveAiProviderRoute(region)
   const language = input.language || resolveAiLanguage(region)
 
+  await ensureAiTrialAvailability(createdBy)
+
   return adapter.createAiGenerationJob({
     region,
     language,
@@ -1060,6 +1091,8 @@ export async function createPosterJob(input: PosterGenerationRequest, createdBy:
   const region = resolveAiRegion()
   const route = resolveAiProviderRoute(region)
   const language = resolveAiLanguage(region)
+
+  await ensureAiTrialAvailability(createdBy)
 
   return adapter.createAiGenerationJob({
     analysis_id: input.analysis_id,
@@ -1083,6 +1116,8 @@ export async function createVideoJob(input: VideoGenerationRequest, createdBy: s
   const region = resolveAiRegion()
   const route = resolveAiProviderRoute(region)
   const language = resolveAiLanguage(region)
+
+  await ensureAiTrialAvailability(createdBy)
 
   return adapter.createAiGenerationJob({
     analysis_id: input.analysis_id,

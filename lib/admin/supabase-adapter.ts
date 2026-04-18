@@ -2045,6 +2045,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
 
     if (filters?.status) query = query.eq("status", filters.status);
     if (filters?.job_type) query = query.eq("job_type", filters.job_type);
+    if (filters?.created_by) query = query.eq("created_by", filters.created_by);
     if (filters?.region) query = query.eq("region", filters.region);
     if (filters?.language) query = query.eq("language", filters.language);
 
