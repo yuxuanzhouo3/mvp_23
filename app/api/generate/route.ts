@@ -1479,27 +1479,30 @@ function getDefaultTemplateIdForPlannerProductType(
   context?: GenerateRequestContext
 ) {
   if (productType === "crm_workspace") return "opsdesk"
-  if (productType === "api_platform") return "taskflow"
-  if (productType === "community_hub") return "orbital"
+  if (productType === "api_platform") return "orbital"
+  if (productType === "community_hub") return "serenity"
   if (productType === "content_site") return "launchpad"
   if (productType === "task_workspace" && shouldUseSpecializedWorkspaceTemplateIsolation(prompt)) {
     return undefined
+  }
+  if (productType === "task_workspace" && shouldPreferAdminOpsOverCrm(prompt)) {
+    return "taskflow"
   }
   const inferred = resolveTemplateId(prompt, context)
   if (inferred) return inferred
   if (looksLikeMarketingDistributionPrompt(prompt)) return "launchpad"
   if (/website|landing|homepage|download|docs|官网|落地页|下载页|文档/i.test(prompt)) return "launchpad"
   if (/community|club|social|group|announcement|event|feedback|社区|社团|社交|公告|活动|反馈/i.test(prompt)) {
-    return "orbital"
+    return "serenity"
   }
   if (/api|sdk|developer portal|endpoint|observability|monitoring|usage trend|error alert|接口|分析平台|监控|趋势|日志|鉴权|环境/i.test(prompt)) {
-    return "taskflow"
+    return "orbital"
   }
   if (looksLikeSpecializedWorkspacePrompt(prompt)) {
     return undefined
   }
   if (shouldPreferAdminOpsOverCrm(prompt)) {
-    return undefined
+    return "taskflow"
   }
   if (/crm|customer|sales|pipeline|lead|admin|ops|internal tool|backoffice|back office|control plane|客户|销售|跟进|管理后台|运营后台|内部工具|审批|工单|控制台/i.test(prompt)) {
     return "opsdesk"
@@ -1749,8 +1752,8 @@ function fallbackPlannerSpec(
       aiTools: ["explain", "fix", "generate", "refactor"],
       templates:
         region === "cn"
-          ? ["AI 命令中心", "运行与日志", "模板工坊", "发布与交付"]
-          : ["AI command center", "Runs and logs", "Template workshop", "Publishing and delivery"],
+          ? ["AI 命令中心", "编辑器工作区", "运行与日志", "定价页面"]
+          : ["AI command center", "Editor workspace", "Runs and logs", "Pricing"],
       plans: region === "cn" ? ["免费版", "启动版", "建造者版", "专业版", "精英版"] : ["Free", "Starter", "Builder", "Pro", "Elite"],
       deploymentDefaults: {
         cn: cnDefaults,
@@ -4238,7 +4241,7 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
     if (inferredTemplateId === "taskflow" && !/analytics|api|trend|dashboard|usage|接口|分析|趋势|监控/i.test(page)) return true
     if (inferredTemplateId === "taskflow" && !/settings|share|publish|权限|分享|发布|设置/i.test(page)) return true
     if (inferredTemplateId === "opsdesk" && !/sales|lead|owner|pipeline|成交|线索|负责人|阶段/i.test(page)) return true
-    if (inferredTemplateId === "orbital" && !/community|event|announcement|feedback|社区|活动|公告|反馈/i.test(page)) return true
+    if (inferredTemplateId === "orbital" && !/endpoint|endpoints|log|logs|auth|environment|environments|webhook|api|interface|runtime|replay|endpoint catalog|log explorer|auth policy|environment controls|webhook recovery|接口|日志|鉴权|环境|回放|恢复/i.test(page)) return true
     if (page.includes("Generated Task Workspace") && kind !== "task") return true
   } catch {
     return true
@@ -4286,8 +4289,8 @@ async function isAiOutputTooGeneric(outDir: string, prompt: string) {
     siteforge: ["app/dashboard/page.tsx", "app/editor/page.tsx", "app/runs/page.tsx", "app/templates/page.tsx", "app/settings/page.tsx", "app/pricing/page.tsx"],
     opsdesk: ["app/leads/page.tsx"],
     taskflow: ["app/incidents/page.tsx"],
-    orbital: ["app/events/page.tsx"],
-    launchpad: ["app/downloads/page.tsx"],
+    orbital: ["app/endpoints/page.tsx", "app/logs/page.tsx", "app/auth/page.tsx", "app/environments/page.tsx"],
+    launchpad: ["app/download/page.tsx"],
   }
 
   const requiredFiles = inferredTemplateId ? requiredByTemplate[inferredTemplateId] ?? [] : []

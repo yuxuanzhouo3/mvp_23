@@ -496,7 +496,7 @@ export function inferAppKind(prompt: string) {
 function inferTemplateIdFromPrompt(prompt: string) {
   const text = String(prompt ?? "").toLowerCase()
   if (looksLikeApiPlatformPrompt(text)) {
-    return "taskflow"
+    return "orbital"
   }
   if (looksLikeCodePlatformPrompt(text)) {
     return "siteforge"
@@ -508,10 +508,10 @@ function inferTemplateIdFromPrompt(prompt: string) {
     return undefined
   }
   if (looksLikeCommunityPrompt(text)) {
-    return "orbital"
+    return "serenity"
   }
   if (shouldPreferAdminOpsOverCrm(text)) {
-    return undefined
+    return "taskflow"
   }
   if (/crm|customer|sales|pipeline|lead|lead management|customer success|renewal|quote|quotes|客户|销售|线索|跟进|商机|客户成功|续约|报价/.test(text)) {
     return "opsdesk"
@@ -568,8 +568,9 @@ export function getScaffoldArchetype(spec: Pick<AppSpec, "kind" | "templateId" |
   if (spec.kind === "code_platform") return "code_platform"
   if (shouldUseSpecializedWorkspaceTemplateIsolation(spec.prompt)) return "task"
   if (spec.kind === "crm" || spec.templateId === "opsdesk") return "crm"
-  if (spec.kind === "community" || spec.templateId === "orbital") return "community"
-  if (spec.templateId === "taskflow") return "api_platform"
+  if (spec.kind === "community" || spec.templateId === "serenity") return "community"
+  if (spec.templateId === "orbital") return "api_platform"
+  if (spec.templateId === "taskflow") return "task"
   if (spec.templateId === "launchpad") return "marketing_admin"
   if (spec.kind === "blog") return "content"
   return inferScaffoldArchetypeFromPrompt(spec.prompt)
@@ -586,9 +587,9 @@ function scaffoldArchetypeToKind(archetype: ScaffoldArchetype): AppKind {
 function getDefaultTemplateIdForArchetype(archetype: ScaffoldArchetype) {
   if (archetype === "code_platform") return "siteforge"
   if (archetype === "crm") return "opsdesk"
-  if (archetype === "community") return "orbital"
+  if (archetype === "community") return "serenity"
   if (archetype === "marketing_admin" || archetype === "content") return "launchpad"
-  if (archetype === "api_platform") return "taskflow"
+  if (archetype === "api_platform") return "orbital"
   return undefined
 }
 
@@ -692,13 +693,13 @@ function getKindModules(kind: AppKind, region: Region, archetype?: ScaffoldArche
   }
   if (kind === "crm") {
     return region === "cn"
-      ? ["销售线索", "阶段推进", "负责人视图"]
-      : ["Lead pipeline", "Stage workflow", "Owner view"]
+      ? ["销售线索", "阶段推进", "报价审批", "负责人视图"]
+      : ["Lead pipeline", "Stage workflow", "Quote approvals", "Owner view"]
   }
   if (kind === "blog") {
     return region === "cn"
-      ? ["内容排期", "文章状态", "作者协作"]
-      : ["Content planning", "Post status", "Author workflow"]
+      ? ["官网首页", "下载中心", "文档入口", "更新日志"]
+      : ["Homepage", "Download center", "Docs entry", "Changelog"]
   }
   if (kind === "community") {
     return region === "cn"
@@ -707,12 +708,12 @@ function getKindModules(kind: AppKind, region: Region, archetype?: ScaffoldArche
   }
   if (prefersAdminOps) {
     return region === "cn"
-      ? ["审批队列", "权限策略", "审计时间线", "事件响应"]
-      : ["Approval queue", "Access policy", "Audit timeline", "Incident response"]
+      ? ["任务推进", "负责人筛选", "优先级筛选", "进度图表", "负载图表"]
+      : ["Task progression", "Owner filtering", "Priority filtering", "Progress charts", "Workload charts"]
   }
   return region === "cn"
-    ? ["任务看板", "优先级管理", "负责人协同"]
-    : ["Task board", "Priority management", "Assignee collaboration"]
+    ? ["任务看板", "优先级管理", "负责人协同", "状态推进"]
+    : ["Task board", "Priority management", "Assignee collaboration", "Status progression"]
 }
 
 function getArchetypeModules(archetype: ScaffoldArchetype, region: Region, prompt?: string) {
@@ -722,28 +723,28 @@ function getArchetypeModules(archetype: ScaffoldArchetype, region: Region, promp
   if (specializedModules.length) return specializedModules
   if (archetype === "api_platform") {
     return region === "cn"
-      ? ["接口目录", "日志检索", "鉴权策略", "环境切换"]
-      : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switching"]
+      ? ["接口目录", "日志检索", "鉴权策略", "环境切换", "Webhook 恢复"]
+      : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switching", "Webhook recovery"]
   }
   if (archetype === "marketing_admin") {
     return region === "cn"
-      ? ["官网入口", "下载分发", "文档中心", "后台控制台"]
-      : ["Website entry", "Download distribution", "Docs center", "Admin console"]
+      ? ["官网入口", "下载分发", "文档中心", "更新日志", "后台控制台"]
+      : ["Website entry", "Download distribution", "Docs center", "Changelog", "Admin console"]
   }
   if (archetype === "community") {
     return region === "cn"
-      ? ["活动编排", "成员分层", "公告与反馈", "内容运营"]
-      : ["Event orchestration", "Member segments", "Announcements and feedback", "Content ops"]
+      ? ["反馈收集", "路线图", "公告与成员", "审核规则"]
+      : ["Feedback intake", "Roadmap", "Announcements and members", "Moderation rules"]
   }
   if (archetype === "content") {
     return region === "cn"
-      ? ["内容日历", "栏目管理", "作者协作", "发布节奏"]
-      : ["Content calendar", "Section management", "Author collaboration", "Publishing cadence"]
+      ? ["首页叙事", "下载中心", "文档中心", "定价页面"]
+      : ["Homepage narrative", "Download hub", "Docs center", "Pricing page"]
   }
   if (prefersAdminOps) {
     return region === "cn"
-      ? ["团队席位", "规则编排", "控制面板", "合规留痕"]
-      : ["Team seats", "Rule orchestration", "Control plane", "Compliance trail"]
+      ? ["任务推进", "负责人筛选", "优先级筛选", "进度图表", "负载图表"]
+      : ["Task progression", "Owner filtering", "Priority filtering", "Progress charts", "Workload charts"]
   }
   return []
 }
@@ -881,28 +882,28 @@ function getTemplateModules(templateId: string | undefined, region: Region) {
   switch (template.id) {
     case "taskflow":
       return region === "cn"
-        ? ["深色指挥台", "近期动态", "优先级分布", "数据概览"]
-        : ["Dark command center", "Recent activity", "Priority distribution", "Data overview"]
+        ? ["任务总览", "推进状态", "负责人负载", "分析图表"]
+        : ["Task overview", "Status progression", "Owner workload", "Analytics charts"]
     case "opsdesk":
       return region === "cn"
-        ? ["浅色运营后台", "快捷操作", "项目总览", "多彩指标卡"]
-        : ["Light ops admin", "Quick actions", "Project overview", "Colorful metrics"]
+        ? ["线索列表", "Pipeline", "报价审批", "续约跟进"]
+        : ["Lead list", "Pipeline", "Quote approvals", "Renewal follow-up"]
     case "siteforge":
       return region === "cn"
-        ? ["生成流程面板", "模板画廊", "结果预览", "创作型工作台"]
-        : ["Generation flow", "Template gallery", "Result preview", "Creator workspace"]
+        ? ["Dashboard", "Editor", "Runs", "Templates", "Pricing"]
+        : ["Dashboard", "Editor", "Runs", "Templates", "Pricing"]
     case "serenity":
       return region === "cn"
-        ? ["品牌故事", "预约转化", "服务介绍", "门店信任感"]
-        : ["Brand story", "Booking conversion", "Service highlights", "Store trust"]
+        ? ["反馈收集", "路线图", "公告", "成员", "审核"]
+        : ["Feedback intake", "Roadmap", "Announcements", "Members", "Moderation"]
     case "orbital":
       return region === "cn"
-        ? ["未来感英雄区", "功能亮点", "价格方案", "强视觉主屏"]
-        : ["Futuristic hero", "Feature blocks", "Pricing plans", "Immersive surface"]
+        ? ["接口目录", "日志检索", "鉴权策略", "环境切换", "Webhook 恢复"]
+        : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switching", "Webhook recovery"]
     case "launchpad":
       return region === "cn"
-        ? ["高转化首页", "价格对比", "客户背书", "FAQ 模块"]
-        : ["Conversion homepage", "Pricing comparison", "Customer proof", "FAQ module"]
+        ? ["首页叙事", "下载分发", "文档中心", "更新日志", "定价页面"]
+        : ["Homepage narrative", "Download distribution", "Docs center", "Changelog", "Pricing page"]
     default:
       return []
   }
@@ -914,19 +915,28 @@ function getTemplateFeatures(templateId: string | undefined, planTier: PlanTier)
 
   switch (template.id) {
     case "taskflow":
+      return [
+        "description_field",
+        "assignee_filter",
+        "blocked_status",
+        "csv_export",
+        ...((planTier === "free" || planTier === "starter") ? [] : (["analytics_page"] as SpecFeature[])),
+      ]
     case "opsdesk":
       return [
         "description_field",
         "assignee_filter",
         "csv_export",
-        ...((planTier === "free" || planTier === "starter") ? [] : (["analytics_page", "blocked_status"] as SpecFeature[])),
+        ...((planTier === "free" || planTier === "starter") ? [] : (["analytics_page"] as SpecFeature[])),
       ]
     case "siteforge":
-      return ["description_field", "about_page", ...((planTier === "free" ? [] : ["analytics_page"]) as SpecFeature[])]
+      return ["description_field", "about_page", "analytics_page"]
     case "serenity":
+      return ["about_page", "analytics_page"]
     case "orbital":
+      return ["about_page", "analytics_page"]
     case "launchpad":
-      return ["about_page"]
+      return ["about_page", "analytics_page"]
     default:
       return []
   }
@@ -4012,14 +4022,16 @@ export function createAppSpec(prompt: string, region: Region, existing?: AppSpec
   const templateKind =
     template?.id === "siteforge"
       ? "code_platform"
-      : template?.id === "orbital"
-        ? "community"
-        : template?.id === "serenity" || template?.id === "launchpad"
-          ? "blog"
-          : template?.id === "opsdesk"
-            ? "crm"
-            : template?.id === "taskflow"
-              ? "task"
+      : template?.id === "opsdesk"
+        ? "crm"
+        : template?.id === "orbital"
+          ? "api_platform"
+          : template?.id === "serenity"
+            ? "community"
+            : template?.id === "launchpad"
+              ? "blog"
+              : template?.id === "taskflow"
+                ? "task"
         : undefined
   const kind =
     isolateSpecializedTemplate
@@ -8039,6 +8051,235 @@ export default function Page() {
 function renderPremiumTemplateHome(spec: AppSpec) {
   const isCn = spec.region === "cn"
   const templateId = spec.templateId ?? "default"
+
+  if (templateId === "taskflow") {
+    const metrics = isCn
+      ? [
+          { label: "待办任务", value: "128", tone: "#38bdf8" },
+          { label: "进行中", value: "42", tone: "#8b5cf6" },
+          { label: "已完成", value: "87%", tone: "#10b981" },
+          { label: "团队成员", value: "19", tone: "#f59e0b" },
+        ]
+      : [
+          { label: "Todo items", value: "128", tone: "#38bdf8" },
+          { label: "In progress", value: "42", tone: "#8b5cf6" },
+          { label: "Completed", value: "87%", tone: "#10b981" },
+          { label: "Team members", value: "19", tone: "#f59e0b" },
+        ]
+    const rows = isCn
+      ? [
+          { name: "审批队列优化", owner: "张伟", status: "进行中", progress: 82 },
+          { name: "负责人负载图", owner: "王芳", status: "待办", progress: 56 },
+          { name: "任务完成回流", owner: "陈晨", status: "已完成", progress: 94 },
+        ]
+      : [
+          { name: "Approval queue tuning", owner: "Wei Zhang", status: "In progress", progress: 82 },
+          { name: "Owner workload chart", owner: "Fang Wang", status: "Todo", progress: 56 },
+          { name: "Completion handoff", owner: "Chen Chen", status: "Done", progress: 94 },
+        ]
+    return `// @ts-nocheck
+import Link from "next/link";
+
+export default function Page() {
+  const isCn = ${isCn ? "true" : "false"};
+  const metrics = ${JSON.stringify(metrics, null, 2)} as const;
+  const rows = ${JSON.stringify(rows, null, 2)} as const;
+  return (
+    <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#0b1020 0%,#111827 100%)", color: "#f8fafc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 1420, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 28, background: "radial-gradient(circle at top right, rgba(34,211,238,0.18), transparent 28%), rgba(15,23,42,0.92)", border: "1px solid rgba(56,189,248,0.14)", padding: 24 }}>
+          <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(34,211,238,0.12)", color: "#67e8f9", fontSize: 12, fontWeight: 800 }}>{isCn ? "运营任务管理" : "Operations task management"}</div>
+          <h1 style={{ margin: "14px 0 10px", fontSize: 40, fontWeight: 900 }}>{isCn ? "任务推进、负责人和优先级全部收在一个后台里" : "Keep task progression, owners, and priorities in one control plane"}</h1>
+          <p style={{ margin: 0, maxWidth: 820, color: "#94a3b8", fontSize: 16, lineHeight: 1.8 }}>{isCn ? "这不是普通待办列表，而是带进度图、负载图和筛选动作的运营控制台。" : "This is not a to-do list. It is an operations console with progress charts, workload views, and filters."}</p>
+          <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/tasks" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", background: "#06b6d4", color: "#082f49", fontWeight: 800 }}>{isCn ? "查看任务" : "Open tasks"}</Link>
+            <Link href="/analytics" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(56,189,248,0.16)", color: "#67e8f9", fontWeight: 700 }}>{isCn ? "负载分析" : "Workload analytics"}</Link>
+          </div>
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+          {metrics.map((item) => (
+            <div key={item.label} style={{ borderRadius: 22, background: "rgba(15,23,42,0.76)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+              <div style={{ color: "#94a3b8", fontSize: 14 }}>{item.label}</div>
+              <div style={{ marginTop: 12, fontSize: 34, color: item.tone, fontWeight: 900 }}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, background: "rgba(15,23,42,0.78)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "推进列表" : "Progress list"}</div>
+            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+              {rows.map((item) => (
+                <div key={item.name} style={{ borderRadius: 16, background: "#111827", padding: "14px 16px", color: "#cbd5e1" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{item.name}</div>
+                      <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 13 }}>{item.owner}</div>
+                    </div>
+                    <div style={{ borderRadius: 999, background: "rgba(34,211,238,0.14)", color: "#67e8f9", padding: "6px 10px", fontSize: 12, fontWeight: 700 }}>{item.status}</div>
+                  </div>
+                  <div style={{ marginTop: 12, height: 8, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                    <div style={{ width: item.progress + "%", height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#22d3ee,#8b5cf6)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ borderRadius: 24, background: "rgba(15,23,42,0.78)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "筛选与动作" : "Filters and actions"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {(isCn ? ["负责人筛选", "优先级筛选", "状态推进", "标记完成"] : ["Owner filter", "Priority filter", "Status progression", "Mark complete"]).map((item) => (
+                  <div key={item} style={{ borderRadius: 14, background: "#111827", padding: "12px 14px", color: "#cbd5e1" }}>{item}</div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, background: "linear-gradient(135deg,rgba(14,165,233,0.18),rgba(99,102,241,0.16))", border: "1px solid rgba(56,189,248,0.14)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "首页图表" : "Dashboard charts"}</div>
+              <p style={{ marginTop: 12, color: "#cbd5e1", lineHeight: 1.8 }}>{isCn ? "这里会承接任务进度图和负责人负载图，用来判断当前版本到底能不能跑起来。" : "This home view surfaces progress charts and owner workload charts so the team can judge readiness at a glance."}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+  }
+
+  if (templateId === "orbital") {
+    const metrics = isCn
+      ? [
+          { label: "接口数", value: "84", tone: "#38bdf8" },
+          { label: "投递失败", value: "3", tone: "#f59e0b" },
+          { label: "鉴权策略", value: "12", tone: "#10b981" },
+          { label: "环境配置", value: "5", tone: "#8b5cf6" },
+        ]
+      : [
+          { label: "Endpoints", value: "84", tone: "#38bdf8" },
+          { label: "Delivery fails", value: "3", tone: "#f59e0b" },
+          { label: "Auth policies", value: "12", tone: "#10b981" },
+          { label: "Environments", value: "5", tone: "#8b5cf6" },
+        ]
+    const rows = isCn
+      ? [
+          { name: "POST /checkout", status: "健康", detail: "最近 1h 无失败" },
+          { name: "POST /webhook/order", status: "重试中", detail: "2 次重试待恢复" },
+          { name: "GET /docs", status: "稳定", detail: "文档与 SDK 已同步" },
+        ]
+      : [
+          { name: "POST /checkout", status: "Healthy", detail: "No failure in the last hour" },
+          { name: "POST /webhook/order", status: "Retrying", detail: "2 retries awaiting recovery" },
+          { name: "GET /docs", status: "Stable", detail: "Docs and SDKs are synced" },
+        ]
+    return `// @ts-nocheck
+import Link from "next/link";
+
+export default function Page() {
+  const isCn = ${isCn ? "true" : "false"};
+  const metrics = ${JSON.stringify(metrics, null, 2)} as const;
+  const rows = ${JSON.stringify(rows, null, 2)} as const;
+  return (
+    <main style={{ minHeight: "100vh", background: "radial-gradient(circle at top, rgba(96,165,250,0.14), transparent 24%), linear-gradient(180deg,#020617 0%,#0b1220 100%)", color: "#e5eefc", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 1440, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 28, border: "1px solid rgba(99,102,241,0.2)", background: "rgba(8,15,33,0.78)", padding: 24 }}>
+          <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "rgba(6,182,212,0.16)", color: "#67e8f9", fontSize: 12, fontWeight: 800 }}>{isCn ? "API 平台" : "API platform"}</div>
+          <h1 style={{ margin: "14px 0 10px", fontSize: 40, fontWeight: 900 }}>{isCn ? "接口、日志、鉴权和 webhook 恢复放在一个运行态控制台里" : "Keep endpoints, logs, auth, and webhook recovery in one runtime console"}</h1>
+          <p style={{ margin: 0, maxWidth: 840, color: "#94a3b8", fontSize: 16, lineHeight: 1.8 }}>{isCn ? "这类需求要看起来像真正的开发者平台，而不是普通列表页。" : "This archetype should feel like a real developer platform, not a list page."}</p>
+          <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/endpoints" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", background: "#06b6d4", color: "#082f49", fontWeight: 800 }}>{isCn ? "接口目录" : "Endpoints"}</Link>
+            <Link href="/webhooks" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(56,189,248,0.16)", color: "#67e8f9", fontWeight: 700 }}>{isCn ? "投递恢复" : "Recovery"}</Link>
+          </div>
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+          {metrics.map((item) => (
+            <div key={item.label} style={{ borderRadius: 22, background: "rgba(15,23,42,0.76)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+              <div style={{ color: "#94a3b8", fontSize: 14 }}>{item.label}</div>
+              <div style={{ marginTop: 12, fontSize: 34, color: item.tone, fontWeight: 900 }}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16 }}>
+          <div style={{ borderRadius: 24, background: "rgba(15,23,42,0.78)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "运行表面" : "Runtime surfaces"}</div>
+            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+              {(isCn ? ["接口目录", "日志检索", "鉴权策略", "环境开关"] : ["Endpoint catalog", "Log explorer", "Auth policy", "Environment switches"]).map((item) => (
+                <div key={item} style={{ borderRadius: 16, background: "#111827", padding: "14px 16px", color: "#cbd5e1" }}>{item}</div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 16 }}>
+            <div style={{ borderRadius: 24, background: "rgba(15,23,42,0.78)", border: "1px solid rgba(148,163,184,0.1)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "Webhook 恢复" : "Webhook recovery"}</div>
+              <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                {rows.map((item, index) => (
+                  <div key={item.name} style={{ borderRadius: 14, background: index === 0 ? "rgba(239,68,68,0.12)" : "#111827", color: "#cbd5e1", padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                      <div style={{ fontWeight: 800 }}>{item.name}</div>
+                      <div style={{ borderRadius: 999, background: "rgba(6,182,212,0.16)", color: "#67e8f9", padding: "4px 8px", fontSize: 12, fontWeight: 700 }}>{item.status}</div>
+                    </div>
+                    <div style={{ marginTop: 8, color: "#94a3b8", fontSize: 13 }}>{item.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ borderRadius: 24, background: "linear-gradient(135deg,rgba(14,165,233,0.18),rgba(99,102,241,0.16))", border: "1px solid rgba(56,189,248,0.14)", padding: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{isCn ? "平台说明" : "Platform note"}</div>
+              <p style={{ marginTop: 12, color: "#cbd5e1", lineHeight: 1.8 }}>{isCn ? "接口、鉴权和环境开关是一套运行态，而 webhook 投递恢复要单独突出重试与回放。" : "Endpoints, auth, and environment controls form the runtime rail, while webhook recovery deserves its own replay and retry surface."}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+  }
+
+  if (templateId === "serenity") {
+    const cards = isCn
+      ? [
+          { title: "反馈收集", note: "把建议、问题和需求聚合成优先级清单" },
+          { title: "路线图", note: "把反馈流转到正在推进的版本计划" },
+          { title: "成员与审核", note: "展示成员、公告和审核边界" },
+        ]
+      : [
+          { title: "Feedback intake", note: "Aggregate ideas, issues, and requests into priority queues" },
+          { title: "Roadmap", note: "Turn feedback into active version plans" },
+          { title: "Members and moderation", note: "Show members, announcements, and policy boundaries" },
+        ]
+    return `// @ts-nocheck
+import Link from "next/link";
+
+export default function Page() {
+  const isCn = ${isCn ? "true" : "false"};
+  const cards = ${JSON.stringify(cards, null, 2)} as const;
+  return (
+    <main style={{ minHeight: "100vh", background: "linear-gradient(180deg,#fff7f2 0%,#ffffff 42%,#f8fafc 100%)", color: "#1f2937", fontFamily: "'Sora', ui-sans-serif, system-ui, sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 1380, margin: "0 auto", display: "grid", gap: 18 }}>
+        <section style={{ borderRadius: 28, background: "#ffffff", border: "1px solid rgba(148,163,184,0.18)", padding: 26 }}>
+          <div style={{ display: "inline-flex", borderRadius: 999, padding: "8px 12px", background: "#ffedd5", color: "#c2410c", fontSize: 12, fontWeight: 800 }}>{isCn ? "社区反馈中心" : "Community feedback hub"}</div>
+          <h1 style={{ margin: "16px 0 12px", fontSize: 44, fontWeight: 900 }}>{isCn ? "让反馈、路线图、公告和成员运营在同一页面里发生" : "Keep feedback, roadmap, announcements, and member ops in one surface"}</h1>
+          <p style={{ margin: 0, color: "#64748b", maxWidth: 860, lineHeight: 1.8 }}>{isCn ? "这类需求应该看起来像真实社区团队每天在用的反馈中心，而不是普通首页。" : "This should feel like a real community feedback center used every day, not a generic landing page."}</p>
+          <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/feedback" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", background: "#7c3aed", color: "#ffffff", fontWeight: 700 }}>{isCn ? "进入反馈" : "Open feedback"}</Link>
+            <Link href="/roadmap" style={{ textDecoration: "none", borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(124,58,237,0.16)", color: "#7c3aed", fontWeight: 700 }}>{isCn ? "查看路线图" : "View roadmap"}</Link>
+          </div>
+        </section>
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 16 }}>
+          {cards.map((card, index) => (
+            <div key={card.title} style={{ borderRadius: 24, background: index === 0 ? "rgba(124,58,237,0.08)" : "#ffffff", border: "1px solid rgba(148,163,184,0.16)", padding: 22, minHeight: 280 }}>
+              <div style={{ width: 56, height: 56, borderRadius: 18, background: index === 0 ? "#7c3aed" : index === 1 ? "#0ea5e9" : "#f59e0b", marginBottom: 20 }} />
+              <div style={{ fontSize: 22, fontWeight: 900 }}>{card.title}</div>
+              <div style={{ marginTop: 12, color: "#64748b", lineHeight: 1.8 }}>{card.note}</div>
+            </div>
+          ))}
+        </section>
+      </div>
+    </main>
+  );
+}
+`
+  }
 
   if (templateId === "opsdesk") {
     const metrics = isCn
@@ -17943,9 +18184,9 @@ export async function buildSpecDrivenWorkspaceFiles(
   if (archetype === "community") {
     pushWorkspaceFile(
       {
-        path: "app/events/page.tsx",
-        content: renderTemplateExtraPage(spec, "events"),
-        reason: "Add events page for community scaffold",
+        path: "app/feedback/page.tsx",
+        content: renderArchetypeConsolePage(spec, "feedback") ?? renderTemplateExtraPage(spec, "events"),
+        reason: "Add feedback page for community scaffold",
       }
     )
   }
@@ -17974,7 +18215,7 @@ export async function buildSpecDrivenWorkspaceFiles(
     })
   }
 
-  if (spec.templateId === "taskflow" && archetype !== "api_platform") {
+  if (spec.templateId === "taskflow" && archetype !== "task") {
     pushWorkspaceFile({
       path: "app/incidents/page.tsx",
       content: renderTemplateExtraPage(spec, "incidents"),
@@ -17982,11 +18223,19 @@ export async function buildSpecDrivenWorkspaceFiles(
     })
   }
 
-  if (spec.templateId === "orbital" && archetype !== "community") {
+  if (spec.templateId === "orbital" && archetype !== "api_platform") {
     pushWorkspaceFile({
       path: "app/events/page.tsx",
       content: renderTemplateExtraPage(spec, "events"),
       reason: "Add event page for community-oriented products",
+    })
+  }
+
+  if (spec.templateId === "serenity" && archetype !== "community") {
+    pushWorkspaceFile({
+      path: "app/feedback/page.tsx",
+      content: renderTemplateExtraPage(spec, "events"),
+      reason: "Add feedback page for community-oriented products",
     })
   }
 

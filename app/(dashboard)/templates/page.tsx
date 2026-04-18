@@ -22,11 +22,11 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
     return (
       <div className="h-full w-full rounded-[1.4rem] bg-[#0e1017] p-4 text-white">
         <div className="flex items-center justify-between text-[10px] text-white/60">
-          <span>TaskFlow</span>
-          <span>Dashboard</span>
+          <span>ADMIN OPS</span>
+          <span>Control Plane</span>
         </div>
-        <div className="mt-4 h-3 w-40 rounded bg-white/90" />
-        <div className="mt-2 h-2 w-56 rounded bg-cyan-400/60" />
+        <div className="mt-4 h-3 w-44 rounded bg-white/90" />
+        <div className="mt-2 h-2 w-60 rounded bg-cyan-400/60" />
         <div className="mt-5 grid grid-cols-4 gap-2">
           {["#0ea5e9", "#22c55e", "#f59e0b", "#a855f7"].map((color) => (
             <div key={color} className="rounded-xl border border-white/10 p-2" style={{ background: `${color}20` }}>
@@ -65,20 +65,35 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
 
   if (style === "spa-landing") {
     return (
-      <div className="relative h-full w-full overflow-hidden rounded-[1.4rem] bg-[linear-gradient(135deg,#3f342b_0%,#9f8978_45%,#f5ede2_100%)] p-5 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.1),transparent_58%)]" />
+      <div className="relative h-full w-full overflow-hidden rounded-[1.4rem] bg-[linear-gradient(135deg,#4c1d95_0%,#7c3aed_45%,#ede9fe_100%)] p-5 text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_54%)]" />
         <div className="relative">
           <div className="flex items-center justify-between text-[10px] text-white/70">
-            <span>SERENITY</span>
-            <span>Book Appointment</span>
+            <span>COMMUNITY FEEDBACK</span>
+            <span>Moderation desk</span>
           </div>
-          <div className="mt-8 max-w-[70%] text-3xl font-medium leading-tight">
-            #1 Luxury Spa & Salon
+          <div className="mt-8 max-w-[76%] text-3xl font-semibold leading-tight">
+            Feedback, roadmap, announcements, and members in one place
           </div>
-          <div className="mt-4 h-2 w-40 rounded bg-white/75" />
+          <div className="mt-4 h-2 w-48 rounded bg-white/75" />
           <div className="mt-8 flex gap-3">
-            <div className="rounded-full bg-rose-400 px-4 py-2 text-xs font-medium text-white">Book now</div>
-            <div className="rounded-full border border-white/30 px-4 py-2 text-xs">Call us</div>
+            <div className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-violet-700">New feedback</div>
+            <div className="rounded-full border border-white/35 px-4 py-2 text-xs">Moderate</div>
+          </div>
+          <div className="mt-8 grid gap-3">
+            {[
+              ["Priority: shipping bug", "122 votes", "#fb7185"],
+              ["Roadmap: onboarding revamp", "In review", "#38bdf8"],
+              ["Members: 18 active mods", "3 pending approvals", "#f59e0b"],
+            ].map(([title, meta, tone]) => (
+              <div key={title} className="rounded-2xl bg-white/12 p-4 backdrop-blur">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="h-2.5 w-24 rounded bg-white/80" style={{ background: tone }} />
+                  <div className="text-[10px] text-white/70">{meta}</div>
+                </div>
+                <div className="mt-3 text-sm font-medium text-white">{title}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -89,14 +104,14 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
     return (
       <div className="h-full w-full rounded-[1.4rem] bg-[#f9fbff] p-4 text-slate-900">
         <div className="flex items-center justify-between text-[10px] text-slate-500">
-          <span>Dashboard</span>
-          <span>Search</span>
+          <span>CRM</span>
+          <span>Pipeline</span>
         </div>
         <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm">
           <div className="h-3 w-36 rounded bg-slate-900" />
           <div className="mt-3 flex gap-2">
-            <div className="rounded-full bg-blue-600 px-3 py-1 text-[10px] text-white">View Boards</div>
-            <div className="rounded-full border border-slate-200 px-3 py-1 text-[10px]">Analytics</div>
+            <div className="rounded-full bg-blue-600 px-3 py-1 text-[10px] text-white">Leads</div>
+            <div className="rounded-full border border-slate-200 px-3 py-1 text-[10px]">Renewals</div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-2">
@@ -131,8 +146,8 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
   if (style === "cosmic-app") {
     return (
       <div className="h-full w-full rounded-[1.4rem] bg-[radial-gradient(circle_at_center,#1e293b_0%,#020617_70%)] p-5 text-white">
-        <div className="text-[10px] text-white/60">Orbital</div>
-        <div className="mt-10 text-4xl font-semibold leading-tight">Connect your world with AI</div>
+        <div className="text-[10px] text-white/60">API PLATFORM</div>
+        <div className="mt-10 text-4xl font-semibold leading-tight">Runtime, auth, logs, and webhook recovery</div>
         <div className="mt-4 h-2 w-1/2 rounded bg-violet-400/80" />
         <div className="mt-10 flex justify-center">
           <div className="h-36 w-36 rounded-full bg-[radial-gradient(circle,#60a5fa_0%,#4338ca_35%,transparent_70%)] shadow-[0_0_50px_rgba(99,102,241,0.4)]" />
@@ -144,7 +159,7 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
   if (style === "purple-builder") {
     return (
       <div className="h-full w-full rounded-[1.4rem] bg-[linear-gradient(180deg,#4c1d95_0%,#6d28d9_42%,#7c3aed_100%)] p-5 text-white">
-        <div className="text-3xl font-semibold">Create Amazing Websites with AI</div>
+        <div className="text-3xl font-semibold">AI Code Platform</div>
         <div className="mt-3 h-2 w-2/3 rounded bg-white/75" />
         <div className="mt-8 rounded-3xl bg-white/10 p-4 backdrop-blur">
           <div className="h-3 w-36 rounded bg-white/90" />
@@ -161,14 +176,14 @@ function TemplatePreview({ style }: { style: TemplateItem["previewStyle"] }) {
   return (
     <div className="h-full w-full rounded-[1.4rem] bg-[#0f172a] p-5 text-white">
       <div className="flex items-center justify-between text-[10px] text-white/60">
-        <span>LaunchPad</span>
-        <span>Start free</span>
+        <span>DOWNLOAD HUB</span>
+        <span>Release Center</span>
       </div>
-      <div className="mt-10 text-5xl font-semibold leading-tight">Turn your skill into a product</div>
+      <div className="mt-10 text-5xl font-semibold leading-tight">Ship docs, downloads, changelog, and pricing</div>
       <div className="mt-4 h-2 w-2/3 rounded bg-cyan-400/75" />
       <div className="mt-10 flex gap-3">
-        <div className="rounded-full bg-indigo-500 px-4 py-2 text-xs">Start now</div>
-        <div className="rounded-full border border-white/25 px-4 py-2 text-xs">See demo</div>
+        <div className="rounded-full bg-indigo-500 px-4 py-2 text-xs">Downloads</div>
+        <div className="rounded-full border border-white/25 px-4 py-2 text-xs">Docs</div>
       </div>
     </div>
   )

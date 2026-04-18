@@ -195,45 +195,26 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
       : copy.statusEmpty;
 
   async function loadClientManifest(clientId: string) {
-    const result = await getAdminDemoManifest(clientId);
+    try {
+      const result = await getAdminDemoManifest(clientId);
 
-    if (!result.success) {
-      setError(result.error || copy.loadError);
+      if (!result.success) {
+        setError(result.error || copy.loadError);
+        setManifest(null);
+        return;
+      }
+
+      setActiveClientId(clientId);
+      setManifest(result.manifest || null);
+    } catch (err: any) {
+      setError(String(err?.message || copy.loadError));
       setManifest(null);
-      return;
     }
-
-    setActiveClientId(clientId);
-    setManifest(result.manifest || null);
   }
 
   async function refreshBundleList(preferredClientId?: string | null) {
-    const result = await listAdminDemoBundles();
-
-    if (!result.success) {
-      setError(result.error || copy.loadError);
-      return;
-    }
-
-    const nextBundles = result.bundles || [];
-    setBundles(nextBundles);
-
-    const preferred = normalizeClientIdInput(preferredClientId || "") || nextBundles[0]?.clientId || null;
-    if (!preferred) {
-      setActiveClientId(null);
-      setManifest(null);
-      return;
-    }
-
-    await loadClientManifest(preferred);
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
+    try {
       const result = await listAdminDemoBundles();
-      if (cancelled) return;
 
       if (!result.success) {
         setError(result.error || copy.loadError);
@@ -243,23 +224,57 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
       const nextBundles = result.bundles || [];
       setBundles(nextBundles);
 
-      const firstClientId = nextBundles[0]?.clientId || null;
-      if (!firstClientId) {
+      const preferred = normalizeClientIdInput(preferredClientId || "") || nextBundles[0]?.clientId || null;
+      if (!preferred) {
+        setActiveClientId(null);
+        setManifest(null);
         return;
       }
 
-      setActiveClientId(firstClientId);
-      setClientIdInput(firstClientId);
+      await loadClientManifest(preferred);
+    } catch (err: any) {
+      setError(String(err?.message || copy.loadError));
+    }
+  }
 
-      const manifestResult = await getAdminDemoManifest(firstClientId);
-      if (cancelled) return;
+  useEffect(() => {
+    let cancelled = false;
 
-      if (!manifestResult.success) {
-        setError(manifestResult.error || copy.loadError);
-        return;
+    const load = async () => {
+      try {
+        const result = await listAdminDemoBundles();
+        if (cancelled) return;
+
+        if (!result.success) {
+          setError(result.error || copy.loadError);
+          return;
+        }
+
+        const nextBundles = result.bundles || [];
+        setBundles(nextBundles);
+
+        const firstClientId = nextBundles[0]?.clientId || null;
+        if (!firstClientId) {
+          return;
+        }
+
+        setActiveClientId(firstClientId);
+        setClientIdInput(firstClientId);
+
+        const manifestResult = await getAdminDemoManifest(firstClientId);
+        if (cancelled) return;
+
+        if (!manifestResult.success) {
+          setError(manifestResult.error || copy.loadError);
+          return;
+        }
+
+        setManifest(manifestResult.manifest || null);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(String(err?.message || copy.loadError));
+        }
       }
-
-      setManifest(manifestResult.manifest || null);
     };
 
     void load();
@@ -309,17 +324,21 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
     setMessage(null);
 
     startTransition(async () => {
-      const result = await generateAdminDemoBundle(normalizedInputClientId);
-      if (!result.success) {
-        setError(result.error || copy.generateError);
-        return;
-      }
+      try {
+        const result = await generateAdminDemoBundle(normalizedInputClientId);
+        if (!result.success) {
+          setError(result.error || copy.generateError);
+          return;
+        }
 
-      setClientIdInput(normalizedInputClientId);
-      setActiveClientId(normalizedInputClientId);
-      setManifest(result.manifest || null);
-      setMessage(copy.generateSuccess(normalizedInputClientId));
-      await refreshBundleList(normalizedInputClientId);
+        setClientIdInput(normalizedInputClientId);
+        setActiveClientId(normalizedInputClientId);
+        setManifest(result.manifest || null);
+        setMessage(copy.generateSuccess(normalizedInputClientId));
+        await refreshBundleList(normalizedInputClientId);
+      } catch (err: any) {
+        setError(String(err?.message || copy.generateError));
+      }
     });
   }
 
@@ -329,7 +348,11 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
     setMessage(null);
 
     startTransition(async () => {
-      await loadClientManifest(clientId);
+      try {
+        await loadClientManifest(clientId);
+      } catch (err: any) {
+        setError(String(err?.message || copy.loadError));
+      }
     });
   }
 
