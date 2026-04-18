@@ -10,7 +10,8 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const locale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en";
+  const headerStore = await headers();
+  const locale = resolveRequestRegion(headerStore.get("host")) === "CN" ? "zh" : "en";
   const sessionResult = await getAdminSession();
 
   if (!sessionResult.valid || !sessionResult.session) {

@@ -80,7 +80,8 @@ function getCopy(locale: DemoLocale) {
 }
 
 export default async function DemoPage() {
-  const locale: DemoLocale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en";
+  const headerStore = await headers();
+  const locale: DemoLocale = resolveRequestRegion(headerStore.get("host")) === "CN" ? "zh" : "en";
   const copy = getCopy(locale);
   const [clientBundles, latestManifest] = await Promise.all([listDemoClientBundles(), readDemoManifest()]);
   const latestItems = latestManifest?.items || [];

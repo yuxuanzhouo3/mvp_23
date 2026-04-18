@@ -110,7 +110,8 @@ export default async function DemoItemPreviewPage({
   params: Promise<{ itemId: string }> | { itemId: string }
 }) {
   const resolvedParams = await Promise.resolve(params)
-  const locale: DemoLocale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en"
+  const headerStore = await headers()
+  const locale: DemoLocale = resolveRequestRegion(headerStore.get("host")) === "CN" ? "zh" : "en"
   const copy = getCopy(locale)
   const manifest = await readDemoManifest()
 
@@ -123,7 +124,6 @@ export default async function DemoItemPreviewPage({
     notFound()
   }
 
-  const headerStore = await headers()
   const requestOrigin = resolveRequestOrigin(
     headerStore.get("x-forwarded-host") || headerStore.get("host"),
     headerStore.get("x-forwarded-proto"),

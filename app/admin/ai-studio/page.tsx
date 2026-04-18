@@ -5,8 +5,9 @@ import AiStudioClient from './ai-studio-client'
 
 export const runtime = 'nodejs'
 
-export default function AiStudioPage() {
-  const region = resolveRequestRegion(headers().get("host"))
+export default async function AiStudioPage() {
+  const headerStore = await headers()
+  const region = resolveRequestRegion(headerStore.get("host"))
   const route = resolveAiProviderRoute(region)
 
   return <AiStudioClient region={region} language={route.language} route={route} />
