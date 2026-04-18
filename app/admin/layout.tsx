@@ -5,6 +5,9 @@ import { getAdminSession } from "@/lib/admin/session";
 import { resolveRequestRegion } from "@/lib/config/request-region";
 import AdminSidebar from "./components/AdminSidebar";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 export default async function AdminLayout({
   children,
 }: {
