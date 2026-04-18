@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { ArrowRight, ArrowUpRight, Download, FolderOpen, PackageOpen } from "lucide-react";
-import { getDeploymentRegion } from "@/config";
 import { listDemoClientBundles, readDemoManifest, type DemoManifestItem } from "@/lib/demo-bundle";
+import { resolveRequestRegion } from "@/lib/config/request-region";
 
 type DemoLocale = "zh" | "en";
 
@@ -79,7 +80,7 @@ function getCopy(locale: DemoLocale) {
 }
 
 export default async function DemoPage() {
-  const locale: DemoLocale = getDeploymentRegion() === "CN" ? "zh" : "en";
+  const locale: DemoLocale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en";
   const copy = getCopy(locale);
   const [clientBundles, latestManifest] = await Promise.all([listDemoClientBundles(), readDemoManifest()]);
   const latestItems = latestManifest?.items || [];

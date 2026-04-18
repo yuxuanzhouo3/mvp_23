@@ -21,6 +21,25 @@ import type { DemoClientBundleSummary, DemoManifest, DemoManifestItem } from "@/
 
 type DemoLocale = "zh" | "en";
 
+type ReadinessSnapshot = {
+  deployment?: {
+    cn?: {
+      hosting?: string;
+      runtime?: string;
+      database?: string;
+      databaseConfigured?: boolean;
+      dockerRequired?: boolean;
+    };
+    intl?: {
+      hosting?: string;
+      runtime?: string;
+      database?: string;
+      databaseConfigured?: boolean;
+      dockerRequired?: boolean;
+    };
+  };
+};
+
 function normalizeClientIdInput(value: string) {
   return String(value || "")
     .trim()
@@ -70,6 +89,15 @@ function getCopy(locale: DemoLocale) {
       bundlesLabel: "已生成客户",
       bundlesDescription: "点击下方客户名可切换查看该客户资料包。",
       noBundles: "当前还没有客户宣传文件夹。",
+      readinessTitle: "数据库与部署状态",
+      readinessDescription: "这里展示当前产品的部署环境、数据库目标，以及这套配置是否已经可用。",
+      deploymentLabel: "部署目标",
+      databaseLabel: "数据库目标",
+      runtimeLabel: "运行方式",
+      usableLabel: "当前可用性",
+      usableReady: "可直接使用",
+      usablePending: "还需补齐环境配置",
+      readinessHint: "验收时优先看这张卡片，它会告诉你当前版本到底能不能跑起来。",
       statusTitle: "当前客户资料状态",
       statusEmpty: "先输入客户文件夹名并生成一份资料包。",
       draftLabel: "当前输入",
@@ -104,6 +132,15 @@ function getCopy(locale: DemoLocale) {
     bundlesLabel: "Generated clients",
     bundlesDescription: "Click a client below to switch the preview to that bundle.",
     noBundles: "No client promo folders have been generated yet.",
+    readinessTitle: "Database and deployment status",
+    readinessDescription: "Shows the current deployment target, database target, and whether this setup is ready to use.",
+    deploymentLabel: "Deployment target",
+    databaseLabel: "Database target",
+    runtimeLabel: "Runtime",
+    usableLabel: "Current usability",
+    usableReady: "Ready to use",
+    usablePending: "Environment still needs setup",
+    readinessHint: "This is the card to check first during acceptance. It tells you whether the current build is runnable.",
     statusTitle: "Current client bundle status",
     statusEmpty: "Enter a client folder name and generate a bundle first.",
     draftLabel: "Current input",
@@ -129,6 +166,7 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
   const [bundles, setBundles] = useState<DemoClientBundleSummary[]>([]);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
   const [manifest, setManifest] = useState<DemoManifest | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -145,6 +183,11 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
   const currentFolderHref = displayedActiveClientId ? `/download/${encodeURIComponent(displayedActiveClientId)}` : null;
   const currentZipHref = displayedActiveClientId ? `/api/demo/download/${encodeURIComponent(displayedActiveClientId)}` : null;
   const renderedItems = displayedManifest?.items || [];
+  const activeReadiness = locale === "zh" ? readiness?.deployment?.cn : readiness?.deployment?.intl;
+  const readinessStatus = activeReadiness?.databaseConfigured ? copy.usableReady : copy.usablePending;
+  const readinessBadgeClass = activeReadiness?.databaseConfigured
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-amber-200 bg-amber-50 text-amber-700";
   const statusDescription = isDraftingNewClient
     ? `${copy.draftLabel}：${normalizedInputClientId}`
     : displayedActiveClientId
@@ -231,6 +274,29 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
     if (matchedInputBundle.clientId === activeClientId) return;
     void loadClientManifest(matchedInputBundle.clientId);
   }, [matchedInputBundle, activeClientId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReadiness = async () => {
+      try {
+        const response = await fetch("/api/integrations/readiness", { cache: "no-store" });
+        const json = await response.json().catch(() => null);
+        if (cancelled || !response.ok || !json) return;
+        setReadiness(json as ReadinessSnapshot);
+      } catch {
+        if (!cancelled) {
+          setReadiness(null);
+        }
+      }
+    };
+
+    void loadReadiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleGenerate() {
     if (!normalizedInputClientId) {
@@ -387,6 +453,30 @@ export default function AdminDemoPageClient({ locale }: { locale: DemoLocale }) 
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{copy.readinessTitle}</CardTitle>
+          <CardDescription>{copy.readinessDescription}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{copy.deploymentLabel}</div>
+            <div className="mt-2 text-base font-semibold text-slate-900">{activeReadiness?.hosting || "-"}</div>
+            <div className="mt-1 text-sm text-slate-600">{activeReadiness?.dockerRequired ? "Docker" : "Node"}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">{copy.databaseLabel}</div>
+            <div className="mt-2 text-base font-semibold text-slate-900">{activeReadiness?.database || "-"}</div>
+            <div className="mt-1 text-sm text-slate-600">{activeReadiness?.runtime || "-"}</div>
+          </div>
+          <div className={`rounded-2xl border p-4 ${readinessBadgeClass}`}>
+            <div className="text-xs uppercase tracking-[0.18em]">{copy.usableLabel}</div>
+            <div className="mt-2 text-base font-semibold">{readinessStatus}</div>
+            <div className="mt-1 text-sm opacity-80">{copy.readinessHint}</div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

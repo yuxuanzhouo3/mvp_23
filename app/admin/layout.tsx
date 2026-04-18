@@ -1,7 +1,8 @@
 import { ReactNode } from "react";
-import { getDeploymentRegion } from "@/config";
+import { headers } from "next/headers";
 import { Toaster } from "@/components/ui/sonner";
 import { getAdminSession } from "@/lib/admin/session";
+import { resolveRequestRegion } from "@/lib/config/request-region";
 import AdminSidebar from "./components/AdminSidebar";
 
 export default async function AdminLayout({
@@ -9,7 +10,7 @@ export default async function AdminLayout({
 }: {
   children: ReactNode;
 }) {
-  const locale = getDeploymentRegion() === "CN" ? "zh" : "en";
+  const locale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en";
   const sessionResult = await getAdminSession();
 
   if (!sessionResult.valid || !sessionResult.session) {

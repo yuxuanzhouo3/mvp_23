@@ -2,10 +2,10 @@ import Link from "next/link"
 import { headers } from "next/headers"
 import { ArrowLeft, Download, ExternalLink, FileText, PlayCircle, Presentation } from "lucide-react"
 import { notFound } from "next/navigation"
-import { getDeploymentRegion } from "@/config"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { readDemoManifest } from "@/lib/demo-bundle"
+import { resolveRequestRegion } from "@/lib/config/request-region"
 import { resolveDemoPreview } from "@/lib/demo-preview"
 
 type DemoLocale = "zh" | "en"
@@ -110,7 +110,7 @@ export default async function DemoItemPreviewPage({
   params: Promise<{ itemId: string }> | { itemId: string }
 }) {
   const resolvedParams = await Promise.resolve(params)
-  const locale: DemoLocale = getDeploymentRegion() === "CN" ? "zh" : "en"
+  const locale: DemoLocale = resolveRequestRegion(headers().get("host")) === "CN" ? "zh" : "en"
   const copy = getCopy(locale)
   const manifest = await readDemoManifest()
 
