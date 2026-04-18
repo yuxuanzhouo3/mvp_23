@@ -1,6 +1,7 @@
+import { headers } from "next/headers"
 import { ArrowRight, Download, MonitorSmartphone } from "lucide-react"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 const desktopSteps = [
   "Reserve this page for an installer, packaged desktop shell, or public release note page.",
@@ -11,6 +12,8 @@ const desktopSteps = [
 export const dynamic = "force-dynamic"
 
 export default async function DesktopDownloadPage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const desktopAsset = (await listDistributionAssets()).find((asset) => asset.id === "desktop")
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.10),transparent_26%),linear-gradient(180deg,#f8fbff_0%,#ffffff_48%,#f8fafc_100%)] px-6 py-12 text-slate-900">

@@ -1,5 +1,16 @@
 const currentOrigin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.mornscience.app"
 
+function resolveOriginFromHost(host?: string | null) {
+  const normalizedHost = String(host || "").split(",")[0]?.trim().toLowerCase()
+  if (!normalizedHost) return currentOrigin
+
+  try {
+    return new URL(`https://${normalizedHost}`).origin
+  } catch {
+    return currentOrigin
+  }
+}
+
 export const siteLinks = {
   bossDemo: process.env.NEXT_PUBLIC_BOSS_DEMO_URL || `${currentOrigin}/demo`,
   websiteIntl: process.env.NEXT_PUBLIC_WEBSITE_URL_INTL || "https://www.mornscience.app",
@@ -21,4 +32,25 @@ export const siteLinks = {
 
 export function getRegionalWebsite(region: "cn" | "intl") {
   return region === "cn" ? siteLinks.websiteCn : siteLinks.websiteIntl
+}
+
+export function getRequestSiteLinks(host?: string | null) {
+  const origin = resolveOriginFromHost(host)
+
+  return {
+    ...siteLinks,
+    docs: `${origin}/api-docs`,
+    apiBase: `${origin}/api`,
+    loginEntry: `${origin}/login`,
+    checkoutEntry: `${origin}/checkout`,
+    adminConsole: `${origin}/admin`,
+    marketCenter: `${origin}/market`,
+    downloadCenter: `${origin}/download`,
+    androidApk: `${origin}/download/android`,
+    iosDownload: `${origin}/download/ios`,
+    iosTestFlight: `${origin}/download/ios?channel=testflight`,
+    desktopDownload: `${origin}/download/desktop`,
+    harmonyDownload: `${origin}/download/harmony`,
+    miniProgramGuide: `${origin}/download/miniprogram`,
+  } as const
 }

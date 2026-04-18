@@ -1,4 +1,5 @@
 import { ArrowRight, BadgeCheck, Download, ExternalLink, FileText, Smartphone } from "lucide-react"
+import { headers } from "next/headers"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,11 +12,13 @@ import {
   getDeliveryStatusLabel,
 } from "@/lib/delivery-readiness"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 export const dynamic = "force-dynamic"
 
 export default async function DownloadCenterPage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const distributionAssets = await listDistributionAssets()
   const assetByPlatform = Object.fromEntries(distributionAssets.map((asset) => [asset.platform, asset]))
   const managedDownloadChannels = [

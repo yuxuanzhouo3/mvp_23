@@ -1,6 +1,7 @@
+import { headers } from "next/headers"
 import { ArrowRight, Layers3, ShieldCheck } from "lucide-react"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 const harmonyChecklist = [
   "保留鸿蒙壳转化说明、签名路径和最小发布检查项。",
@@ -11,6 +12,8 @@ const harmonyChecklist = [
 export const dynamic = "force-dynamic"
 
 export default async function HarmonyDownloadPage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const harmonyAsset = (await listDistributionAssets()).find((asset) => asset.id === "harmony")
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(244,63,94,0.10),transparent_24%),linear-gradient(180deg,#fff8fb_0%,#ffffff_50%,#fff7ed_100%)] px-6 py-12 text-slate-900">

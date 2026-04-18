@@ -1,7 +1,8 @@
+import { headers } from "next/headers"
 import { Smartphone } from "lucide-react"
 import { ANDROID_DELIVERY_SPEC } from "@/lib/delivery-readiness"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 const checklist = [
   "用于老板现场点击演示的 Android 下载入口",
@@ -12,6 +13,8 @@ const checklist = [
 export const dynamic = "force-dynamic"
 
 export default async function AndroidDownloadPage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const androidAsset = (await listDistributionAssets()).find((asset) => asset.id === "android_apk")
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f6fff7_0%,#ffffff_48%,#f7fafc_100%)] px-6 py-12 text-slate-900">

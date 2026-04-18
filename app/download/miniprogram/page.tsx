@@ -1,6 +1,7 @@
+import { headers } from "next/headers"
 import { ArrowRight, MessageSquareMore, QrCode } from "lucide-react"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 const miniProgramChecklist = [
   "保留小程序工程骨架、运行说明和发布路径。",
@@ -11,6 +12,8 @@ const miniProgramChecklist = [
 export const dynamic = "force-dynamic"
 
 export default async function MiniProgramDownloadPage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const miniProgramAsset = (await listDistributionAssets()).find((asset) => asset.id === "mini_program")
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.10),transparent_24%),linear-gradient(180deg,#f7fff8_0%,#ffffff_50%,#f8fafc_100%)] px-6 py-12 text-slate-900">

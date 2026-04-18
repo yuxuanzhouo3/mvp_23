@@ -1,5 +1,6 @@
+import { headers } from "next/headers"
 import { ArrowRight, BookOpen, Globe2, Layers3, Smartphone, Sparkles } from "lucide-react"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 const featureCards = [
   {
@@ -22,7 +23,10 @@ const featureCards = [
   },
 ]
 
-export default function IntlWebsitePage() {
+export default async function IntlWebsitePage() {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.18),transparent_26%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_20%),linear-gradient(180deg,#f7fbff_0%,#ffffff_48%,#f7fafc_100%)] px-6 py-12 text-slate-900">
       <div className="mx-auto grid max-w-6xl gap-10">

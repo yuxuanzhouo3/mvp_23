@@ -1,6 +1,7 @@
+import { headers } from "next/headers"
 import { Apple, ArrowRight, BadgeCheck, Smartphone } from "lucide-react"
 import { listDistributionAssets } from "@/lib/distribution-asset-store"
-import { siteLinks } from "@/lib/site-links"
+import { getRequestSiteLinks } from "@/lib/site-links"
 
 type IosDownloadPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
@@ -9,6 +10,8 @@ type IosDownloadPageProps = {
 export const dynamic = "force-dynamic"
 
 export default async function IosDownloadPage({ searchParams }: IosDownloadPageProps) {
+  const headerStore = await headers()
+  const siteLinks = getRequestSiteLinks(headerStore.get("host"))
   const params = (await searchParams) ?? {}
   const channelValue = Array.isArray(params.channel) ? params.channel[0] : params.channel
   const isTestFlight = channelValue === "testflight"
