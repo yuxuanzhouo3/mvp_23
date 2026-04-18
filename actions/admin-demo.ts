@@ -4,9 +4,8 @@ import { generateDemoBundle, listDemoClientBundles, readDemoManifest } from '@/l
 import { requireAdminSession } from '@/lib/admin/session';
 
 export async function generateAdminDemoBundle(clientId?: string | null) {
-  await requireAdminSession();
-
   try {
+    await requireAdminSession();
     const manifest = await generateDemoBundle(clientId);
     return {
       success: true,
@@ -21,9 +20,8 @@ export async function generateAdminDemoBundle(clientId?: string | null) {
 }
 
 export async function getAdminDemoManifest(clientId?: string | null) {
-  await requireAdminSession();
-
   try {
+    await requireAdminSession();
     const manifest = await readDemoManifest(clientId);
     return {
       success: true,
@@ -38,9 +36,8 @@ export async function getAdminDemoManifest(clientId?: string | null) {
 }
 
 export async function listAdminDemoBundles() {
-  await requireAdminSession();
-
   try {
+    await requireAdminSession();
     const bundles = await listDemoClientBundles();
     return {
       success: true,
