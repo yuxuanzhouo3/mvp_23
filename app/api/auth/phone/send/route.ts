@@ -4,32 +4,38 @@ import { getTencentSmsConfig, sendTencentSmsOtp } from "@/lib/tencent-sms"
 
 export const runtime = "nodejs"
 
+function normalizePhone(phone: string) {
+  const digits = String(phone ?? "").replace(/\D/g, "")
+  if (digits.startsWith("86") && digits.length === 13) return digits.slice(2)
+  return digits
+}
+
 function isValidMainlandPhone(phone: string) {
-  const normalized = String(phone ?? "").replace(/[^\d]/g, "")
+  const normalized = normalizePhone(phone)
   return /^1\d{10}$/.test(normalized)
 }
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const phone = String(body?.phone ?? "").trim()
-  const email = String(body?.email ?? "").trim().toLowerCase()
   const region = body?.region === "cn" ? "cn" : "intl"
 
   if (region !== "cn") {
     return NextResponse.json({ error: "Phone OTP is only available for the China region." }, { status: 400 })
   }
-  if (!email || !phone) {
-    return NextResponse.json({ error: "email and phone are required" }, { status: 400 })
+  if (!phone) {
+    return NextResponse.json({ error: "phone is required" }, { status: 400 })
   }
   if (!isValidMainlandPhone(phone)) {
     return NextResponse.json({ error: "invalid phone number" }, { status: 400 })
   }
 
-  const record = await createPhoneOtp({ phone, email })
+  const normalizedPhone = normalizePhone(phone)
+  const record = await createPhoneOtp({ phone: normalizedPhone })
   const tencentSms = getTencentSmsConfig()
 
   if (tencentSms.configured) {
-    const result = await sendTencentSmsOtp({ phone, code: record.code })
+    const result = await sendTencentSmsOtp({ phone: normalizedPhone, code: record.code })
     if (!result.ok) {
       return NextResponse.json(
         {
@@ -47,6 +53,7 @@ export async function POST(req: Request) {
       provider: "tencent-sms",
       requestId: result.requestId,
       expiresInSeconds: 300,
+      resendAfterSeconds: 60,
       message: "Verification code sent.",
     })
   }
@@ -55,6 +62,7 @@ export async function POST(req: Request) {
     ok: true,
     sandbox: true,
     expiresInSeconds: 300,
+    resendAfterSeconds: 60,
     sandboxCode: record.code,
     message: "Sandbox verification code generated.",
   })

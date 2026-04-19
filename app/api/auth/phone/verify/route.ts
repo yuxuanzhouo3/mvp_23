@@ -6,13 +6,14 @@ import { verifyPhoneOtp } from "@/lib/phone-auth-store"
 export const runtime = "nodejs"
 
 function normalizePhone(phone: string) {
-  return String(phone ?? "").replace(/[^\d]/g, "")
+  const digits = String(phone ?? "").replace(/\D/g, "")
+  if (digits.startsWith("86") && digits.length === 13) return digits.slice(2)
+  return digits
 }
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const phone = String(body?.phone ?? "").trim()
-  const email = String(body?.email ?? "").trim().toLowerCase()
   const code = String(body?.code ?? "").trim()
   const name = String(body?.name ?? "").trim()
   const region = body?.region === "cn" ? "cn" : "intl"
@@ -20,19 +21,20 @@ export async function POST(req: Request) {
   if (region !== "cn") {
     return NextResponse.json({ error: "Phone OTP is only available for the China region." }, { status: 400 })
   }
-  if (!phone || !email || !code) {
-    return NextResponse.json({ error: "phone, email, and code are required" }, { status: 400 })
+  if (!phone || !code) {
+    return NextResponse.json({ error: "phone and code are required" }, { status: 400 })
   }
 
-  const record = await verifyPhoneOtp({ phone, email, code })
+  const record = await verifyPhoneOtp({ phone, code })
   if (!record) {
     return NextResponse.json({ error: "Invalid or expired verification code" }, { status: 401 })
   }
 
   const normalizedPhone = normalizePhone(phone)
+  const userEmail = record.email || `phone_${normalizedPhone}@cn.mornstack.local`
   const user = await upsertExternalUser({
     id: `phone_${normalizedPhone}`,
-    email,
+    email: userEmail,
     name: name || `用户${normalizedPhone.slice(-4)}`,
     region: "cn",
   })

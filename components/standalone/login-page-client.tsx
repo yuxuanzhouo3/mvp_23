@@ -43,6 +43,16 @@ type SessionResp = {
   }
 }
 
+const SEND_COOLDOWN_SECONDS = 60
+const PHONE_SEND_COOLDOWN_STORAGE_KEY = "cn_phone_send_cooldown_until"
+const EMAIL_SEND_COOLDOWN_STORAGE_KEY = "cn_email_send_cooldown_until"
+
+function readStoredCooldownUntil(key: string) {
+  if (typeof window === "undefined") return 0
+  const rawValue = Number(window.localStorage.getItem(key) || 0)
+  return Number.isFinite(rawValue) ? rawValue : 0
+}
+
 function BrandMark() {
   return (
     <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-[linear-gradient(135deg,#5e8cff_0%,#5b4dff_52%,#6e48ff_100%)] text-[1.75rem] font-semibold tracking-[-0.06em] text-white shadow-[0_16px_32px_rgba(93,92,255,0.26)]">
@@ -95,11 +105,44 @@ function LoginPageContent() {
   const [phoneHint, setPhoneHint] = useState("")
   const [phoneSendDetails, setPhoneSendDetails] = useState<{ providerCode?: string; providerMessage?: string; requestId?: string } | null>(null)
   const [phoneUsesLiveSms, setPhoneUsesLiveSms] = useState(false)
+  const [phoneCooldownUntil, setPhoneCooldownUntil] = useState(0)
+  const [emailCooldownUntil, setEmailCooldownUntil] = useState(0)
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
+
+  const phoneCooldownRemaining = Math.max(0, Math.ceil((phoneCooldownUntil - currentTime) / 1000))
+  const emailCooldownRemaining = Math.max(0, Math.ceil((emailCooldownUntil - currentTime) / 1000))
+  const isPhoneCoolingDown = phoneCooldownRemaining > 0
+  const isEmailCoolingDown = emailCooldownRemaining > 0
 
   useEffect(() => {
     if (typeof window === "undefined") return
     setRegion(getRegionFromHostname(window.location.hostname))
   }, [])
+
+  useEffect(() => {
+    if (!isCn) return
+    const storedPhoneCooldown = readStoredCooldownUntil(PHONE_SEND_COOLDOWN_STORAGE_KEY)
+    const storedEmailCooldown = readStoredCooldownUntil(EMAIL_SEND_COOLDOWN_STORAGE_KEY)
+    if (storedPhoneCooldown > Date.now()) setPhoneCooldownUntil(storedPhoneCooldown)
+    if (storedEmailCooldown > Date.now()) setEmailCooldownUntil(storedEmailCooldown)
+  }, [isCn])
+
+  useEffect(() => {
+    if (!isCn || (!phoneCooldownUntil && !emailCooldownUntil)) return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      setCurrentTime(now)
+      if (phoneCooldownUntil && phoneCooldownUntil <= now) {
+        window.localStorage.removeItem(PHONE_SEND_COOLDOWN_STORAGE_KEY)
+        setPhoneCooldownUntil(0)
+      }
+      if (emailCooldownUntil && emailCooldownUntil <= now) {
+        window.localStorage.removeItem(EMAIL_SEND_COOLDOWN_STORAGE_KEY)
+        setEmailCooldownUntil(0)
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [emailCooldownUntil, isCn, phoneCooldownUntil])
 
   useEffect(() => {
     fetch("/api/auth/runtime-session", { cache: "no-store" })
@@ -137,6 +180,15 @@ function LoginPageContent() {
     setAuthStep("authenticated")
     setAuthResolved(true)
   }, [isCn, nextAuthSession, nextAuthStatus, switchAccount])
+
+  function startSendCooldown(key: string, setCooldown: (value: number) => void) {
+    const nextCooldownUntil = Date.now() + SEND_COOLDOWN_SECONDS * 1000
+    setCooldown(nextCooldownUntil)
+    setCurrentTime(Date.now())
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(key, String(nextCooldownUntil))
+    }
+  }
 
   async function handleSwitchAccount() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => null)
@@ -193,6 +245,10 @@ function LoginPageContent() {
   }
 
   async function handleSendEmailCode(purpose: "register" | "reset") {
+    if (isCn && isEmailCoolingDown) {
+      setError(`请等待 ${emailCooldownRemaining} 秒后再发送邮箱验证码。`)
+      return
+    }
     setSubmitting(true)
     setError("")
     setPhoneHint("")
@@ -208,6 +264,7 @@ function LoginPageContent() {
       }
       setEmailPurpose(purpose)
       setEmailCodeSent(true)
+      if (isCn) startSendCooldown(EMAIL_SEND_COOLDOWN_STORAGE_KEY, setEmailCooldownUntil)
       setPhoneHint(
         purpose === "reset"
           ? isCn
@@ -248,6 +305,10 @@ function LoginPageContent() {
   }
 
   async function handleSendPhoneCode() {
+    if (isCn && isPhoneCoolingDown) {
+      setError(`请等待 ${phoneCooldownRemaining} 秒后再发送短信验证码。`)
+      return
+    }
     setSubmitting(true)
     setError("")
     setPhoneHint("")
@@ -257,7 +318,7 @@ function LoginPageContent() {
       const res = await fetch("/api/auth/phone/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, email, region }),
+        body: JSON.stringify({ phone, region }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -268,6 +329,7 @@ function LoginPageContent() {
         })
         throw new Error(String(json?.error ?? "Send verification code failed"))
       }
+      if (isCn) startSendCooldown(PHONE_SEND_COOLDOWN_STORAGE_KEY, setPhoneCooldownUntil)
       const code = String(json?.sandboxCode ?? "").trim()
       setSandboxCode(code)
       setPhoneHint(
@@ -292,7 +354,7 @@ function LoginPageContent() {
       const res = await fetch("/api/auth/phone/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, email, code: phoneCode, name, region }),
+        body: JSON.stringify({ phone, code: phoneCode, name, region }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -440,7 +502,7 @@ function LoginPageContent() {
                     : "Current mode: demo social + email verification",
             oauthReady: `Returned from ${provider}. Continue into the next step.`,
           },
-    [isCn, provider, runtimeMode]
+    [isCn, phoneUsesLiveSms, provider, runtimeMode]
   )
 
   const helperMessage = useMemo(() => {
@@ -498,98 +560,63 @@ function LoginPageContent() {
               {authResolved && authStep === "authenticated" && sessionUser ? (
                 <div className="rounded-[28px] border border-emerald-200 bg-emerald-50/80 p-6 shadow-[0_18px_50px_rgba(16,185,129,0.08)]">
                   <div className="text-sm font-medium text-emerald-900">{copy.signedIn}</div>
-                  <div className="mt-3 text-2xl font-semibold text-slate-950">{sessionUser.name || sessionUser.email}</div>
-                  <div className="mt-1 text-sm text-emerald-800/80">{sessionUser.email}</div>
-
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <Button className="h-12 rounded-2xl bg-[#395ee8] text-base font-medium text-white hover:bg-[#2f53db]" onClick={() => router.push(redirectTo)}>
+                  <div className="mt-3 text-2xl font-semibold text-slate-950">{sessionUser.name}</div>
+                  <div className="mt-1 text-sm text-slate-600">{sessionUser.email}</div>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <Button
+                      type="button"
+                      className="h-12 rounded-2xl bg-slate-950 px-6 text-base text-white hover:bg-slate-800"
+                      onClick={() => router.push(redirectTo)}
+                    >
                       {copy.continueInto}
+                      <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
-                    <Button className="h-12 rounded-2xl border-slate-200 bg-white text-base text-slate-700 hover:bg-slate-50" variant="outline" onClick={handleSwitchAccount}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 rounded-2xl border-slate-200 px-6 text-base"
+                      onClick={() => void handleSwitchAccount()}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
                       {copy.switchAccount}
                     </Button>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSwitchAccount}
-                    className="mt-5 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-slate-950"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {copy.signOut}
-                  </button>
                 </div>
               ) : (
-                <>
-                  {showGoogleEntry ? (
-                    <>
-                      <div className="relative">
-                        <span className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[#ff9b42] px-3 py-1 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(255,155,66,0.32)]">
-                          {copy.lastUsed}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-14 w-full rounded-2xl border-[#ffb272] bg-white text-lg font-medium text-slate-900 hover:bg-[#fff8f1]"
-                          disabled={!authResolved || submitting}
-                          onClick={() => {
-                            void handleGoogleSignIn()
-                          }}
-                        >
-                          <Chrome className="mr-3 h-5 w-5" />
-                          {copy.google}
-                        </Button>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-sm text-slate-400">
-                        <div className="h-px flex-1 bg-slate-200" />
-                        <span>{copy.or}</span>
-                        <div className="h-px flex-1 bg-slate-200" />
-                      </div>
-                    </>
-                  ) : null}
-
+                <div className="rounded-[32px] border border-white/80 bg-white/88 p-5 shadow-[0_24px_70px_rgba(148,163,184,0.14)] backdrop-blur">
                   <div className="space-y-4">
                     {isCn ? (
-                      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setError("")
-                            setPhoneHint("")
-                            setCnLoginMethod("phone")
-                          }}
-                          className={`h-11 rounded-[14px] text-sm font-medium transition ${
-                            cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                          }`}
-                        >
-                          手机号验证码
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setError("")
-                            setPhoneHint("")
-                            setCnLoginMethod("email")
-                          }}
-                          className={`h-11 rounded-[14px] text-sm font-medium transition ${
-                            !cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
-                          }`}
-                        >
-                          邮箱登录
-                        </button>
+                      <div className="rounded-[22px] bg-slate-100/90 p-1.5">
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError("")
+                              setPhoneHint("")
+                              setCnLoginMethod("phone")
+                            }}
+                            className={`h-11 rounded-[14px] text-sm font-medium transition ${
+                              cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            }`}
+                          >
+                            手机号验证码
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError("")
+                              setPhoneHint("")
+                              setCnLoginMethod("email")
+                            }}
+                            className={`h-11 rounded-[14px] text-sm font-medium transition ${
+                              !cnPhoneFlow ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            }`}
+                          >
+                            邮箱登录
+                          </button>
+                        </div>
                       </div>
                     ) : null}
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-900">{copy.email}</label>
-                      <Input
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        placeholder={copy.emailPlaceholder}
-                        className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
-                      />
-                    </div>
 
                     {cnPhoneFlow ? (
                       <>
@@ -625,7 +652,7 @@ function LoginPageContent() {
                             type="button"
                             variant="outline"
                             className="h-14 rounded-2xl border-slate-200 bg-white text-base text-slate-900 hover:bg-slate-50"
-                            disabled={submitting || !authResolved}
+                            disabled={submitting || !authResolved || isPhoneCoolingDown}
                             onClick={() => void handleSendPhoneCode()}
                           >
                             {submitting ? (
@@ -633,6 +660,8 @@ function LoginPageContent() {
                                 <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
                                 {copy.sendCode}
                               </>
+                            ) : isPhoneCoolingDown ? (
+                              `${phoneCooldownRemaining}s 后重发`
                             ) : (
                               copy.sendCode
                             )}
@@ -656,6 +685,16 @@ function LoginPageContent() {
                       </>
                     ) : (
                       <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-slate-900">{copy.email}</label>
+                          <Input
+                            value={email}
+                            onChange={(event) => setEmail(event.target.value)}
+                            placeholder={copy.emailPlaceholder}
+                            className="h-14 rounded-2xl border-slate-200 bg-white text-base shadow-none placeholder:text-slate-400"
+                          />
+                        </div>
+
                         {isPasswordMode || isRegisterMode ? (
                           <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-900">
@@ -708,7 +747,7 @@ function LoginPageContent() {
                                 type="button"
                                 variant="outline"
                                 className="h-14 w-full rounded-2xl border-slate-200 bg-white text-base text-slate-900 hover:bg-slate-50"
-                                disabled={submitting || !authResolved}
+                                disabled={submitting || !authResolved || (isCn && isEmailCoolingDown)}
                                 onClick={() => void handleSendEmailCode(isResetMode ? "reset" : "register")}
                               >
                                 {submitting ? (
@@ -716,6 +755,8 @@ function LoginPageContent() {
                                     <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
                                     {isResetMode ? copy.sendResetCode : copy.sendEmailCode}
                                   </>
+                                ) : isCn && isEmailCoolingDown ? (
+                                  `${emailCooldownRemaining}s 后重发`
                                 ) : isResetMode ? (
                                   copy.sendResetCode
                                 ) : emailCodeSent ? (
@@ -907,42 +948,68 @@ function LoginPageContent() {
                       </>
                     )}
                   </div>
-                </>
+                </div>
               )}
-            </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
-            <span className="underline underline-offset-4">{copy.terms}</span>
-            <span>{isCn ? "与" : "and"}</span>
-            <span className="underline underline-offset-4">{copy.privacy}</span>
+              {showGoogleEntry ? (
+                <button
+                  type="button"
+                  onClick={() => void handleGoogleSignIn()}
+                  className="flex h-14 w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white text-base font-medium text-slate-900 shadow-sm transition hover:border-slate-300"
+                >
+                  <Chrome className="h-5 w-5" />
+                  {copy.google}
+                </button>
+              ) : null}
+            </div>
+
+            <p className="mt-8 text-xs leading-6 text-slate-400">
+              登录即表示你同意
+              <Link href="/terms" className="mx-1 text-slate-500 underline underline-offset-4">
+                {copy.terms}
+              </Link>
+              与
+              <Link href="/privacy" className="mx-1 text-slate-500 underline underline-offset-4">
+                {copy.privacy}
+              </Link>
+              。
+            </p>
           </div>
         </section>
 
-        <section className="hidden p-6 lg:flex lg:items-center lg:justify-center lg:p-8">
-          <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-[36px] border border-white/70 bg-[radial-gradient(circle_at_top,#eef5ff_0%,#e7f0ff_34%,#eaf1fb_56%,#edf2fb_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_18%,rgba(255,255,255,0.95),transparent_28%),radial-gradient(circle_at_76%_24%,rgba(155,205,255,0.55),transparent_26%),radial-gradient(circle_at_60%_62%,rgba(255,255,255,0.75),transparent_32%)]" />
-            <div className="relative w-[70%] rounded-[30px] border border-white/65 bg-white/60 px-8 py-8 shadow-[0_24px_70px_rgba(148,163,184,0.18)] backdrop-blur-xl">
-              <div className="text-[4.1rem] font-medium leading-[1.05] tracking-[-0.06em] text-[#9bb8df]">
+        <aside className="hidden min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(173,196,255,0.45),transparent_38%),linear-gradient(180deg,#edf4ff_0%,#d9e9ff_44%,#cfe4ff_100%)] px-8 py-10 lg:flex">
+          <div className="w-full max-w-[660px] rounded-[40px] border border-white/65 bg-white/58 p-10 shadow-[0_30px_80px_rgba(123,160,217,0.18)] backdrop-blur-xl">
+            <div className="space-y-8">
+              <div className="text-[4.6rem] font-light leading-[0.9] tracking-[-0.08em] text-[#9bbcf5]">
                 {copy.idea}
               </div>
-              <div className="mt-8 flex items-center justify-between gap-5 rounded-[26px] border border-white/70 bg-white/58 px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                <div className="max-w-[28rem] text-2xl leading-10 tracking-[-0.03em] text-[#a9bddb]">{copy.previewHint}</div>
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-[#aebbd0] text-white shadow-[0_16px_30px_rgba(160,174,192,0.28)]">
-                  <ArrowRight className="h-7 w-7" />
+              <div className="rounded-[30px] border border-white/75 bg-white/58 p-7 shadow-[0_22px_60px_rgba(160,183,229,0.14)] backdrop-blur-md">
+                <div className="flex items-center justify-between gap-6">
+                  <p className="max-w-[24rem] text-[2rem] font-light leading-[1.45] tracking-[-0.05em] text-[#b7c9eb]">
+                    {copy.previewHint}
+                  </p>
+                  <div className="flex h-20 w-20 items-center justify-center rounded-[26px] bg-[#b7c9eb] text-white shadow-[0_18px_30px_rgba(111,140,191,0.3)]">
+                    <ArrowRight className="h-10 w-10" />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </section>
+        </aside>
       </div>
     </div>
   )
 }
 
-export default function LoginPage() {
+export default function LoginPageClient() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#fcfbf7]" />}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#fcfbf7] text-sm text-slate-500">
+          正在加载登录页...
+        </div>
+      }
+    >
       <LoginPageContent />
     </Suspense>
   )
