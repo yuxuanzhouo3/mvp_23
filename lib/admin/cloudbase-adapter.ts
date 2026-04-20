@@ -156,6 +156,14 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     this.couponCollectionReady = true;
   }
 
+  private async ensureAdminUsersCollection(): Promise<void> {
+    await this.ensureCollections(["admin_users"]);
+  }
+
+  private async ensureAdminCollections(): Promise<void> {
+    await this.ensureCollections(["admin_users", "system_logs", "system_config"]);
+  }
+
   private async ensureAnalysisCollections(): Promise<void> {
     if (this.analysisCollectionsReady) return;
     await this.ensureCollections([
@@ -174,6 +182,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     try {
       console.log('[CloudBase] 测试数据库连接...');
       await this.ensureInitialized();
+      await this.ensureAdminCollections();
       const result = await this.db.collection('admin_users').limit(1).get();
       console.log('[CloudBase] 连接测试成功');
       return true;
@@ -288,6 +297,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getAdminByUsername(username: string): Promise<AdminUser | null> {
     console.log("[CloudBaseAdapter] 查询管理员, username:", username);
+    await this.ensureAdminUsersCollection();
     const results = await this.executeQuery("admin_users", async (collection) => {
       return collection.where({ username }).get();
     });
@@ -317,6 +327,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getAdminById(id: string): Promise<AdminUser | null> {
     try {
+      await this.ensureAdminUsersCollection();
       const result = await this.db.collection("admin_users").doc(id).get();
       if (!result.data || result.data.length === 0) {
         return null;
@@ -335,6 +346,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 创建管理员
    */
   async createAdmin(data: CreateAdminData): Promise<AdminUser> {
+    await this.ensureAdminUsersCollection();
     const now = toISOString(new Date());
 
     // 哈希密码
@@ -379,6 +391,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新管理员
    */
   async updateAdmin(id: string, data: UpdateAdminData): Promise<AdminUser> {
+    await this.ensureAdminUsersCollection();
     const updates: any = this.adminUserToDb(data);
 
     // 如果需要更新密码，先哈希
@@ -405,6 +418,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async deleteAdmin(id: string): Promise<void> {
     try {
+      await this.ensureAdminUsersCollection();
       await this.db.collection("admin_users").doc(id).remove();
     } catch (error: any) {
       throw handleDatabaseError(error);
@@ -415,6 +429,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出所有管理员
    */
   async listAdmins(filters?: AdminFilters): Promise<AdminUser[]> {
+    await this.ensureAdminUsersCollection();
     const where: any = {};
 
     if (filters?.status) {
@@ -460,6 +475,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计管理员数量
    */
   async countAdmins(filters?: AdminFilters): Promise<number> {
+    await this.ensureAdminUsersCollection();
     const where: any = {};
 
     if (filters?.status) {
@@ -489,7 +505,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新管理员密码
    */
   async updateAdminPassword(username: string, hashedPassword: string): Promise<void> {
-    await this.ensureInitialized();
+    await this.ensureAdminUsersCollection();
 
     const admin = await this.getAdminByUsername(username);
 
@@ -523,6 +539,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 创建操作日志
    */
   async createLog(log: CreateLogData): Promise<SystemLog> {
+    await this.ensureAdminCollections();
     const now = toISOString(new Date());
 
     const doc = {
@@ -555,6 +572,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 获取日志列表
    */
   async getLogs(filters?: LogFilters): Promise<SystemLog[]> {
+    await this.ensureAdminCollections();
     const where: any = {};
 
     if (filters?.admin_id) {
@@ -613,6 +631,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计日志数量
    */
   async countLogs(filters?: LogFilters): Promise<number> {
+    await this.ensureAdminCollections();
     const where: any = {};
 
     if (filters?.admin_id) {
@@ -656,6 +675,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getConfig(key: string): Promise<any> {
     try {
+      await this.ensureAdminCollections();
       const result = await this.db
         .collection("system_config")
         .where({ key })
@@ -680,6 +700,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     category: ConfigCategory,
     description?: string
   ): Promise<void> {
+    await this.ensureAdminCollections();
     const now = toISOString(new Date());
 
     try {
@@ -716,6 +737,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 列出所有配置
    */
   async listConfigs(category?: ConfigCategory): Promise<SystemConfig[]> {
+    await this.ensureAdminCollections();
     const where: any = {};
     if (category) {
       where.category = category;
@@ -738,6 +760,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async deleteConfig(key: string): Promise<void> {
     try {
+      await this.ensureAdminCollections();
       const existing = await this.db.collection("system_config").where({ key }).get();
 
       if (existing.data.length > 0) {
