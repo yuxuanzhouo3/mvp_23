@@ -14,6 +14,7 @@ import {
 import { getDeploymentRegion } from "@/config";
 import type {
   AdminUser,
+  AdminRole,
   LoginCredentials,
   LoginResult,
 } from "./types";
@@ -30,6 +31,59 @@ const MIN_PASSWORD_LENGTH = 8;
  * 至少包含字母和数字
  */
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)/;
+
+function getBootstrapAdminCredentials(): {
+  username: string;
+  password: string;
+  role: AdminRole;
+} {
+  const username = String(
+    process.env.ADMIN_BOOTSTRAP_USERNAME ||
+      process.env.ADMIN_USERNAME ||
+      ""
+  ).trim();
+  const password = String(
+    process.env.ADMIN_BOOTSTRAP_PASSWORD ||
+      process.env.ADMIN_PASSWORD ||
+      ""
+  ).trim();
+  const role = String(process.env.ADMIN_BOOTSTRAP_ROLE || "admin").trim() as AdminRole;
+
+  return {
+    username,
+    password,
+    role: role === "super_admin" ? "super_admin" : "admin",
+  };
+}
+
+async function ensureBootstrapAdmin(
+  db: Awaited<ReturnType<typeof getDatabaseAdapter>>,
+  username: string
+): Promise<AdminUser | null> {
+  const bootstrap = getBootstrapAdminCredentials();
+
+  if (!bootstrap.username || !bootstrap.password) {
+    return null;
+  }
+
+  if (bootstrap.username !== username) {
+    return null;
+  }
+
+  const existing = await db.getAdminByUsername(username);
+  if (existing) {
+    return existing;
+  }
+
+  console.log("[adminLogin] 管理员不存在，尝试使用 bootstrap 环境变量自动创建");
+  const created = await db.createAdmin({
+    username: bootstrap.username,
+    password: bootstrap.password,
+    role: bootstrap.role,
+  });
+  console.log("[adminLogin] bootstrap 管理员创建成功:", created.username);
+  return created;
+}
 
 // ==================== 登录功能 ====================
 
@@ -77,7 +131,10 @@ export async function adminLogin(
     console.log("[adminLogin] 数据库适配器已获取, 类型:", db.constructor.name);
     console.log("[adminLogin] 开始查询管理员...");
 
-    const admin = await db.getAdminByUsername(username);
+    let admin = await db.getAdminByUsername(username);
+    if (!admin) {
+      admin = await ensureBootstrapAdmin(db, username);
+    }
     console.log("[adminLogin] ========== 查询管理员结果 ==========");
     if (admin) {
       console.log("[adminLogin] ✅ 找到管理员:");
