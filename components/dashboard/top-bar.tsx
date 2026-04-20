@@ -4,10 +4,18 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
-import { Globe, Menu, Moon, Sun, LogOut, UserCog, LayoutDashboard, FolderKanban, LayoutTemplate, Search, HelpCircle, Bell, type LucideIcon } from "lucide-react"
+import { Globe, Menu, Moon, PlayCircle, Sun, LogOut, UserCog, LayoutDashboard, FolderKanban, LayoutTemplate, Search, HelpCircle, Bell, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +45,11 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const isAppDetail = pathname?.startsWith("/apps/") ?? false
   const [user, setUser] = useState<{ name: string; email: string } | null>(null)
   const [authResolved, setAuthResolved] = useState(false)
+  const operationDemoTitle = locale === "zh" ? "操作演示" : "Demo Video"
+  const operationDemoDescription =
+    locale === "zh"
+      ? "观看首页右上角的操作演示，快速了解当前版本的导航、预览和后台入口。"
+      : "Watch the guided operation demo to understand navigation, preview flows, and backend entry points."
 
   useEffect(() => {
     fetch("/api/auth/runtime-session")
@@ -164,6 +177,36 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         </nav>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                className="h-10 rounded-xl px-3"
+                aria-label={locale === "zh" ? "打开操作演示" : "Open operation demo"}
+              >
+                <PlayCircle className="h-4 w-4" />
+                <span className="ml-2 hidden md:inline">{operationDemoTitle}</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl overflow-hidden rounded-3xl border-border/80 p-0">
+              <div className="bg-background px-6 py-5">
+                <DialogHeader className="text-left">
+                  <DialogTitle>{operationDemoTitle}</DialogTitle>
+                  <DialogDescription>{operationDemoDescription}</DialogDescription>
+                </DialogHeader>
+              </div>
+              <div className="bg-black">
+                <video
+                  controls
+                  preload="metadata"
+                  playsInline
+                  className="block w-full max-h-[70vh] bg-black"
+                  src="/operation-demo.mp4"
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+
           <Button
             variant="ghost"
             size="icon"
