@@ -43,7 +43,7 @@ export function resolvePaymentAdapterConfig(): PaymentAdapterConfig {
 export function pickPaymentProvider(region: "cn" | "intl", requested: string, config: PaymentAdapterConfig): PaymentProvider {
   if (region === "cn") {
     if (requested === "wechatpay" && config.wechatConfigured) return "wechatpay"
-    if (requested === "alipay" && config.alipayConfigured) return "alipay"
+    if (requested === "alipay") return "alipay"
     return "hosted"
   }
 

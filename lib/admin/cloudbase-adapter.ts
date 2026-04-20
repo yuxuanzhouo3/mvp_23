@@ -160,6 +160,14 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
     await this.ensureCollections(["admin_users"]);
   }
 
+  private async ensureUsersCollection(): Promise<void> {
+    await this.ensureCollections(["users"]);
+  }
+
+  private async ensureReleasesCollection(): Promise<void> {
+    await this.ensureCollections(["releases"]);
+  }
+
   private async ensureAdminCollections(): Promise<void> {
     await this.ensureCollections(["admin_users", "system_logs", "system_config"]);
   }
@@ -780,6 +788,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 根据用户名获取普通用户
    */
   async getUserByUsername(username: string): Promise<User | null> {
+    await this.ensureUsersCollection();
     const results = await this.executeQuery("users", async (collection) => {
       return collection.where({ username }).get();
     });
@@ -796,6 +805,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async getUserById(id: string): Promise<User | null> {
     await this.ensureInitialized();
+    await this.ensureUsersCollection();
 
     try {
       // 先按文档 _id 查询（管理后台通常返回此 ID）
@@ -831,6 +841,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async listUsers(filters?: UserFilters): Promise<User[]> {
     await this.ensureInitialized();
+    await this.ensureUsersCollection();
 
     const where: any = {};
 
@@ -884,6 +895,8 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 统计普通用户数量
    */
   async countUsers(filters?: UserFilters): Promise<number> {
+    await this.ensureInitialized();
+    await this.ensureUsersCollection();
     const where: any = {};
 
     if (filters?.status) {
@@ -920,6 +933,8 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    * 更新普通用户
    */
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    await this.ensureInitialized();
+    await this.ensureUsersCollection();
     const data: any = {
       updated_at: toISOString(new Date()),
     };
@@ -946,6 +961,8 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async deleteUser(id: string): Promise<void> {
     try {
+      await this.ensureInitialized();
+      await this.ensureUsersCollection();
       await this.db.collection("users").doc(id).remove();
     } catch (error: any) {
       throw handleDatabaseError(error);
@@ -1915,6 +1932,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async listReleases(): Promise<AppRelease[]> {
     await this.ensureInitialized();
+    await this.ensureReleasesCollection();
     try {
       const result = await this.db
         .collection("releases")
@@ -1932,6 +1950,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async countReleases(): Promise<number> {
     await this.ensureInitialized();
+    await this.ensureReleasesCollection();
     try {
       const result = await this.db.collection("releases").count();
       return result.total;
@@ -1945,6 +1964,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async createRelease(data: CreateReleaseData): Promise<AppRelease> {
     await this.ensureInitialized();
+    await this.ensureReleasesCollection();
     const now = toISOString(new Date());
 
     const doc: any = {
@@ -2001,6 +2021,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async updateRelease(id: string, data: Partial<CreateReleaseData>): Promise<AppRelease> {
     await this.ensureInitialized();
+    await this.ensureReleasesCollection();
     const update: any = {
       updated_at: toISOString(new Date()),
     };
@@ -2030,6 +2051,7 @@ export class CloudBaseAdminAdapter implements AdminDatabaseAdapter {
   async deleteRelease(id: string): Promise<void> {
     console.log('[CloudBaseAdapter] 删除版本发布:', id);
     await this.ensureInitialized();
+    await this.ensureReleasesCollection();
     try {
       const existing = await this.db.collection("releases").doc(id).get();
       if (!existing.data || existing.data.length === 0) {

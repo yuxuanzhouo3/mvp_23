@@ -14,7 +14,11 @@ export async function createAlipayPayment(context: PaymentCreateContext): Promis
   const rawPrivateKey = String(process.env.ALIPAY_PRIVATE_KEY ?? "").trim()
   const gateway = String(process.env.ALIPAY_GATEWAY ?? "https://openapi.alipay.com/gateway.do").trim()
   if (!appId || !rawPrivateKey) {
-    throw new Error("Missing Alipay config")
+    return {
+      provider: "alipay",
+      redirectUrl: `/payment/alipay?paymentId=${encodeURIComponent(context.paymentId)}&sandbox=1`,
+      fallbackHosted: true,
+    }
   }
 
   const privateKey = normalizePemKey(rawPrivateKey)
