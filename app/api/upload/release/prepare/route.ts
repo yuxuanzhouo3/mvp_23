@@ -36,6 +36,46 @@ function headerObject(value: unknown): Record<string, string> {
   );
 }
 
+async function ensureSupabaseReleaseBucket(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const bucketName = "releases";
+  const existing = await supabase.storage.getBucket(bucketName);
+
+  if (!existing.error) {
+    if (existing.data?.public === false) {
+      const { error } = await supabase.storage.updateBucket(bucketName, {
+        public: true,
+      });
+      if (error) {
+        console.warn("[upload/release/prepare] releases bucket exists but public update failed:", error.message);
+      }
+    }
+    return;
+  }
+
+  const missingBucket =
+    existing.error.message?.toLowerCase().includes("not found") ||
+    existing.error.message?.toLowerCase().includes("does not exist") ||
+    (existing.error as any).statusCode === "404";
+
+  if (!missingBucket) {
+    throw new Error(`Supabase releases bucket check failed: ${existing.error.message}`);
+  }
+
+  const { error } = await supabase.storage.createBucket(bucketName, {
+    public: true,
+    allowedMimeTypes: undefined,
+  });
+
+  if (error) {
+    const alreadyExists =
+      error.message?.toLowerCase().includes("already exists") ||
+      error.message?.toLowerCase().includes("already registered");
+    if (!alreadyExists) {
+      throw new Error(`Supabase releases bucket create failed: ${error.message}`);
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     await requireAdminSession();
@@ -89,6 +129,8 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    await ensureSupabaseReleaseBucket(supabase);
+
     const { data, error } = await supabase.storage.from("releases").createSignedUploadUrl(storagePath, {
       upsert: true,
     });
