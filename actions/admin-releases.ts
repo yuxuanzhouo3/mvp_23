@@ -2,6 +2,7 @@
 
 import { getDatabaseAdapter } from '@/lib/admin/database';
 import type { CreateReleaseData, Platform, Variant } from '@/lib/admin/types';
+export type { AppRelease, CreateReleaseData, Platform, Variant } from '@/lib/admin/types';
 
 function readString(formData: FormData, ...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -54,6 +55,7 @@ export async function createRelease(formData: FormData) {
     const version = readString(formData, 'version');
     const platform = readString(formData, 'platform') as Platform | undefined;
     const variantRaw = readString(formData, 'variant');
+    const title = readString(formData, 'title');
     const fileUrl = readString(formData, 'file_url', 'fileUrl', 'cloudbaseFileId');
     const fileName = readString(formData, 'file_name', 'fileName');
     const fileSize = readNumber(formData, 'file_size', 'fileSize');
@@ -68,6 +70,7 @@ export async function createRelease(formData: FormData) {
     const data: CreateReleaseData = {
       version,
       platform,
+      title: title || `${platform.toUpperCase()} ${version}`,
       variant: variantRaw ? (variantRaw as Variant) : undefined,
       file_url: fileUrl,
       file_name: fileName,

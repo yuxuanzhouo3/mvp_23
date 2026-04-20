@@ -1748,7 +1748,7 @@ export interface AdStats {
 
 // ==================== 应用发布版本管理 ====================
 
-export type Platform = 'ios' | 'android' | 'windows' | 'macos' | 'linux';
+export type Platform = 'ios' | 'android' | 'windows' | 'macos' | 'linux' | 'desktop' | 'harmony' | 'extension';
 export type Variant = 'x64' | 'x86' | 'arm64' | 'intel' | 'm' | 'deb' | 'rpm' | 'appimage' | 'snap' | 'flatpak' | 'aur';
 
 export interface AppRelease {

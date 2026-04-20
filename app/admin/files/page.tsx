@@ -476,7 +476,11 @@ export default function FilesManagementPage() {
         return <Smartphone className="h-4 w-4" />;
       case "windows":
       case "linux":
+      case "desktop":
         return <Monitor className="h-4 w-4" />;
+      case "harmony":
+      case "extension":
+        return <Package className="h-4 w-4" />;
       default:
         return <Package className="h-4 w-4" />;
     }
@@ -490,6 +494,9 @@ export default function FilesManagementPage() {
       case "windows": return "Windows";
       case "macos": return "macOS";
       case "linux": return "Linux";
+      case "desktop": return "Desktop";
+      case "harmony": return "Harmony";
+      case "extension": return "Extension";
       default: return platform || "-";
     }
   }

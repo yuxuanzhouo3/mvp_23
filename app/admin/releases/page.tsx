@@ -73,6 +73,7 @@ import {
   Smartphone,
   Monitor,
   Apple,
+  Package,
   AlertTriangle,
 } from "lucide-react";
 
@@ -83,6 +84,9 @@ const PLATFORMS: { value: Platform; label: string; icon: React.ReactNode }[] = [
   { value: "windows", label: "Windows", icon: <Monitor className="h-4 w-4" /> },
   { value: "macos", label: "macOS", icon: <Apple className="h-4 w-4" /> },
   { value: "linux", label: "Linux", icon: <Monitor className="h-4 w-4" /> },
+  { value: "desktop", label: "Desktop", icon: <Monitor className="h-4 w-4" /> },
+  { value: "harmony", label: "Harmony", icon: <Smartphone className="h-4 w-4" /> },
+  { value: "extension", label: "Extension", icon: <Package className="h-4 w-4" /> },
 ];
 
 // 变体配置（按平台分组）
@@ -106,6 +110,9 @@ const VARIANTS: Record<Platform, { value: Variant; label: string }[]> = {
     { value: "flatpak", label: "Flatpak" },
     { value: "aur", label: "AUR (Arch Linux)" },
   ],
+  desktop: [],
+  harmony: [],
+  extension: [],
 };
 
 function getVariantLabel(platform: Platform, variant?: Variant | null): string {
@@ -462,11 +469,11 @@ export default function ReleasesManagementPage() {
                     id="file"
                     name="file"
                     type="file"
-                    accept=".apk,.aab,.ipa,.exe,.dmg,.deb,.rpm,.AppImage,.zip"
+                    accept=".apk,.aab,.ipa,.exe,.dmg,.deb,.rpm,.AppImage,.zip,.crx,.hap"
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    支持 APK、AAB、IPA、EXE、DMG、DEB、RPM 等格式
+                    支持 APK、AAB、IPA、EXE、DMG、DEB、RPM、HAP、CRX 等格式
                   </p>
                 </div>
 
