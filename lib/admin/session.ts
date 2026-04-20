@@ -37,10 +37,15 @@ const COOKIE_PATH = "/";
  * 如果未设置 ADMIN_SESSION_SECRET，则使用 JWT_SECRET
  */
 function getSessionSecret(): string {
-  const secret = process.env.ADMIN_SESSION_SECRET || process.env.JWT_SECRET;
+  const secret =
+    process.env.ADMIN_SESSION_SECRET ||
+    process.env.JWT_SECRET ||
+    process.env.AUTH_SESSION_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.CLOUDBASE_SESSION_SECRET;
   if (!secret) {
     throw new Error(
-      "会话密钥未配置。请设置 ADMIN_SESSION_SECRET 或 JWT_SECRET 环境变量"
+      "会话密钥未配置。请设置 ADMIN_SESSION_SECRET、JWT_SECRET、AUTH_SESSION_SECRET、NEXTAUTH_SECRET 或 CLOUDBASE_SESSION_SECRET"
     );
   }
   return secret;
