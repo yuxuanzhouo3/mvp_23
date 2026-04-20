@@ -1778,6 +1778,23 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
 
   // ==================== 版本发布管理操作 ====================
 
+  private normalizeRelease(record: any): AppRelease {
+    const fileName = record?.file_name || record?.fileName || "";
+    const fileUrl = record?.file_url || record?.fileUrl || "";
+    const derivedFileName = fileName || (() => {
+      if (typeof fileUrl !== "string" || !fileUrl) return "";
+      const clean = fileUrl.split("?")[0];
+      const parts = clean.split("/");
+      return parts[parts.length - 1] || "";
+    })();
+
+    return {
+      ...record,
+      file_name: derivedFileName,
+      file_url: fileUrl,
+    };
+  }
+
   /**
    * 获取所有发布版本
    */
@@ -1795,7 +1812,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
     }
 
     console.log('[SupabaseAdapter] 获取到', data?.length || 0, '个版本');
-    return data || [];
+    return (data || []).map((item) => this.normalizeRelease(item));
   }
 
   /**
@@ -1813,7 +1830,7 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
       throw new Error(`获取发布版本失败: ${error.message}`);
     }
 
-    return data;
+    return this.normalizeRelease(data);
   }
 
   /**
@@ -1822,29 +1839,49 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
   async createRelease(data: CreateReleaseData): Promise<AppRelease> {
     console.log('[SupabaseAdapter] 创建发布版本:', data.version);
 
-    const { data: result, error } = await this.supabase
-      .from('releases')
-      .insert({
-        version: data.version,
-        platform: data.platform,
-        variant: data.variant,
-        file_url: data.file_url,
-        file_name: data.file_name,
-        file_size: data.file_size,
-        release_notes: data.release_notes,
-        is_active: data.is_active,
-        is_mandatory: data.is_mandatory,
-      })
-      .select()
-      .single();
+    const basePayload = {
+      version: data.version,
+      platform: data.platform,
+      variant: data.variant,
+      file_url: data.file_url,
+      file_size: data.file_size,
+      release_notes: data.release_notes,
+      is_active: data.is_active,
+      is_mandatory: data.is_mandatory,
+    };
+
+    const insertRelease = async (payload: Record<string, unknown>) =>
+      this.supabase
+        .from('releases')
+        .insert(payload)
+        .select()
+        .single();
+
+    let { data: result, error } = await insertRelease({
+      ...basePayload,
+      file_name: data.file_name,
+    });
+
+    if (error) {
+      const message = String(error.message || "");
+      const fileNameColumnMissing =
+        /file_name/i.test(message) &&
+        (/column/i.test(message) || /schema cache/i.test(message) || /does not exist/i.test(message));
+
+      if (fileNameColumnMissing) {
+        console.warn('[SupabaseAdapter] releases 表缺少 file_name 列，降级为无 file_name 写入:', message);
+        ({ data: result, error } = await insertRelease(basePayload));
+      }
+    }
 
     if (error) {
       console.error('[SupabaseAdapter] 创建发布版本失败:', error);
       throw new Error(`创建发布版本失败: ${error.message}`);
     }
 
-    console.log('[SupabaseAdapter] 发布版本创建成功:', result.id);
-    return result;
+    const normalized = this.normalizeRelease(result);
+    console.log('[SupabaseAdapter] 发布版本创建成功:', normalized.id);
+    return normalized;
   }
 
   /**
@@ -1852,21 +1889,47 @@ export class SupabaseAdminAdapter implements AdminDatabaseAdapter {
    */
   async updateRelease(id: string, data: Partial<CreateReleaseData>): Promise<AppRelease> {
     console.log('[SupabaseAdapter] 更新发布版本:', id);
-
+    const { file_name: fileName, ...rest } = data as Partial<CreateReleaseData> & { file_name?: string };
     const { data: result, error } = await this.supabase
       .from('releases')
-      .update(data)
+      .update({
+        ...rest,
+        ...(fileName !== undefined ? { file_name: fileName } : {}),
+      })
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
+      const message = String(error.message || "");
+      const fileNameColumnMissing =
+        /file_name/i.test(message) &&
+        (/column/i.test(message) || /schema cache/i.test(message) || /does not exist/i.test(message));
+
+      if (fileNameColumnMissing && fileName !== undefined) {
+        console.warn('[SupabaseAdapter] releases 表缺少 file_name 列，更新时降级为无 file_name 写入:', message);
+        const fallback = await this.supabase
+          .from('releases')
+          .update(rest)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (fallback.error) {
+          console.error('[SupabaseAdapter] 更新发布版本失败:', fallback.error);
+          throw new Error(`更新发布版本失败: ${fallback.error.message}`);
+        }
+
+        console.log('[SupabaseAdapter] 发布版本更新成功');
+        return this.normalizeRelease(fallback.data);
+      }
+
       console.error('[SupabaseAdapter] 更新发布版本失败:', error);
       throw new Error(`更新发布版本失败: ${error.message}`);
     }
 
     console.log('[SupabaseAdapter] 发布版本更新成功');
-    return result;
+    return this.normalizeRelease(result);
   }
 
   /**
