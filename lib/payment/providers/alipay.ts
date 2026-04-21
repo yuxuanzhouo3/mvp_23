@@ -15,7 +15,7 @@ export async function createAlipayPayment(context: PaymentCreateContext): Promis
   const sandboxEnabled = ["1", "true", "yes", "on"].includes(String(process.env.ALIPAY_SANDBOX ?? "").trim().toLowerCase())
   const gateway = String(
     process.env.ALIPAY_GATEWAY ??
-      (sandboxEnabled ? "https://openapi.alipaydev.com/gateway.do" : "https://openapi.alipay.com/gateway.do")
+      (sandboxEnabled ? "https://openapi-sandbox.dl.alipaydev.com/gateway.do" : "https://openapi.alipay.com/gateway.do")
   ).trim()
   if (!appId || !rawPrivateKey) {
     return {
