@@ -12,7 +12,11 @@ function buildSignContent(params: Record<string, string>) {
 export async function createAlipayPayment(context: PaymentCreateContext): Promise<ProviderCreateResult> {
   const appId = String(process.env.ALIPAY_APP_ID ?? "").trim()
   const rawPrivateKey = String(process.env.ALIPAY_PRIVATE_KEY ?? "").trim()
-  const gateway = String(process.env.ALIPAY_GATEWAY ?? "https://openapi.alipay.com/gateway.do").trim()
+  const sandboxEnabled = ["1", "true", "yes", "on"].includes(String(process.env.ALIPAY_SANDBOX ?? "").trim().toLowerCase())
+  const gateway = String(
+    process.env.ALIPAY_GATEWAY ??
+      (sandboxEnabled ? "https://openapi.alipaydev.com/gateway.do" : "https://openapi.alipay.com/gateway.do")
+  ).trim()
   if (!appId || !rawPrivateKey) {
     return {
       provider: "alipay",
